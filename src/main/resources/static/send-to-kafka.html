@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Send WarehouseProduct to Kafka</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        form { max-width: 400px; }
+        label { display: block; margin-top: 10px; }
+        input { width: 100%; padding: 8px; font-size: 16px; box-sizing: border-box; }
+        button { margin-top: 20px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+<h1>Send WarehouseProduct to Kafka</h1>
+<form id="sendKafkaForm">
+    <label for="description">Description:</label>
+    <input type="text" id="description" name="description" required />
+
+    <label for="price">Price (decimal):</label>
+    <input type="number" id="price" name="price" step="0.01" min="0" required />
+
+    <button type="submit">Send Product</button>
+</form>
+<div id="result"></div>
+
+<script>
+    document.getElementById('sendKafkaForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      const description = document.getElementById('description').value.trim();
+      const priceStr = document.getElementById('price').value.trim();
+      const price = parseFloat(priceStr);
+
+      if (!description) {
+        alert('Description is required');
+        return;
+      }
+      if (isNaN(price) || price < 0) {
+        alert('Price must be a positive number');
+        return;
+      }
+
+      const product = { description, price };
+
+      fetch('/api/v1/sendToKafka', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(product)
+      })
+      .then(response => {
+        if (response.ok) return response.text();
+        else throw new Error('Failed to send product');
+      })
+      .then(data => {
+        document.getElementById('result').textContent = 'Сообщение успешно отправлено в Кафку';
+        document.getElementById('sendKafkaForm').reset();
+      })
+      .catch(error => {
+        document.getElementById('result').textContent = 'Error: ' + error.message;
+      });
+    });
+</script>
+</body>
+</html>

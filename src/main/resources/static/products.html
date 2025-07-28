@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Продукты</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        #product-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .product-item {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 16px;
+            width: 200px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .product-item h3 {
+            margin: 0 0 10px 0;
+        }
+
+        .product-item p {
+            margin: 5px 0;
+        }
+
+        .product-item button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        #cart {
+            margin-top: 40px;
+        }
+    </style>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            loadProducts();
+            loadCart();
+        });
+
+        function loadProducts() {
+            fetch('/api/v1/products')
+                .then(response => response.json())
+                .then(products => {
+                    const container = document.getElementById('product-list');
+                    container.innerHTML = '';
+                    products.forEach(product => {
+                        const productDiv = document.createElement('div');
+                        productDiv.className = 'product-item';
+                        productDiv.innerHTML = `
+                            <h3>id: ${product.id}</h3>
+                            <p>${product.description}</p>
+                            <p><strong>${product.price} руб.</strong></p>
+                            <button onclick="addToCart(${product.id})">Купить</button>
+                        `;
+                        container.appendChild(productDiv);
+                    });
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке продуктов:', error);
+                });
+        }
+
+        function addToCart(productId) {
+            fetch('/api/cart', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ productId: Number(productId) })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+                loadCart();
+            })
+            .catch(error => {
+                console.error('Ошибка при добавлении в корзину:', error);
+                alert('Ошибка при добавлении в корзину: ' + error.message);
+            });
+        }
+
+        function clearCart() {
+            if (!confirm('Очистить корзину?')) return;
+            fetch('/api/cart/clear', { method: 'DELETE' })
+                .then(res => {
+                    if (!res.ok) return res.text().then(t => { throw new Error(t) });
+                    return res.text();
+                })
+                .then(() => loadCart())
+                .catch(err => {
+                    console.error('Ошибка при очистке корзины:', err);
+                    alert('Ошибка при очистке корзины: ' + err.message);
+                });
+        }
+
+       function loadCart() {
+        fetch('/api/cart')
+            .then(response => response.json())
+            .then(cartItems => {
+                const cartContainer = document.getElementById('cart');
+                // Заголовок + кнопка очистки
+                cartContainer.innerHTML = `
+                    <h2>Корзина</h2>
+                    <button onclick="clearCart()">Очистить корзину</button>
+                `;
+
+                // Если пусто
+                if (cartItems.length === 0) {
+                    cartContainer.innerHTML += '<p>Корзина пуста.</p>';
+                    return;
+                }
+
+                // Иначе рисуем элементы
+                cartItems.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.innerHTML = `
+                        <p>${item.description} — ${item.quantity} шт. x ${item.price} руб.</p>
+                    `;
+                    cartContainer.appendChild(itemDiv);
+                });
+            })
+            .catch(error => {
+                console.error('Ошибка при загрузке корзины:', error);
+            });
+    }
+
+    </script>
+</head>
+<body>
+<h1>Список продуктов</h1>
+<div id="product-list"></div>
+
+<div id="cart"></div>
+</body>
+</html>
