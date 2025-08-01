@@ -1,59 +1,41 @@
-Данный учебный проект направлен на отработку использования следующих технологий
-1. WireMock
-2. Mockito
-3. Spring Web
-4. Spring Kafka
-5. Spring Security
-6. Hibernate (пока не запушено)
+# Store App Microservices
 
-#### 1. Склонируйте репозиторий
-```
-https://github.com/golenev/experience-kafka.git
-```
+Этот учебный проект демонстрирует интеграцию Spring Boot с Kafka и PostgreSQL. Приложение предоставляет простой веб-интерфейс для работы с товарами и корзиной.
 
-#### 2. Откройте терминал, перейдите в директорию с файлом docker-compose.yml и выполните команду:
+## Состав проекта
+- **Spring Boot** приложение на порту `6789`;
+- **PostgreSQL** (`localhost:34567`);
+- **Kafka** с консолью [Kafdrop](http://localhost:9000) и [Redpanda Console](http://localhost:8081);
+- **WireMock** для возможного тестирования сторонних сервисов (шаблоны находятся в `./wiremock/stubs`).
 
-```
-docker-compose up -d 
-```
+## Запуск
+1. Клонируйте репозиторий
+   ```bash
+   git clone <repo-url>
+   ```
+2. Поднимите окружение
+   ```bash
+   docker-compose up -d
+   ```
+3. Запустите приложение
+   ```bash
+   mvn spring-boot:run
+   ```
+4. Откройте [http://localhost:6789/index.html](http://localhost:6789/index.html)
 
-#### 3. Убедитесь, что контейнеры запущены:
+## Основные возможности
+- **POST `/api/v1/sendToKafka`** — отправка описания товара в Kafka. Пример:
+  ```bash
+  curl -X POST \ 
+    -H "Content-Type: application/json" \
+    -d '{"description":"Чай","price":55}' \
+    http://localhost:6789/api/v1/sendToKafka
+  ```
+- **GET `/api/v1/products`** — список товаров из базы данных.
+- **POST `/api/cart`** — добавить товар в корзину (тело запроса `{ "productId": 1 }`).
+- **GET `/api/cart`** — содержимое корзины.
+- **DELETE `/api/cart/clear`** — очистить корзину.
 
-```
-docker-compose ps
-```
+Сообщения, отправленные в `send-topic`, автоматически сохраняются в базу и доступны через `/api/v1/products` и веб-страницу `products.html`.
 
-#### 4. Вы должны увидеть четыре запущенных контейнера.
-![image](https://github.com/user-attachments/assets/6d210f22-3f2b-4058-80eb-3760ef4f9803)
-
-#### 5. Запустите Spring приложение
-
-#### 6. Откройте Postman или любой другой инструмент для отправки HTTP запросов. Отправьте на сервер запрос из курла ниже, чтобы создать администратора приложения:
-
-```
-curl --location --request POST 'localhost:6789/api/v1/add-user' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "admin",
-    "password": "qwerty",
-    "roles": "ROLE_ADMIN"
-}'
-```
-
-#### 7. Откройте браузер на странице http://localhost:6789/login и пароль от созданного пользователя
-
-![image](https://github.com/user-attachments/assets/5865643a-4fed-4a73-9573-97ba8d611691)
-
-
-#### 8. Далее в веб интерфейсе приложения доступны следующие операции
-![image](https://github.com/user-attachments/assets/99fa1852-ab8c-4d9d-9efc-26441e429bcf)
-
-```
-1. Показать текущие сообщения в кафке внутри созданного топика
-2. Отправить в кафку сообщение через форму инпута
-3. Посмотреть текущие сообщения, отправленные из кафки в связанную таблицу PosgreSQL
-4. Отправить сообщения из Кафки в PostgreSQL при условии, что их накопилось больше или равно 10 штук
-5. Удалить все сообщения из топика Кафки
-6. Удалить все сообщения из связанной с кафкой таблицы PostgreSQL
-7. Добавить нового пользователя приложения
-```
+Остановить инфраструктуру можно командой `docker-compose down`.
