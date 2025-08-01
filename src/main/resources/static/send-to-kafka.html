@@ -14,6 +14,10 @@
     </style>
 </head>
 <body>
+<script>
+  const token = localStorage.getItem('authToken');
+  if(!token){ window.location.href = '/login.html'; }
+</script>
 <h1>Send WarehouseProduct to Kafka</h1>
 <form id="sendKafkaForm">
     <label for="description">Description:</label>
@@ -45,11 +49,11 @@
 
       const product = { description, price };
 
-      fetch('/api/v1/sendToKafka', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product)
-      })
+        fetch('/api/v1/sendToKafka', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': token },
+          body: JSON.stringify(product)
+        })
       .then(response => {
         if (response.ok) return response.text();
         else throw new Error('Failed to send product');

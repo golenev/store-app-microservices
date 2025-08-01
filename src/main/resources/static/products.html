@@ -46,13 +46,18 @@
         }
     </style>
     <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            window.location.href = '/login.html';
+        }
+
         document.addEventListener("DOMContentLoaded", function () {
             loadProducts();
             loadCart();
         });
 
         function loadProducts() {
-            fetch('/api/v1/products')
+            fetch('/api/v1/products', { headers: { 'Authorization': token } })
                 .then(response => response.json())
                 .then(products => {
                     const container = document.getElementById('product-list');
@@ -78,7 +83,8 @@
             fetch('/api/cart', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': token
                 },
                 body: JSON.stringify({ productId: Number(productId) })
             })
@@ -96,7 +102,7 @@
 
         function clearCart() {
             if (!confirm('Очистить корзину?')) return;
-            fetch('/api/cart/clear', { method: 'DELETE' })
+            fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } })
                 .then(res => {
                     if (!res.ok) return res.text().then(t => { throw new Error(t) });
                     return res.text();
@@ -109,7 +115,7 @@
         }
 
        function loadCart() {
-        fetch('/api/cart')
+        fetch('/api/cart', { headers: { 'Authorization': token } })
             .then(response => response.json())
             .then(cartItems => {
                 const cartContainer = document.getElementById('cart');
