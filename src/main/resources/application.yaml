@@ -1,8 +1,8 @@
 spring:
   security:
     user:
-      name: admin
-      password: admin
+      name: user
+      password: qwerty
   kafka:
     bootstrap-servers: localhost:9092
     consumer:

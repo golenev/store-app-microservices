@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+<h1>Login</h1>
+<form id="loginForm">
+    <input type="text" id="username" placeholder="Username" required>
+    <input type="password" id="password" placeholder="Password" required>
+    <button type="submit">Login</button>
+</form>
+<p id="error" style="color:red;"></p>
+<script>
+ document.getElementById('loginForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    fetch('/api/v1/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({username, password})
+    })
+    .then(r => {
+        if(!r.ok) throw new Error('Invalid credentials');
+        return r.json();
+    })
+    .then(data => {
+        localStorage.setItem('authToken', data.token);
+        window.location.href = '/index.html';
+    })
+    .catch(err => {
+        document.getElementById('error').textContent = err.message;
+    });
+ });
+</script>
+</body>
+</html>

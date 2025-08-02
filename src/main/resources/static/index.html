@@ -18,6 +18,12 @@
     </style>
 </head>
 <body>
+<script>
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        window.location.href = '/login.html';
+    }
+</script>
 <h1>Welcome to the Application</h1>
 <button onclick="location.href='/send-to-kafka.html'">Send to Kafka</button>
 <button onclick="location.href='/products.html'">Посмотреть товары в наличии</button>

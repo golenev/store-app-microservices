@@ -21,7 +21,8 @@
    ```bash
    mvn spring-boot:run
    ```
-4. Откройте [http://localhost:6789/index.html](http://localhost:6789/index.html)
+4. Откройте [http://localhost:6789/login.html](http://localhost:6789/login.html) и авторизуйтесь.
+   Пользователь по умолчанию: `user` / `qwerty`.
 
 ## Основные возможности
 - **POST `/api/v1/sendToKafka`** — отправка описания товара в Kafka. Пример:
