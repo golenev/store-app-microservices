@@ -31,6 +31,14 @@ services:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
       POSTGRES_DB: mydatabase
+  postgres-warehouse:
+    image: postgres:latest
+    ports:
+      - "34568:5432"
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: warehouse_db
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:latest
     container_name: redpanda-ui
