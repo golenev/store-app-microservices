@@ -14,9 +14,16 @@ public class ProductService {
         this.warehouseProductRepository = warehouseProductRepository;
     }
 
-    public CartController.ProductDto getProductById(Long id) {
-        return warehouseProductRepository.findById(id)
-                .map(p -> new CartController.ProductDto(p.getId(), p.getDescription(), p.getPrice()))
-                .orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
+    public CartController.ProductDto getProductById(Long barcodeId) {
+        return warehouseProductRepository.findById(barcodeId)
+                .map(p -> new CartController.ProductDto(
+                        p.getBarcodeId(),
+                        p.getDescription(),
+                        p.getPrice(),
+                        p.isFoodstuff(),
+                        p.getArrivalTime(),
+                        p.getQuantity()))
+                .orElseThrow(() -> new NoSuchElementException(
+                        "Product not found with barcode: " + barcodeId));
     }
 }

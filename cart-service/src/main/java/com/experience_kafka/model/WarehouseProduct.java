@@ -1,14 +1,17 @@
 package com.experience_kafka.model;
 
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 /**
  * Товары на складе.
@@ -19,9 +22,35 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WarehouseProduct {
+    /**
+     * Уникальный штрихкод товара. Используется как идентификатор.
+     */
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @NotNull
+    @Positive
+    private Long barcodeId;
+
+    @NotBlank
     private String description;
+
+    @NotNull
+    @Positive
     private BigDecimal price;
+
+    /**
+     * Признак, является ли товар пищевым.
+     */
+    private boolean isFoodstuff;
+
+    /**
+     * Время поступления товара на склад.
+     */
+    @NotNull
+    private OffsetDateTime arrivalTime;
+
+    /**
+     * Количество единиц товара, доставленных на склад.
+     */
+    @Positive
+    private int quantity;
 }

@@ -19,7 +19,10 @@ public class CartItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private Long productId;
+    /**
+     * Штрихкод товара, добавленного в корзину.
+     */
+    private Long barcodeId;
     private String description;
     private BigDecimal price;
     private int quantity;

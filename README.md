@@ -27,13 +27,13 @@
 ## Основные возможности
 - **POST `/api/v1/sendToKafka`** — отправка описания товара в Kafka. Пример:
   ```bash
-  curl -X POST \ 
+  curl -X POST \
     -H "Content-Type: application/json" \
-    -d '{"description":"Чай","price":55}' \
+    -d '{"barcodeId":123,"description":"Чай","price":55,"isFoodstuff":true,"arrivalTime":"2024-01-01T12:00:00Z","quantity":10}' \
     http://localhost:6789/api/v1/sendToKafka
   ```
 - **GET `/api/v1/products`** — список товаров из базы данных.
-- **POST `/api/cart`** — добавить товар в корзину (тело запроса `{ "productId": 1 }`).
+- **POST `/api/cart`** — добавить товар в корзину (тело запроса `{ "barcodeId": 123 }`).
 - **GET `/api/cart`** — содержимое корзины.
 - **DELETE `/api/cart/clear`** — очистить корзину.
 

@@ -66,10 +66,10 @@
                         const productDiv = document.createElement('div');
                         productDiv.className = 'product-item';
                         productDiv.innerHTML = `
-                            <h3>id: ${product.id}</h3>
+                            <h3>barcode: ${product.barcodeId}</h3>
                             <p>${product.description}</p>
                             <p><strong>${product.price} руб.</strong></p>
-                            <button onclick="addToCart(${product.id})">Купить</button>
+                            <button onclick="addToCart(${product.barcodeId})">Купить</button>
                         `;
                         container.appendChild(productDiv);
                     });
@@ -79,14 +79,14 @@
                 });
         }
 
-        function addToCart(productId) {
+        function addToCart(barcodeId) {
             fetch('/api/cart', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': token
                 },
-                body: JSON.stringify({ productId: Number(productId) })
+                body: JSON.stringify({ barcodeId: barcodeId })
             })
             .then(response => {
                 if (!response.ok) {

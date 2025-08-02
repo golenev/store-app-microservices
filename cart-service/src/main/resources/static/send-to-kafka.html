@@ -20,11 +20,23 @@
 </script>
 <h1>Send WarehouseProduct to Kafka</h1>
 <form id="sendKafkaForm">
+    <label for="barcodeId">Barcode ID:</label>
+    <input type="number" id="barcodeId" name="barcodeId" required />
+
     <label for="description">Description:</label>
     <input type="text" id="description" name="description" required />
 
     <label for="price">Price (decimal):</label>
     <input type="number" id="price" name="price" step="0.01" min="0" required />
+
+    <label for="isFoodstuff">Is Foodstuff:</label>
+    <input type="checkbox" id="isFoodstuff" name="isFoodstuff" />
+
+    <label for="arrivalTime">Arrival Time:</label>
+    <input type="datetime-local" id="arrivalTime" name="arrivalTime" required />
+
+    <label for="quantity">Quantity:</label>
+    <input type="number" id="quantity" name="quantity" min="1" step="1" required />
 
     <button type="submit">Send Product</button>
 </form>
@@ -34,10 +46,20 @@
     document.getElementById('sendKafkaForm').addEventListener('submit', function(event) {
       event.preventDefault();
 
+      const barcodeStr = document.getElementById('barcodeId').value.trim();
+      const barcodeId = parseInt(barcodeStr, 10);
       const description = document.getElementById('description').value.trim();
       const priceStr = document.getElementById('price').value.trim();
       const price = parseFloat(priceStr);
+      const isFoodstuff = document.getElementById('isFoodstuff').checked;
+      const arrivalTimeVal = document.getElementById('arrivalTime').value;
+      const quantityStr = document.getElementById('quantity').value.trim();
+      const quantity = parseInt(quantityStr, 10);
 
+      if (isNaN(barcodeId)) {
+        alert('Barcode must be a number');
+        return;
+      }
       if (!description) {
         alert('Description is required');
         return;
@@ -46,8 +68,17 @@
         alert('Price must be a positive number');
         return;
       }
+      if (!arrivalTimeVal) {
+        alert('Arrival time is required');
+        return;
+      }
+      if (isNaN(quantity) || quantity <= 0) {
+        alert('Quantity must be a positive integer');
+        return;
+      }
 
-      const product = { description, price };
+      const arrivalTime = new Date(arrivalTimeVal).toISOString();
+      const product = { barcodeId, description, price, isFoodstuff, arrivalTime, quantity };
 
         fetch('/api/v1/sendToKafka', {
           method: 'POST',

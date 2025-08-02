@@ -4,15 +4,15 @@ import com.experience_kafka.model.AddToCartRequest;
 import com.experience_kafka.model.CartItem;
 import com.experience_kafka.model.CartView;
 import com.experience_kafka.repository.CartItemRepository;
-import com.experience_kafka.repository.CartRepository;
 import com.experience_kafka.service.ProductService;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/cart")
@@ -33,16 +33,16 @@ public class CartController {
     }
 
     @PostMapping
-    public void addToCart(@RequestBody AddToCartRequest req) {
-        Long productId = req.productId();
+    public void addToCart(@Valid @RequestBody AddToCartRequest req) {
+        Long barcode = req.barcodeId();
         // подтягиваем актуальные данные по товару из БД
-        ProductDto product = productService.getProductById(productId);
+        ProductDto product = productService.getProductById(barcode);
 
         // ищем существующую запись
-        CartItem item = cartItemRepository.findByProductId(productId);
+        CartItem item = cartItemRepository.findByBarcodeId(barcode);
         if (item == null) {
             item = new CartItem();
-            item.setProductId(product.id());
+            item.setBarcodeId(product.barcodeId());
             item.setDescription(product.description());
             item.setPrice(product.price());
             item.setQuantity(1);
@@ -72,5 +72,10 @@ public class CartController {
                 .toList();
     }
 
-    public record ProductDto(Long id, String description, BigDecimal price) {}
+    public record ProductDto(Long barcodeId,
+                              String description,
+                              BigDecimal price,
+                              boolean isFoodstuff,
+                              OffsetDateTime arrivalTime,
+                              int quantity) {}
 }
