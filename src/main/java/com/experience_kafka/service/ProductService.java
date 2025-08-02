@@ -1,22 +1,27 @@
 package com.experience_kafka.service;
 
 import com.experience_kafka.controller.CartController;
-import com.experience_kafka.repository.WarehouseProductRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Service;
-
-import java.util.NoSuchElementException;
+import org.springframework.web.client.RestTemplate;
 
 @Service
 public class ProductService {
-    private final WarehouseProductRepository warehouseProductRepository;
 
-    public ProductService(WarehouseProductRepository warehouseProductRepository) {
-        this.warehouseProductRepository = warehouseProductRepository;
+    private final RestTemplate restTemplate;
+
+    @Value("${warehouse-service.url:http://localhost:6790}")
+    private String warehouseServiceUrl;
+
+    public ProductService(RestTemplateBuilder builder) {
+        this.restTemplate = builder.build();
     }
 
     public CartController.ProductDto getProductById(Long id) {
-        return warehouseProductRepository.findById(id)
-                .map(p -> new CartController.ProductDto(p.getId(), p.getDescription(), p.getPrice()))
-                .orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
+        return restTemplate.getForObject(
+                warehouseServiceUrl + "/api/v1/products/" + id,
+                CartController.ProductDto.class
+        );
     }
 }

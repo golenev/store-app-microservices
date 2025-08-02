@@ -1,12 +1,8 @@
 spring:
-  security:
-    user:
-      name: user
-      password: qwerty
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
-      group-id: test-group
+      group-id: warehouse-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
@@ -21,12 +17,6 @@ spring:
     driverClassName: org.postgresql.Driver
     username: myuser
     password: mypassword
-    jpa:
-      hibernate:
-        ddl-auto: update
 
 server:
-  port: 6789
-
-warehouse-service:
-  url: http://localhost:6790
+  port: 6790

@@ -1,9 +1,7 @@
-package com.experience_kafka.repository;
+package com.experience_kafka.warehouse.repository;
 
-import com.experience_kafka.model.WarehouseProduct;
+import com.experience_kafka.warehouse.model.WarehouseProduct;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
-@Repository
 public interface WarehouseProductRepository extends JpaRepository<WarehouseProduct, Long> {
 }
