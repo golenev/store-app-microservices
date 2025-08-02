@@ -1,15 +1,4 @@
 services:
-  wiremock-setup-core:
-    image: rodolpheche/wiremock
-    container_name: wiremock-setup-example
-    ports:
-      - "8031:8080"
-    volumes:
-      - ./wiremock/stubs/__files/:/home/wiremock/__files/
-      - ./wiremock/stubs/mappings/:/home/wiremock/mappings/
-    command:
-      - -verbose
-      - -global-response-templating
   kafdrop:
     image: obsidiandynamics/kafdrop
     restart: "no"
