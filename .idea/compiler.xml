@@ -7,18 +7,15 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="experience-kafka" />
+        <module name="warehouse-service" />
+        <module name="cart-service" />
       </profile>
     </annotationProcessing>
-    <bytecodeTargetLevel>
-      <module name="cart-service" target="21" />
-      <module name="warehouse-service" target="21" />
-    </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="cart-service" options="-parameters" />
-      <module name="experience-kafka" options="-parameters" />
+      <module name="experience-kafka" options="" />
       <module name="warehouse-service" options="-parameters" />
     </option>
   </component>
