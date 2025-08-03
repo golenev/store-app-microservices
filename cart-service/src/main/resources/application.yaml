@@ -24,6 +24,9 @@ spring:
     jpa:
       hibernate:
         ddl-auto: update
+  sql:
+    init:
+      mode: always
 
 server:
   port: 6789

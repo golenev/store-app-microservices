@@ -1,6 +1,5 @@
 package com.experience_kafka.model;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -30,7 +29,6 @@ public class WarehouseProduct {
     @Id
     @NotNull
     @Positive
-    @Column(name = "id")
     private Long barcodeId;
 
     @NotBlank
