@@ -1,7 +1,7 @@
 package com.experience_kafka.service;
 
-import com.experience_kafka.model.WarehouseProduct;
-import com.experience_kafka.repository.WarehouseProductRepository;
+import com.experience_kafka.model.Product;
+import com.experience_kafka.repository.ProductRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -34,26 +34,25 @@ public class KafkaService {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private WarehouseProductRepository repo;
+    private ProductRepository repo;
 
-    public void sendMessage(String topic, WarehouseProduct product) {
+    public void sendMessage(String topic, Product product) {
         try {
             String json = objectMapper.writeValueAsString(product);
             kafkaTemplate.send(topic, json);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Ошибка сериализации WarehouseProduct в JSON", e);
+            throw new RuntimeException("Ошибка сериализации Product в JSON", e);
         }
     }
 
     @KafkaListener(topics = "send-topic", groupId = "warehouse-products")
     public void listen(String json) {
         try {
-            WarehouseProduct p = objectMapper.readValue(json, WarehouseProduct.class);
+            Product p = objectMapper.readValue(json, Product.class);
             repo.save(p);
             System.out.println("Saved to DB: " + p);
         } catch (Exception ex) {
             System.err.println("Ошибка при разборе или сохранении: " + ex.getMessage());
         }
     }
-
 }

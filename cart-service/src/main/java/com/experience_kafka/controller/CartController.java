@@ -1,76 +1,56 @@
 package com.experience_kafka.controller;
 
 import com.experience_kafka.model.AddToCartRequest;
-import com.experience_kafka.model.CartItem;
 import com.experience_kafka.model.CartView;
+import com.experience_kafka.model.Product;
 import com.experience_kafka.repository.CartItemRepository;
-import com.experience_kafka.repository.CartRepository;
+import com.experience_kafka.model.CartItem;
 import com.experience_kafka.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/cart")
 public class CartController {
 
-    private final CartItemRepository cartItemRepository;
     private final ProductService productService;
+    private final CartItemRepository cartRepository;
 
-    public CartController(CartItemRepository cartItemRepository,
-                          ProductService productService) {
-        this.cartItemRepository = cartItemRepository;
+    public CartController(ProductService productService, CartItemRepository cartRepository) {
         this.productService = productService;
+        this.cartRepository = cartRepository;
     }
 
     @DeleteMapping("/clear")
-    public void clearCart () {
-        cartItemRepository.deleteAll();
+    public void clearCart() {
+        cartRepository.deleteAll();
     }
 
     @PostMapping
-    public void addToCart(@RequestBody AddToCartRequest req) {
-        Long productId = req.productId();
-        // подтягиваем актуальные данные по товару из БД
-        ProductDto product = productService.getProductById(productId);
-
-        // ищем существующую запись
-        CartItem item = cartItemRepository.findByProductId(productId);
-        if (item == null) {
-            item = new CartItem();
-            item.setProductId(product.id());
-            item.setDescription(product.description());
-            item.setPrice(product.price());
-            item.setQuantity(1);
-        } else {
-            item.setQuantity(item.getQuantity() + 1);
-        }
-        item.setAddedAt(LocalDateTime.now());
-        cartItemRepository.save(item);
+    public void addToCart(@Valid @RequestBody AddToCartRequest req) {
+        Long barcode = req.barcodeId();
+        // проверяем наличие товара
+        productService.getProductById(barcode);
+        cartRepository.findById(barcode)
+                .ifPresentOrElse(item -> {
+                    item.setQuantity(item.getQuantity() + 1);
+                    cartRepository.save(item);
+                }, () -> cartRepository.save(new CartItem(barcode, 1)));
     }
 
     @GetMapping
     public List<CartView> getCartView() {
-        return cartItemRepository.findAll().stream()
+        return cartRepository.findAll().stream()
                 .map(item -> {
-                    // подстраховка на случай, если в БД price == null
-                    BigDecimal price = item.getPrice() != null
-                            ? item.getPrice()
-                            : BigDecimal.ZERO;
-                    BigDecimal total = price.multiply(BigDecimal.valueOf(item.getQuantity()));
-                    return new CartView(
-                            item.getDescription(),
-                            price,
-                            item.getQuantity(),
-                            total
-                    );
+                    Product product = productService.getProductById(item.getBarcodeId());
+                    BigDecimal price = product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
+                    int quantity = item.getQuantity();
+                    BigDecimal total = price.multiply(BigDecimal.valueOf(quantity));
+                    return new CartView(product.getShortName(), price, quantity, total);
                 })
                 .toList();
     }
-
-    public record ProductDto(Long id, String description, BigDecimal price) {}
 }

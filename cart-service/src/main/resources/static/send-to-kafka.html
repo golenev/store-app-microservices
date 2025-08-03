@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Send WarehouseProduct to Kafka</title>
+    <title>Send Product to Kafka</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         form { max-width: 400px; }
@@ -18,13 +18,28 @@
   const token = localStorage.getItem('authToken');
   if(!token){ window.location.href = '/login.html'; }
 </script>
-<h1>Send WarehouseProduct to Kafka</h1>
+<h1>Send Product to Kafka</h1>
 <form id="sendKafkaForm">
+    <label for="barcodeId">Barcode ID:</label>
+    <input type="number" id="barcodeId" name="barcodeId" required />
+
+    <label for="shortName">Short Name:</label>
+    <input type="text" id="shortName" name="shortName" required />
+
     <label for="description">Description:</label>
     <input type="text" id="description" name="description" required />
 
     <label for="price">Price (decimal):</label>
     <input type="number" id="price" name="price" step="0.01" min="0" required />
+
+    <label for="quantity">Quantity:</label>
+    <input type="number" id="quantity" name="quantity" min="1" step="1" required />
+
+    <label for="addedAtWarehouse">Added At Warehouse:</label>
+    <input type="datetime-local" id="addedAtWarehouse" name="addedAtWarehouse" required />
+
+    <label for="isFoodstuff">Is Foodstuff:</label>
+    <input type="checkbox" id="isFoodstuff" name="isFoodstuff" />
 
     <button type="submit">Send Product</button>
 </form>
@@ -34,10 +49,25 @@
     document.getElementById('sendKafkaForm').addEventListener('submit', function(event) {
       event.preventDefault();
 
+      const barcodeStr = document.getElementById('barcodeId').value.trim();
+      const barcodeId = parseInt(barcodeStr, 10);
+      const shortName = document.getElementById('shortName').value.trim();
       const description = document.getElementById('description').value.trim();
       const priceStr = document.getElementById('price').value.trim();
       const price = parseFloat(priceStr);
+      const quantityStr = document.getElementById('quantity').value.trim();
+      const quantity = parseInt(quantityStr, 10);
+      const addedAtWarehouse = document.getElementById('addedAtWarehouse').value;
+      const isFoodstuff = document.getElementById('isFoodstuff').checked;
 
+      if (isNaN(barcodeId)) {
+        alert('Barcode must be a number');
+        return;
+      }
+      if (!shortName) {
+        alert('Short name is required');
+        return;
+      }
       if (!description) {
         alert('Description is required');
         return;
@@ -46,8 +76,16 @@
         alert('Price must be a positive number');
         return;
       }
+      if (isNaN(quantity) || quantity <= 0) {
+        alert('Quantity must be a positive integer');
+        return;
+      }
+      if (!addedAtWarehouse) {
+        alert('Added-at time is required');
+        return;
+      }
 
-      const product = { description, price };
+      const product = { barcodeId, shortName, description, price, quantity, addedAtWarehouse, isFoodstuff };
 
         fetch('/api/v1/sendToKafka', {
           method: 'POST',

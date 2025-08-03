@@ -1,22 +1,22 @@
 package com.experience_kafka.service;
 
-import com.experience_kafka.controller.CartController;
-import com.experience_kafka.repository.WarehouseProductRepository;
+import com.experience_kafka.model.Product;
+import com.experience_kafka.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.NoSuchElementException;
 
 @Service
 public class ProductService {
-    private final WarehouseProductRepository warehouseProductRepository;
+    private final ProductRepository productRepository;
 
-    public ProductService(WarehouseProductRepository warehouseProductRepository) {
-        this.warehouseProductRepository = warehouseProductRepository;
+    public ProductService(ProductRepository productRepository) {
+        this.productRepository = productRepository;
     }
 
-    public CartController.ProductDto getProductById(Long id) {
-        return warehouseProductRepository.findById(id)
-                .map(p -> new CartController.ProductDto(p.getId(), p.getDescription(), p.getPrice()))
-                .orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
+    public Product getProductById(Long barcodeId) {
+        return productRepository.findById(barcodeId)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "Product not found with barcode: " + barcodeId));
     }
 }

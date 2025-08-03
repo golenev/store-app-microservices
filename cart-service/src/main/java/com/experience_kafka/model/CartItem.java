@@ -1,27 +1,28 @@
 package com.experience_kafka.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
 /**
- * СОхраняет в базу сущности товаров, находящихся в корзине
+ * Сущность товара в корзине.
  */
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
 @Entity
+@Table(name = "cart")
 public class CartItem {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    private Long productId;
-    private String description;
-    private BigDecimal price;
+    @NotNull
+    private Long barcodeId;
+
+    @Positive
     private int quantity;
-    private LocalDateTime addedAt = LocalDateTime.now();
 }
+

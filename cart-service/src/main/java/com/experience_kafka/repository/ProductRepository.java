@@ -1,9 +1,9 @@
 package com.experience_kafka.repository;
 
-import com.experience_kafka.model.CartItem;
+import com.experience_kafka.model.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface CartRepository extends JpaRepository<CartItem, Long> {
+public interface ProductRepository extends JpaRepository<Product, Long> {
 }
