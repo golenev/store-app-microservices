@@ -26,7 +26,10 @@ import static io.restassured.RestAssured.given;
 import static org.awaitility.Awaitility.await;
 
 @Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        classes = com.experience_kafka.KafkaSpringApplication.class
+)
 class ProductFlowTest {
 
     @Container
