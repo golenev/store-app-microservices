@@ -2,9 +2,9 @@ package com.experience_kafka.controller;
 
 import com.experience_kafka.model.AddToCartRequest;
 import com.experience_kafka.model.CartView;
-import com.experience_kafka.model.Product;
+import com.experience_kafka.entity.Product;
 import com.experience_kafka.repository.CartItemRepository;
-import com.experience_kafka.model.CartItem;
+import com.experience_kafka.entity.CartItem;
 import com.experience_kafka.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;

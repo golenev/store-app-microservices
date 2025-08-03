@@ -1,4 +1,4 @@
-package com.experience_kafka.testUtil;
+package e2e.testUtil;
 
 
 import org.apache.kafka.clients.producer.ProducerConfig;

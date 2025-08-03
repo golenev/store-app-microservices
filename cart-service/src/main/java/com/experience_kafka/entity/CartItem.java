@@ -1,4 +1,4 @@
-package com.experience_kafka.model;
+package com.experience_kafka.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

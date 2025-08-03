@@ -1,4 +1,4 @@
-package com.experience_kafka.model;
+package com.experience_kafka.entity;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
