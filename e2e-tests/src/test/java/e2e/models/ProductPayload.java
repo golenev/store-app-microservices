@@ -1,5 +1,6 @@
 package e2e.models;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,5 +17,6 @@ public class ProductPayload {
     private BigDecimal price;
     private int quantity;
     private String addedAtWarehouse;
+    @JsonProperty("isFoodstuff")
     private boolean isFoodstuff;
 }
