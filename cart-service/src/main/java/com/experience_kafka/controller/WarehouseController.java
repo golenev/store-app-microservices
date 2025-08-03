@@ -1,6 +1,6 @@
 package com.experience_kafka.controller;
 
-import com.experience_kafka.model.Product;
+import com.experience_kafka.entity.Product;
 import com.experience_kafka.repository.ProductRepository;
 import com.experience_kafka.service.KafkaService;
 import jakarta.validation.Valid;

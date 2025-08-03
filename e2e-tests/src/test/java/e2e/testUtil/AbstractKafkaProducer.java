@@ -1,4 +1,4 @@
-package com.experience_kafka.testUtil;
+package e2e.testUtil;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;

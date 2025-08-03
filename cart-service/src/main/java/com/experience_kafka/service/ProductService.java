@@ -1,6 +1,6 @@
 package com.experience_kafka.service;
 
-import com.experience_kafka.model.Product;
+import com.experience_kafka.entity.Product;
 import com.experience_kafka.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 

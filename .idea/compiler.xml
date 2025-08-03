@@ -7,6 +7,7 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="e2e-tests" />
         <module name="warehouse-service" />
         <module name="cart-service" />
       </profile>
@@ -15,6 +16,7 @@
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="cart-service" options="-parameters" />
+      <module name="e2e-tests" options="-parameters" />
       <module name="experience-kafka" options="" />
       <module name="warehouse-service" options="-parameters" />
     </option>
