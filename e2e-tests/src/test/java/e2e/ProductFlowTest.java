@@ -5,6 +5,7 @@ import e2e.constants.Endpoints;
 import e2e.models.ProductPayload;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -18,9 +19,20 @@ import static e2e.config.RestClient.given;
 
 public class ProductFlowTest {
 
+    private ProductPayload product;
+
+    @AfterEach
+    void cleanup() {
+        if (product != null) {
+            JdbcTemplate template = Database.template();
+            template.update("DELETE FROM cart WHERE barcode_id = ?", product.getBarcodeId());
+            template.update("DELETE FROM product WHERE barcode_id = ?", product.getBarcodeId());
+        }
+    }
+
     @Test
     void productAppearsInListAndCart() {
-        ProductPayload product = new ProductPayload(
+        product = new ProductPayload(
                 999L,
                 "Test product",
                 "Desc",
