@@ -66,7 +66,8 @@
                         const productDiv = document.createElement('div');
                         productDiv.className = 'product-item';
                         productDiv.innerHTML = `
-                            <h3>barcode: ${product.barcodeId}</h3>
+                            <h3>${product.shortName}</h3>
+                            <p>Штрихкод: ${product.barcodeId}</p>
                             <p>${product.description}</p>
                             <p><strong>${product.price} руб.</strong></p>
                             <button onclick="addToCart(${product.barcodeId})">Купить</button>
@@ -135,7 +136,7 @@
                 cartItems.forEach(item => {
                     const itemDiv = document.createElement('div');
                     itemDiv.innerHTML = `
-                        <p>${item.description} — ${item.quantity} шт. x ${item.price} руб.</p>
+                        <p>${item.shortName} — ${item.quantity} шт. x ${item.price} руб.</p>
                     `;
                     cartContainer.appendChild(itemDiv);
                 });
@@ -143,7 +144,7 @@
             .catch(error => {
                 console.error('Ошибка при загрузке корзины:', error);
             });
-    }
+      }
 
     </script>
 </head>

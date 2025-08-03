@@ -29,7 +29,7 @@
   ```bash
   curl -X POST \
     -H "Content-Type: application/json" \
-    -d '{"barcodeId":123,"description":"Чай","price":55,"isFoodstuff":true,"arrivalTime":"2024-01-01T12:00:00Z","quantity":10}' \
+    -d '{"barcodeId":123,"shortName":"Чай","description":"Чёрный чай","price":55,"quantity":10,"addedAtWarehouse":"2024-01-01T12:00","isFoodstuff":true}' \
     http://localhost:6789/api/v1/sendToKafka
   ```
 - **GET `/api/v1/products`** — список товаров из базы данных.

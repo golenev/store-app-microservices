@@ -1,4 +1,9 @@
-ALTER TABLE IF EXISTS warehouse_product RENAME COLUMN id TO barcode_id;
-ALTER TABLE IF EXISTS warehouse_product ADD COLUMN IF NOT EXISTS foodstuff boolean;
-ALTER TABLE IF EXISTS warehouse_product ADD COLUMN IF NOT EXISTS arrival_time timestamptz;
-ALTER TABLE IF EXISTS warehouse_product ADD COLUMN IF NOT EXISTS quantity integer;
+CREATE TABLE IF NOT EXISTS product (
+    barcode_id BIGINT PRIMARY KEY,
+    short_name VARCHAR(255) NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    price NUMERIC(38,2) NOT NULL,
+    quantity INTEGER NOT NULL,
+    added_at_warehouse TIMESTAMP NOT NULL,
+    is_foodstuff BOOLEAN NOT NULL
+);

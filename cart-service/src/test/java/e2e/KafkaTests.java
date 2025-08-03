@@ -1,28 +1,26 @@
 package e2e;
 
-import com.experience_kafka.model.WarehouseProduct;
+import com.experience_kafka.model.Product;
 import com.experience_kafka.testUtil.KafkaProducerImpl;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 public class KafkaTests {
-
 
     @Test
     void test() {
         KafkaProducerImpl producer = new KafkaProducerImpl();
         producer.sendMessage(
                 "send-topic",
-                new WarehouseProduct(
+                new Product(
                         212L,
                         "Водочка",
+                        "Водка 0.5 л",
                         new BigDecimal("188"),
-                        false,
-                        OffsetDateTime.now(),
-                        10));
+                        10,
+                        LocalDateTime.now(),
+                        false));
     }
 }
-
-
