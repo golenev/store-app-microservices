@@ -2,6 +2,7 @@ package com.experience_kafka.model;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -40,7 +41,8 @@ public class WarehouseProduct {
     /**
      * Признак, является ли товар пищевым.
      */
-    private boolean isFoodstuff;
+    @JsonProperty("isFoodstuff")
+    private boolean foodstuff;
 
     /**
      * Время поступления товара на склад.
