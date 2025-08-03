@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS cart;
+DROP TABLE IF EXISTS warehouse_product;
+
 CREATE TABLE IF NOT EXISTS product (
     barcode_id BIGINT PRIMARY KEY,
     short_name VARCHAR(255) NOT NULL,
