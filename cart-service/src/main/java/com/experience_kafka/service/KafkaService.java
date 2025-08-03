@@ -11,6 +11,8 @@ import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Random;
+
 @Service
 public class KafkaService {
 
@@ -40,12 +42,23 @@ public class KafkaService {
 
     @KafkaListener(topics = "send-topic", groupId = "warehouse-products")
     public void listen(String json) {
+        sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
             repo.save(p);
             System.out.println("Saved to DB: " + p);
         } catch (Exception ex) {
             System.err.println("Ошибка при разборе или сохранении: " + ex.getMessage());
+        }
+    }
+
+
+    //Имитация бизнес логики
+    private void sleepRandomTime () {
+        try {
+            Thread.sleep(new Random().nextLong(10000, 15000));
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 }
