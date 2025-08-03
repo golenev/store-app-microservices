@@ -10,3 +10,8 @@ CREATE TABLE IF NOT EXISTS product (
     added_at_warehouse TIMESTAMP NOT NULL,
     is_foodstuff BOOLEAN NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS cart (
+    barcode_id BIGINT PRIMARY KEY REFERENCES product(barcode_id),
+    quantity INTEGER NOT NULL
+);

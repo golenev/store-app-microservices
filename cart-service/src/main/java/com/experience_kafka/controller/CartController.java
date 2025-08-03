@@ -3,29 +3,30 @@ package com.experience_kafka.controller;
 import com.experience_kafka.model.AddToCartRequest;
 import com.experience_kafka.model.CartView;
 import com.experience_kafka.model.Product;
+import com.experience_kafka.repository.CartItemRepository;
+import com.experience_kafka.model.CartItem;
 import com.experience_kafka.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/api/cart")
 public class CartController {
 
     private final ProductService productService;
-    private final Map<Long, Integer> cartItems = new ConcurrentHashMap<>();
+    private final CartItemRepository cartRepository;
 
-    public CartController(ProductService productService) {
+    public CartController(ProductService productService, CartItemRepository cartRepository) {
         this.productService = productService;
+        this.cartRepository = cartRepository;
     }
 
     @DeleteMapping("/clear")
     public void clearCart() {
-        cartItems.clear();
+        cartRepository.deleteAll();
     }
 
     @PostMapping
@@ -33,16 +34,20 @@ public class CartController {
         Long barcode = req.barcodeId();
         // проверяем наличие товара
         productService.getProductById(barcode);
-        cartItems.merge(barcode, 1, Integer::sum);
+        cartRepository.findById(barcode)
+                .ifPresentOrElse(item -> {
+                    item.setQuantity(item.getQuantity() + 1);
+                    cartRepository.save(item);
+                }, () -> cartRepository.save(new CartItem(barcode, 1)));
     }
 
     @GetMapping
     public List<CartView> getCartView() {
-        return cartItems.entrySet().stream()
-                .map(entry -> {
-                    Product product = productService.getProductById(entry.getKey());
+        return cartRepository.findAll().stream()
+                .map(item -> {
+                    Product product = productService.getProductById(item.getBarcodeId());
                     BigDecimal price = product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
-                    int quantity = entry.getValue();
+                    int quantity = item.getQuantity();
                     BigDecimal total = price.multiply(BigDecimal.valueOf(quantity));
                     return new CartView(product.getShortName(), price, quantity, total);
                 })
