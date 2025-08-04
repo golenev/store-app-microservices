@@ -39,9 +39,6 @@ public class TariffController {
         return repository.findById(id)
                 .map(existing -> {
                     existing.setProductType(tariff.getProductType());
-                    existing.setPriceFrom(tariff.getPriceFrom());
-                    existing.setPriceTo(tariff.getPriceTo());
-                    existing.setMarkupPercentage(tariff.getMarkupPercentage());
                     existing.setMarkupCoefficient(tariff.getMarkupCoefficient());
                     return ResponseEntity.ok(repository.save(existing));
                 })

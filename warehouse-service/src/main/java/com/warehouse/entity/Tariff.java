@@ -17,15 +17,6 @@ public class Tariff {
     @Column(name = "product_type", nullable = false)
     private String productType;
 
-    @Column(name = "price_from")
-    private BigDecimal priceFrom;
-
-    @Column(name = "price_to")
-    private BigDecimal priceTo;
-
-    @Column(name = "markup_percentage", nullable = false)
-    private BigDecimal markupPercentage;
-
     @Column(name = "markup_coefficient", nullable = false)
     private BigDecimal markupCoefficient;
 }
