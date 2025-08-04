@@ -9,6 +9,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Random;
@@ -31,6 +32,9 @@ public class KafkaService {
     @Autowired
     private ProductRepository repo;
 
+    @Autowired
+    private RestTemplate restTemplate;
+
     public void sendMessage(String topic, Product product) {
         try {
             String json = objectMapper.writeValueAsString(product);
@@ -45,6 +49,8 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
+            String warehouseData = restTemplate.getForObject("http://localhost:6790/tariffs", String.class);
+            System.out.println("Received from warehouse-service: " + warehouseData);
             repo.save(p);
             System.out.println("Saved to DB: " + p);
         } catch (Exception ex) {
