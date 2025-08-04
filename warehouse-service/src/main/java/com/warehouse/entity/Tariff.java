@@ -11,12 +11,9 @@ import lombok.*;
 @AllArgsConstructor
 public class Tariff {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "product_type", nullable = false)
+    private String productType;
 
     @Column(name = "markup_coefficient", nullable = false)
     private BigDecimal markupCoefficient;
-
-    @Column(name = "product_type", nullable = false)
-    private String productType;
 }

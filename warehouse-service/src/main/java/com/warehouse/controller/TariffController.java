@@ -22,9 +22,9 @@ public class TariffController {
         return repository.findAll();
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Tariff> findById(@PathVariable Long id) {
-        return repository.findById(id)
+    @GetMapping("/{productType}")
+    public ResponseEntity<Tariff> findById(@PathVariable String productType) {
+        return repository.findById(productType)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -34,23 +34,22 @@ public class TariffController {
         return repository.save(tariff);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<Tariff> update(@PathVariable Long id, @RequestBody Tariff tariff) {
-        return repository.findById(id)
+    @PutMapping("/{productType}")
+    public ResponseEntity<Tariff> update(@PathVariable String productType, @RequestBody Tariff tariff) {
+        return repository.findById(productType)
                 .map(existing -> {
                     existing.setMarkupCoefficient(tariff.getMarkupCoefficient());
-                    existing.setProductType(tariff.getProductType());
                     return ResponseEntity.ok(repository.save(existing));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        if (!repository.existsById(id)) {
+    @DeleteMapping("/{productType}")
+    public ResponseEntity<Void> delete(@PathVariable String productType) {
+        if (!repository.existsById(productType)) {
             return ResponseEntity.notFound().build();
         }
-        repository.deleteById(id);
+        repository.deleteById(productType);
         return ResponseEntity.noContent().build();
     }
 }
