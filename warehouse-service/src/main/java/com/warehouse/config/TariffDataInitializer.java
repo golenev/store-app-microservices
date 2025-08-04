@@ -21,13 +21,13 @@ public class TariffDataInitializer implements CommandLineRunner {
     public void run(String... args) {
         if (repository.count() == 0) {
             List<Tariff> tariffs = List.of(
-                    new Tariff(null, "food_100", BigDecimal.valueOf(1)),
-                    new Tariff(null, "food_300", BigDecimal.valueOf(3)),
-                    new Tariff(null, "food_500", BigDecimal.valueOf(5)),
-                    new Tariff(null, "food_1000", BigDecimal.valueOf(10)),
-                    new Tariff(null, "not_food_100", BigDecimal.valueOf(5)),
-                    new Tariff(null, "not_food_500", BigDecimal.valueOf(10)),
-                    new Tariff(null, "not_food_1000", BigDecimal.valueOf(20))
+                    new Tariff("food_100", BigDecimal.valueOf(1)),
+                    new Tariff("food_300", BigDecimal.valueOf(3)),
+                    new Tariff("food_500", BigDecimal.valueOf(5)),
+                    new Tariff("food_1000", BigDecimal.valueOf(10)),
+                    new Tariff("not_food_100", BigDecimal.valueOf(5)),
+                    new Tariff("not_food_500", BigDecimal.valueOf(10)),
+                    new Tariff("not_food_1000", BigDecimal.valueOf(20))
             );
             repository.saveAll(tariffs);
         }
