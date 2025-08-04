@@ -38,8 +38,10 @@ public class TariffController {
     public ResponseEntity<Tariff> update(@PathVariable Long id, @RequestBody Tariff tariff) {
         return repository.findById(id)
                 .map(existing -> {
-                    existing.setMarkupCoefficient(tariff.getMarkupCoefficient());
                     existing.setProductType(tariff.getProductType());
+                    existing.setPriceFrom(tariff.getPriceFrom());
+                    existing.setPriceTo(tariff.getPriceTo());
+                    existing.setMarkupPercentage(tariff.getMarkupPercentage());
                     return ResponseEntity.ok(repository.save(existing));
                 })
                 .orElse(ResponseEntity.notFound().build());
