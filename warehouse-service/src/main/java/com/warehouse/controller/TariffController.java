@@ -42,6 +42,7 @@ public class TariffController {
                     existing.setPriceFrom(tariff.getPriceFrom());
                     existing.setPriceTo(tariff.getPriceTo());
                     existing.setMarkupPercentage(tariff.getMarkupPercentage());
+                    existing.setMarkupCoefficient(tariff.getMarkupCoefficient());
                     return ResponseEntity.ok(repository.save(existing));
                 })
                 .orElse(ResponseEntity.notFound().build());

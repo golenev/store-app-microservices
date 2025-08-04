@@ -25,4 +25,7 @@ public class Tariff {
 
     @Column(name = "markup_percentage", nullable = false)
     private BigDecimal markupPercentage;
+
+    @Column(name = "markup_coefficient", nullable = false)
+    private BigDecimal markupCoefficient;
 }
