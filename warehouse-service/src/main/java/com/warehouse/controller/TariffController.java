@@ -5,7 +5,10 @@ import com.warehouse.repository.TariffRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/tariffs")
@@ -18,13 +21,13 @@ public class TariffController {
     }
 
     @GetMapping
-    public ResponseEntity<?> find(@RequestParam(value = "productType", required = false) String productType) {
-        if (productType != null && !productType.isEmpty()) {
-            return repository.findById(productType)
-                    .map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<List<Tariff>> find(@RequestParam Map<String, String> params) {
+        if (params.containsKey("all") || params.isEmpty()) {
+            return ResponseEntity.ok(repository.findAll());
         }
-        List<Tariff> tariffs = repository.findAll();
+        Set<String> types = new HashSet<>(params.keySet());
+        types.remove("all");
+        List<Tariff> tariffs = repository.findAllById(types);
         return ResponseEntity.ok(tariffs);
     }
 

@@ -50,10 +50,15 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
-            String productType = "food_100"; // пример фильтрации по типу
             UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl("http://localhost:6790/tariffs");
-            if (productType != null) {
-                builder.queryParam("productType", productType);
+            boolean fetchAll = false; // пример: переключить для запроса всех тарифов
+            if (fetchAll) {
+                builder.queryParam("all", true);
+            } else {
+                String[] productTypes = {"food_100", "food_300"}; // пример нескольких типов
+                for (String type : productTypes) {
+                    builder.queryParam(type, true);
+                }
             }
             String uri = builder.toUriString();
             String warehouseData = restTemplate.getForObject(uri, String.class);
