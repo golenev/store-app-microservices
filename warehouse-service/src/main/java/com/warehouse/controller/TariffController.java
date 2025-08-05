@@ -5,8 +5,6 @@ import com.warehouse.repository.TariffRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/tariffs")
 public class TariffController {
@@ -18,15 +16,11 @@ public class TariffController {
     }
 
     @GetMapping
-    public List<Tariff> findAll() {
-        return repository.findAll();
-    }
-
-    @GetMapping("/{productType}")
-    public ResponseEntity<Tariff> findById(@PathVariable String productType) {
-        return repository.findById(productType)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<String> findAll(@RequestParam(required = false) Boolean all) {
+        if (all == null || !all) {
+            return ResponseEntity.badRequest().body("Required parameter must be present");
+        }
+        return ResponseEntity.ok(repository.findAll().toString());
     }
 
     @PostMapping
