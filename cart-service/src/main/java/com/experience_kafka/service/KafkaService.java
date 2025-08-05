@@ -11,6 +11,7 @@ import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Random;
 
@@ -49,7 +50,13 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
-            String warehouseData = restTemplate.getForObject("http://localhost:6790/tariffs", String.class);
+            String productType = "food_100"; // пример фильтрации по типу
+            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl("http://localhost:6790/tariffs");
+            if (productType != null) {
+                builder.queryParam("productType", productType);
+            }
+            String uri = builder.toUriString();
+            String warehouseData = restTemplate.getForObject(uri, String.class);
             System.out.println("Received from warehouse-service: " + warehouseData);
             repo.save(p);
             System.out.println("Saved to DB: " + p);

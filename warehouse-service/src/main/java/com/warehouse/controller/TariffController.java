@@ -18,15 +18,14 @@ public class TariffController {
     }
 
     @GetMapping
-    public List<Tariff> findAll() {
-        return repository.findAll();
-    }
-
-    @GetMapping("/{productType}")
-    public ResponseEntity<Tariff> findById(@PathVariable String productType) {
-        return repository.findById(productType)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<?> find(@RequestParam(value = "productType", required = false) String productType) {
+        if (productType != null && !productType.isEmpty()) {
+            return repository.findById(productType)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
+        }
+        List<Tariff> tariffs = repository.findAll();
+        return ResponseEntity.ok(tariffs);
     }
 
     @PostMapping
