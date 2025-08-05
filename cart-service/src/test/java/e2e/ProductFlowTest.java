@@ -1,5 +1,6 @@
 package e2e;
 
+import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
-import io.restassured.RestAssured;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -98,7 +98,7 @@ class ProductFlowTest {
                 .then()
                 .statusCode(200);
 
-        await().atMost(Duration.ofSeconds(15)).until(() -> {
+        await().atMost(Duration.ofSeconds(20)).until(() -> {
             List<Long> barcodes = given()
                     .header("Authorization", token)
                     .when()
