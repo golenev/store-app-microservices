@@ -9,9 +9,8 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.Random;
 
@@ -50,18 +49,7 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
-            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl("http://localhost:6790/tariffs");
-            boolean fetchAll = false; // пример: переключить для запроса всех тарифов
-            if (fetchAll) {
-                builder.queryParam("all", true);
-            } else {
-                String[] productTypes = {"food_100", "food_300"}; // пример нескольких типов
-                for (String type : productTypes) {
-                    builder.queryParam(type, true);
-                }
-            }
-            String uri = builder.toUriString();
-            String warehouseData = restTemplate.getForObject(uri, String.class);
+            String warehouseData = restTemplate.getForObject("http://localhost:6790/tariffs?all=true", String.class);
             System.out.println("Received from warehouse-service: " + warehouseData);
             repo.save(p);
             System.out.println("Saved to DB: " + p);

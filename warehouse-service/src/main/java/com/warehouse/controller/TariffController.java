@@ -5,11 +5,6 @@ import com.warehouse.repository.TariffRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 @RestController
 @RequestMapping("/tariffs")
 public class TariffController {
@@ -21,14 +16,11 @@ public class TariffController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Tariff>> find(@RequestParam Map<String, String> params) {
-        if (params.containsKey("all") || params.isEmpty()) {
-            return ResponseEntity.ok(repository.findAll());
+    public ResponseEntity<String> findAll(@RequestParam(required = false) Boolean all) {
+        if (all == null || !all) {
+            return ResponseEntity.badRequest().body("Required parameter must be present");
         }
-        Set<String> types = new HashSet<>(params.keySet());
-        types.remove("all");
-        List<Tariff> tariffs = repository.findAllById(types);
-        return ResponseEntity.ok(tariffs);
+        return ResponseEntity.ok(repository.findAll().toString());
     }
 
     @PostMapping
