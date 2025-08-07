@@ -1,10 +1,18 @@
 package com.experience_kafka.service;
 
 import com.experience_kafka.entity.Product;
+import com.experience_kafka.model.TariffDto;
 import com.experience_kafka.repository.ProductRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
@@ -12,9 +20,11 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Random;
 
 @Service
+@Slf4j
 public class KafkaService {
 
     @Autowired
@@ -35,6 +45,9 @@ public class KafkaService {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Value("${warehouse-service.base-url}")
+    private String warehouseServiceBaseUrl;
+
     public void sendMessage(String topic, Product product) {
         try {
             String json = objectMapper.writeValueAsString(product);
@@ -49,13 +62,27 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
-            String warehouseData = restTemplate.getForObject("http://localhost:6790/tariffs?all=true", String.class);
-            System.out.println("Received from warehouse-service: " + warehouseData);
+            List<TariffDto> tariffs = fetchTariffs();
+            log.info("Received from warehouse-service: {}", tariffs);
             repo.save(p);
-            System.out.println("Saved to DB: " + p);
+            log.info("Saved to DB: {}", p);
         } catch (Exception ex) {
-            System.err.println("Ошибка при разборе или сохранении: " + ex.getMessage());
+            log.error("Ошибка при разборе или сохранении", ex);
+            throw new RuntimeException(ex);
         }
+    }
+
+    @Retry(name = "warehouse") // повторные попытки при ошибках согласно настройкам Retry "warehouse"
+    @CircuitBreaker(name = "warehouse") // предотвращает каскадные сбои, открывая выключатель при частых ошибках
+    protected List<TariffDto> fetchTariffs() {
+        String url = warehouseServiceBaseUrl + "/tariffs?all=true"; // полный URL склада
+        ResponseEntity<List<TariffDto>> response = restTemplate.exchange(
+                url, // адрес запроса
+                HttpMethod.GET, // HTTP-метод
+                null, // без тела запроса
+                new ParameterizedTypeReference<List<TariffDto>>() {} // тип ожидаемого ответа
+        ); // выполняем HTTP-запрос
+        return response.getBody(); // возвращаем список тарифов из ответа
     }
 
 

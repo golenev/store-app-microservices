@@ -25,6 +25,20 @@ spring:
       hibernate:
         ddl-auto: update
 
-
 server:
   port: 6789
+
+warehouse-service:
+  base-url: http://localhost:6790
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      warehouse:
+        slidingWindowSize: 5
+        failureRateThreshold: 50
+  retry:
+    instances:
+      warehouse:
+        maxAttempts: 3
+        waitDuration: 500ms
