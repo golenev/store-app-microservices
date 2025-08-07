@@ -2,11 +2,13 @@ package com.warehouse.controller;
 
 import com.warehouse.entity.Tariff;
 import com.warehouse.repository.TariffRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/tariffs")
+@Slf4j
 public class TariffController {
 
     private final TariffRepository repository;
@@ -16,11 +18,14 @@ public class TariffController {
     }
 
     @GetMapping
-    public ResponseEntity<String> findAll(@RequestParam(required = false) Boolean all) {
+    public ResponseEntity<?> findAll(@RequestParam(required = false) Boolean all) {
         if (all == null || !all) {
+            log.warn("Request without required parameter 'all'");
             return ResponseEntity.badRequest().body("Required parameter must be present");
         }
-        return ResponseEntity.ok(repository.findAll().toString());
+        var tariffs = repository.findAll();
+        log.info("Returning {} tariffs", tariffs.size());
+        return ResponseEntity.ok(tariffs);
     }
 
     @PostMapping

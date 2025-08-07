@@ -1,20 +1,27 @@
 package com.experience_kafka.service;
 
 import com.experience_kafka.entity.Product;
+import com.experience_kafka.model.TariffDto;
 import com.experience_kafka.repository.ProductRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Random;
 
 @Service
+@Slf4j
 public class KafkaService {
 
     @Autowired
@@ -33,7 +40,7 @@ public class KafkaService {
     private ProductRepository repo;
 
     @Autowired
-    private RestTemplate restTemplate;
+    private WebClient warehouseWebClient;
 
     public void sendMessage(String topic, Product product) {
         try {
@@ -49,13 +56,26 @@ public class KafkaService {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
-            String warehouseData = restTemplate.getForObject("http://localhost:6790/tariffs?all=true", String.class);
-            System.out.println("Received from warehouse-service: " + warehouseData);
+            List<TariffDto> tariffs = fetchTariffs();
+            log.info("Received from warehouse-service: {}", tariffs);
             repo.save(p);
-            System.out.println("Saved to DB: " + p);
+            log.info("Saved to DB: {}", p);
         } catch (Exception ex) {
-            System.err.println("Ошибка при разборе или сохранении: " + ex.getMessage());
+            log.error("Ошибка при разборе или сохранении", ex);
+            throw new RuntimeException(ex);
         }
+    }
+
+    @Retry(name = "warehouse")
+    @CircuitBreaker(name = "warehouse")
+    protected List<TariffDto> fetchTariffs() {
+        return warehouseWebClient.get()
+                .uri("/tariffs?all=true")
+                .retrieve()
+                .bodyToFlux(TariffDto.class)
+                .timeout(Duration.ofSeconds(3))
+                .collectList()
+                .block();
     }
 
 
