@@ -66,16 +66,16 @@ public class KafkaService {
         }
     }
 
-    @Retry(name = "warehouse")
-    @CircuitBreaker(name = "warehouse")
+    @Retry(name = "warehouse") // повторные попытки при ошибках согласно настройкам Retry "warehouse"
+    @CircuitBreaker(name = "warehouse") // предотвращает каскадные сбои, открывая выключатель при частых ошибках
     protected List<TariffDto> fetchTariffs() {
-        return warehouseWebClient.get()
-                .uri("/tariffs?all=true")
-                .retrieve()
-                .bodyToFlux(TariffDto.class)
-                .timeout(Duration.ofSeconds(3))
-                .collectList()
-                .block();
+        return warehouseWebClient.get() // формируем GET-запрос
+                .uri("/tariffs?all=true") // задаём относительный URI склада
+                .retrieve() // выполняем запрос и получаем реактивный ответ
+                .bodyToFlux(TariffDto.class) // десериализуем тело ответа в поток объектов TariffDto
+                .timeout(Duration.ofSeconds(3)) // ограничиваем ожидание ответа тремя секундами
+                .collectList() // собираем элементы потока в список
+                .block(); // блокируем реактивную цепочку и возвращаем результат синхронно
     }
 
 
