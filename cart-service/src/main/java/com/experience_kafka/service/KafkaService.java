@@ -9,14 +9,17 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 
@@ -40,7 +43,10 @@ public class KafkaService {
     private ProductRepository repo;
 
     @Autowired
-    private WebClient warehouseWebClient;
+    private RestTemplate restTemplate;
+
+    @Value("${warehouse-service.base-url}")
+    private String warehouseServiceBaseUrl;
 
     public void sendMessage(String topic, Product product) {
         try {
@@ -69,13 +75,14 @@ public class KafkaService {
     @Retry(name = "warehouse") // повторные попытки при ошибках согласно настройкам Retry "warehouse"
     @CircuitBreaker(name = "warehouse") // предотвращает каскадные сбои, открывая выключатель при частых ошибках
     protected List<TariffDto> fetchTariffs() {
-        return warehouseWebClient.get() // формируем GET-запрос
-                .uri("/tariffs?all=true") // задаём относительный URI склада
-                .retrieve() // выполняем запрос и получаем реактивный ответ
-                .bodyToFlux(TariffDto.class) // десериализуем тело ответа в поток объектов TariffDto
-                .timeout(Duration.ofSeconds(3)) // ограничиваем ожидание ответа тремя секундами
-                .collectList() // собираем элементы потока в список
-                .block(); // блокируем реактивную цепочку и возвращаем результат синхронно
+        String url = warehouseServiceBaseUrl + "/tariffs?all=true"; // полный URL склада
+        ResponseEntity<List<TariffDto>> response = restTemplate.exchange(
+                url, // адрес запроса
+                HttpMethod.GET, // HTTP-метод
+                null, // без тела запроса
+                new ParameterizedTypeReference<List<TariffDto>>() {} // тип ожидаемого ответа
+        ); // выполняем HTTP-запрос
+        return response.getBody(); // возвращаем список тарифов из ответа
     }
 
 
