@@ -155,11 +155,11 @@
                         alert('Корзина пуста.');
                         return;
                     }
-                    const total = cartItems.reduce((sum, item) => sum + Number(item.total), 0);
+                    const orderSum = cartItems.reduce((sum, item) => sum + Number(item.total), 0);
                     const order = {
                         id: Date.now(),
                         createdAt: new Date().toISOString(),
-                        total: total,
+                        orderSum: orderSum,
                         items: cartItems
                     };
                     fetch('/order', {

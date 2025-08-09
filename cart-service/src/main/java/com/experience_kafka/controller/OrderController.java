@@ -27,9 +27,9 @@ public class OrderController {
     @PostMapping("/order")
     public void createOrder(@RequestBody OrderRequest request) throws JsonProcessingException {
         String itemsJson = objectMapper.writeValueAsString(request.items());
-        Order order = new Order(request.id(), request.createdAt(), request.total(), itemsJson);
+        Order order = new Order(request.id(), request.createdAt(), request.orderSum(), itemsJson);
         orderRepository.save(order);
     }
 
-    public record OrderRequest(Long id, LocalDateTime createdAt, BigDecimal total, List<CartView> items) {}
+    public record OrderRequest(Long id, LocalDateTime createdAt, BigDecimal orderSum, List<CartView> items) {}
 }
