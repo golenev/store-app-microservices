@@ -1,7 +1,7 @@
-package com.warehouse.controller;
+package com.tariffs.controller;
 
-import com.warehouse.entity.Tariff;
-import com.warehouse.repository.TariffRepository;
+import com.tariffs.entity.Tariff;
+import com.tariffs.repository.TariffRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

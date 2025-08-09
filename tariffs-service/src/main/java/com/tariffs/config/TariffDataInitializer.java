@@ -1,7 +1,7 @@
-package com.warehouse.config;
+package com.tariffs.config;
 
-import com.warehouse.entity.Tariff;
-import com.warehouse.repository.TariffRepository;
+import com.tariffs.entity.Tariff;
+import com.tariffs.repository.TariffRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 

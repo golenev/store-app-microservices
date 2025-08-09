@@ -1,4 +1,4 @@
-package com.warehouse.entity;
+package com.tariffs.entity;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;

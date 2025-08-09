@@ -130,7 +130,7 @@ class ProductFlowTest {
     }
 
     record ProductPayload(Long barcodeId, String shortName, String description,
-                          BigDecimal price, int quantity, String addedAtWarehouse,
+                          BigDecimal price, int quantity, String addedAtTariffs,
                           boolean isFoodstuff) {
     }
 }

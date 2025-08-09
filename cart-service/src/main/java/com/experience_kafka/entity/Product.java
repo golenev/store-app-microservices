@@ -42,9 +42,9 @@ public class Product {
     @Positive
     private int quantity;
 
-    @Column(name = "added_at_warehouse")
+    @Column(name = "added_at_tariffs")
     @NotNull
-    private LocalDateTime addedAtWarehouse = LocalDateTime.now();
+    private LocalDateTime addedAtTariffs = LocalDateTime.now();
 
     @JsonProperty("isFoodstuff")
     @Column(name = "is_foodstuff")

@@ -13,7 +13,7 @@
     <packaging>pom</packaging>
     <modules>
         <module>cart-service</module>
-        <module>warehouse-service</module>
+        <module>tariffs-service</module>
         <module>e2e-tests</module>
     </modules>
     <properties>
