@@ -7,9 +7,14 @@ import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+
+import com.experience_kafka.model.CartView;
 
 /**
  * Сущность заказа.
@@ -30,5 +35,6 @@ public class Order {
     private BigDecimal orderSum;
 
     @Column(columnDefinition = "jsonb")
-    private String items;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<CartView> items;
 }
