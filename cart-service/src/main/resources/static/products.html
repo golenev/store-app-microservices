@@ -124,6 +124,7 @@
                 cartContainer.innerHTML = `
                     <h2>Корзина</h2>
                     <button onclick="clearCart()">Очистить корзину</button>
+                    <button onclick="createOrder()">Создать заказ</button>
                 `;
 
                 // Если пусто
@@ -145,6 +146,40 @@
                 console.error('Ошибка при загрузке корзины:', error);
             });
       }
+
+        function createOrder() {
+            fetch('/api/cart', { headers: { 'Authorization': token } })
+                .then(res => res.json())
+                .then(cartItems => {
+                    if (cartItems.length === 0) {
+                        alert('Корзина пуста.');
+                        return;
+                    }
+                    const total = cartItems.reduce((sum, item) => sum + Number(item.total), 0);
+                    const order = {
+                        id: Date.now(),
+                        createdAt: new Date().toISOString(),
+                        total: total,
+                        items: cartItems
+                    };
+                    fetch('/order', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': token
+                        },
+                        body: JSON.stringify(order)
+                    })
+                    .then(response => {
+                        if (!response.ok) return response.text().then(t => { throw new Error(t) });
+                        alert('Заказ создан');
+                    })
+                    .catch(err => {
+                        console.error('Ошибка при создании заказа:', err);
+                        alert('Ошибка при создании заказа: ' + err.message);
+                    });
+                });
+        }
 
     </script>
 </head>
