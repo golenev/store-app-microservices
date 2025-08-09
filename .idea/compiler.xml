@@ -18,6 +18,7 @@
       <module name="cart-service" options="-parameters" />
       <module name="e2e-tests" options="-parameters" />
       <module name="experience-kafka" options="" />
+      <module name="tariffs-service" options="-parameters" />
       <module name="warehouse-service" options="-parameters" />
     </option>
   </component>
