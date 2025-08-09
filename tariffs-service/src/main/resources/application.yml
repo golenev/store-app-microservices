@@ -8,18 +8,15 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+  datasource:
+    url: jdbc:postgresql://localhost:34568/tariffs_db
+    driver-class-name: org.postgresql.Driver
+    username: myuser
+    password: mypassword
   jpa:
     hibernate:
       ddl-auto: update
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-  datasource:
-    url: jdbc:postgresql://localhost:34568/tariffs_db
-    driverClassName: org.postgresql.Driver
-    username: myuser
-    password: mypassword
-    jpa:
-      hibernate:
-        ddl-auto: update
 
 server:
   port: 6790
