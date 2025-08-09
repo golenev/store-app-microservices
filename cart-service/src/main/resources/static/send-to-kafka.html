@@ -35,8 +35,8 @@
     <label for="quantity">Quantity:</label>
     <input type="number" id="quantity" name="quantity" min="1" step="1" required />
 
-    <label for="addedAtWarehouse">Added At Warehouse:</label>
-    <input type="datetime-local" id="addedAtWarehouse" name="addedAtWarehouse" required />
+    <label for="addedAtTariffs">Added At Tariffs:</label>
+    <input type="datetime-local" id="addedAtTariffs" name="addedAtTariffs" required />
 
     <label for="isFoodstuff">Is Foodstuff:</label>
     <input type="checkbox" id="isFoodstuff" name="isFoodstuff" />
@@ -57,7 +57,7 @@
       const price = parseFloat(priceStr);
       const quantityStr = document.getElementById('quantity').value.trim();
       const quantity = parseInt(quantityStr, 10);
-      const addedAtWarehouse = document.getElementById('addedAtWarehouse').value;
+      const addedAtTariffs = document.getElementById('addedAtTariffs').value;
       const isFoodstuff = document.getElementById('isFoodstuff').checked;
 
       if (isNaN(barcodeId)) {
@@ -80,12 +80,12 @@
         alert('Quantity must be a positive integer');
         return;
       }
-      if (!addedAtWarehouse) {
+      if (!addedAtTariffs) {
         alert('Added-at time is required');
         return;
       }
 
-      const product = { barcodeId, shortName, description, price, quantity, addedAtWarehouse, isFoodstuff };
+      const product = { barcodeId, shortName, description, price, quantity, addedAtTariffs, isFoodstuff };
 
         fetch('/api/v1/sendToKafka', {
           method: 'POST',

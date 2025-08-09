@@ -1,11 +1,11 @@
-package com.warehouse;
+package com.tariffs;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class WarehouseServiceApplication {
+public class TariffsServiceApplication {
     public static void main(String[] args) {
-        SpringApplication.run(WarehouseServiceApplication.class, args);
+        SpringApplication.run(TariffsServiceApplication.class, args);
     }
 }

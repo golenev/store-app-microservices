@@ -7,7 +7,7 @@ public final class Endpoints {
     public static final String PRODUCTS = "/api/v1/products";
     public static final String CART = "/api/cart";
 
-    public static final String WAREHOUSE_BASE_URL = "http://localhost:6790";
+    public static final String TARIFFS_BASE_URL = "http://localhost:6790";
     public static final String TARIFFS = "/tariffs";
 
     private Endpoints() {

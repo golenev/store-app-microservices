@@ -13,7 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
-public class WarehouseController {
+public class TariffsController {
 
     @Autowired
     private KafkaService kafkaService;

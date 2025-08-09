@@ -16,7 +16,7 @@ public class ProductPayload {
     private String description;
     private BigDecimal price;
     private int quantity;
-    private String addedAtWarehouse;
+    private String addedAtTariffs;
     @JsonProperty("isFoodstuff")
     private boolean isFoodstuff;
 }

@@ -6,9 +6,9 @@
         <artifactId>experience-kafka</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>warehouse-service</artifactId>
-    <name>warehouse-service</name>
-    <description>Warehouse service module</description>
+    <artifactId>tariffs-service</artifactId>
+    <name>tariffs-service</name>
+    <description>Tariffs service module</description>
     <properties>
         <java.version>21</java.version>
     </properties>

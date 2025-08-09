@@ -1,6 +1,6 @@
-package com.warehouse.repository;
+package com.tariffs.repository;
 
-import com.warehouse.entity.Tariff;
+import com.tariffs.entity.Tariff;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TariffRepository extends JpaRepository<Tariff, String> {

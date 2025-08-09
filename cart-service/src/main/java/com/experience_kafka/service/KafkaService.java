@@ -45,8 +45,8 @@ public class KafkaService {
     @Autowired
     private RestTemplate restTemplate;
 
-    @Value("${warehouse-service.base-url}")
-    private String warehouseServiceBaseUrl;
+    @Value("${tariffs-service.base-url}")
+    private String tariffsServiceBaseUrl;
 
     public void sendMessage(String topic, Product product) {
         try {
@@ -57,13 +57,13 @@ public class KafkaService {
         }
     }
 
-    @KafkaListener(topics = "send-topic", groupId = "warehouse-products")
+    @KafkaListener(topics = "send-topic", groupId = "tariffs-products")
     public void listen(String json) {
         sleepRandomTime();
         try {
             Product p = objectMapper.readValue(json, Product.class);
             List<TariffDto> tariffs = fetchTariffs();
-            log.info("Received from warehouse-service: {}", tariffs);
+            log.info("Received from tariffs-service: {}", tariffs);
             repo.save(p);
             log.info("Saved to DB: {}", p);
         } catch (Exception ex) {
@@ -72,10 +72,10 @@ public class KafkaService {
         }
     }
 
-    @Retry(name = "warehouse") // повторные попытки при ошибках согласно настройкам Retry "warehouse"
-    @CircuitBreaker(name = "warehouse") // предотвращает каскадные сбои, открывая выключатель при частых ошибках
+    @Retry(name = "tariffs") // повторные попытки при ошибках согласно настройкам Retry "tariffs"
+    @CircuitBreaker(name = "tariffs") // предотвращает каскадные сбои, открывая выключатель при частых ошибках
     protected List<TariffDto> fetchTariffs() {
-        String url = warehouseServiceBaseUrl + "/tariffs?all=true"; // полный URL склада
+        String url = tariffsServiceBaseUrl + "/tariffs?all=true"; // полный URL сервиса тарифов
         ResponseEntity<List<TariffDto>> response = restTemplate.exchange(
                 url, // адрес запроса
                 HttpMethod.GET, // HTTP-метод

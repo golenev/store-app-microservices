@@ -11,7 +11,7 @@ public class TariffApiTest {
     @Test
     void returnsTariffsAsJson() {
         given()
-                .baseUri(Endpoints.WAREHOUSE_BASE_URL)
+                .baseUri(Endpoints.TARIFFS_BASE_URL)
                 .param("all", true)
                 .when()
                 .get(Endpoints.TARIFFS)
@@ -23,7 +23,7 @@ public class TariffApiTest {
     @Test
     void missingParamReturnsBadRequest() {
         given()
-                .baseUri(Endpoints.WAREHOUSE_BASE_URL)
+                .baseUri(Endpoints.TARIFFS_BASE_URL)
                 .when()
                 .get(Endpoints.TARIFFS)
                 .then()
