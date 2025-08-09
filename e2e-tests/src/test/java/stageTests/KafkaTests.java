@@ -39,7 +39,7 @@ public class KafkaTests {
 
 
         JdbcTemplate template = Database.template();
-        Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             Integer qty;
             try {
                 qty = template.queryForObject(

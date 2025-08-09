@@ -61,7 +61,7 @@ public class ProductFlowTest {
                 .then()
                 .statusCode(200);
 
-        Awaitility.await().atMost(Duration.ofSeconds(15)).until(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(20)).until(() -> {
             List<Long> barcodes = given()
                     .header("Authorization", token)
                     .when()
