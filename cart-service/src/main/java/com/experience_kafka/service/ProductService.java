@@ -19,4 +19,14 @@ public class ProductService {
                 .orElseThrow(() -> new NoSuchElementException(
                         "Product not found with barcode: " + barcodeId));
     }
+
+    /**
+     * Уменьшает количество товара на складе на указанное число.
+     */
+    public void decreaseQuantity(Long barcodeId, int qty) {
+        Product product = getProductById(barcodeId);
+        int newQty = product.getQuantity() - qty;
+        product.setQuantity(newQty);
+        productRepository.save(product);
+    }
 }
