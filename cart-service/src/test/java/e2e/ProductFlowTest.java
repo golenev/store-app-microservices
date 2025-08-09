@@ -3,13 +3,16 @@ package e2e;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -24,12 +27,15 @@ import java.util.Map;
 
 import static io.restassured.RestAssured.given;
 import static org.awaitility.Awaitility.await;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
 @Testcontainers
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         classes = com.experience_kafka.KafkaSpringApplication.class
 )
+@AutoConfigureWireMock(port = 0)
+@TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}")
 class ProductFlowTest {
 
     @Container
@@ -56,12 +62,20 @@ class ProductFlowTest {
 
     ProductPayload product;
 
+    @BeforeEach
+    void stubTariffs() {
+        stubFor(get(urlPathEqualTo("/tariffs"))
+                .withQueryParam("all", equalTo("true"))
+                .willReturn(okJson("[{\"productType\":\"any\",\"markupCoefficient\":1.0}]")));
+    }
+
     @AfterEach
     void cleanup() {
         if (product != null) {
             jdbcTemplate.update("DELETE FROM cart WHERE barcode_id = ?", product.barcodeId());
             jdbcTemplate.update("DELETE FROM product WHERE barcode_id = ?", product.barcodeId());
         }
+        reset();
     }
 
     @Test
