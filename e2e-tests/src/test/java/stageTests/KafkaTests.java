@@ -1,14 +1,14 @@
-package e2e;
+package stageTests;
 
-import e2e.config.Database;
-import e2e.models.ProductPayload;
-import e2e.testUtil.KafkaProducerImpl;
+import config.Database;
+import models.ProductPayload;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import testUtil.KafkaProducerImpl;
 
 import java.math.BigDecimal;
 import java.time.Duration;

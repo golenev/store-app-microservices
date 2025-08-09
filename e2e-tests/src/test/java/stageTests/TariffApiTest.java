@@ -1,9 +1,9 @@
-package e2e;
+package stageTests;
 
-import e2e.constants.Endpoints;
+import constants.Endpoints;
 import org.junit.jupiter.api.Test;
 
-import static e2e.config.RestClient.given;
+import static config.RestClient.given;
 import static org.hamcrest.Matchers.*;
 
 public class TariffApiTest {

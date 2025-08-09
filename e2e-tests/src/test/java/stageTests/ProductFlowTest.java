@@ -1,11 +1,11 @@
-package e2e;
+package stageTests;
 
-import e2e.config.Database;
-import e2e.constants.Endpoints;
-import e2e.models.ProductPayload;
+import config.Database;
+import constants.Endpoints;
+import models.ProductPayload;
 import org.awaitility.Awaitility;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-import static e2e.config.RestClient.given;
+import static config.RestClient.given;
 
 public class ProductFlowTest {
 

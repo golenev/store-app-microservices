@@ -1,4 +1,4 @@
-package e2e;
+package stageTests;
 
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterEach;
@@ -25,9 +25,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static io.restassured.RestAssured.given;
 import static org.awaitility.Awaitility.await;
-import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
 @Testcontainers
 @SpringBootTest(

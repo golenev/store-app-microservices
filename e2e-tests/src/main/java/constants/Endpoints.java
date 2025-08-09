@@ -1,4 +1,4 @@
-package e2e.constants;
+package constants;
 
 public final class Endpoints {
     public static final String BASE_URL = "http://localhost:6789";

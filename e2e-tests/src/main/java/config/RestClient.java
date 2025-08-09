@@ -1,7 +1,7 @@
-package e2e.config;
+package config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import e2e.constants.Endpoints;
+import constants.Endpoints;
 import io.restassured.RestAssured;
 import io.restassured.config.ObjectMapperConfig;
 import io.restassured.config.RestAssuredConfig;

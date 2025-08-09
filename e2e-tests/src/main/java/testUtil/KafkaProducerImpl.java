@@ -1,4 +1,4 @@
-package e2e.testUtil;
+package testUtil;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
