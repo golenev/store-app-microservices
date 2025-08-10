@@ -5,6 +5,7 @@ import models.ProductPayload;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+@DisplayName("Проверка получения товара через Kafka")
 public class KafkaTests {
 
     @AfterEach
@@ -24,8 +26,10 @@ public class KafkaTests {
     }
 
     @Test
+    @DisplayName("товар из Kafka попадает в БД")
     void test() {
         KafkaProducerImpl producer = new KafkaProducerImpl();
+        // отправляем сообщение в Kafka
         producer.sendMessage(
                 "send-topic",
                 new ProductPayload(
@@ -37,7 +41,7 @@ public class KafkaTests {
                         LocalDateTime.now().toString(),
                         false));
 
-
+        // ждём появления товара в базе данных
         JdbcTemplate template = Database.template();
         Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             Integer qty;

@@ -4,6 +4,7 @@ import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,7 @@ import static org.awaitility.Awaitility.await;
 )
 @AutoConfigureWireMock(port = 0)
 @TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}")
+@DisplayName("Проверка появления товара и ограничения корзины")
 class ProductFlowTest {
 
     @Container
@@ -79,6 +81,7 @@ class ProductFlowTest {
     }
 
     @Test
+    @DisplayName("товар появляется и не добавляется сверх остатка")
     void productAppearsInListAndCart() {
         RestAssured.baseURI = "http://localhost";
         RestAssured.port = port;
@@ -156,6 +159,7 @@ class ProductFlowTest {
                 .then()
                 .statusCode(400);
 
+        // проверяем, что количество в корзине не изменилось
         Integer qtyAfter = jdbcTemplate.queryForObject(
                 "SELECT quantity FROM cart WHERE barcode_id = ?",
                 Integer.class,

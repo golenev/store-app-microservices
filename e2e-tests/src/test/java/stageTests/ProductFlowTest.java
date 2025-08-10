@@ -6,6 +6,7 @@ import models.ProductPayload;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -17,6 +18,7 @@ import java.util.Map;
 
 import static config.RestClient.given;
 
+@DisplayName("Проверка потока продукта на уровне e2e")
 public class ProductFlowTest {
 
     private ProductPayload product;
@@ -31,6 +33,7 @@ public class ProductFlowTest {
     }
 
     @Test
+    @DisplayName("товар добавляется один раз и больше не добавляется")
     void productAppearsInListAndCart() {
         product = new ProductPayload(
                 999L,
@@ -95,5 +98,22 @@ public class ProductFlowTest {
 
         Assertions.assertNotNull(qty);
         Assertions.assertEquals(1, qty);
+
+        // повторно пытаемся добавить товар в корзину
+        given()
+                .header("Authorization", token)
+                .contentType("application/json")
+                .body(Map.of("barcodeId", product.getBarcodeId()))
+                .when()
+                .post(Endpoints.CART)
+                .then()
+                .statusCode(400);
+
+        // убеждаемся, что количество не изменилось
+        Integer qtyAfter = template.queryForObject(
+                "SELECT quantity FROM cart WHERE barcode_id = ?",
+                Integer.class,
+                product.getBarcodeId());
+        Assertions.assertEquals(1, qtyAfter);
     }
 }
