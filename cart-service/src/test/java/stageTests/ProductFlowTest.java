@@ -1,11 +1,7 @@
 package stageTests;
 
 import io.restassured.RestAssured;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -68,7 +64,8 @@ class ProductFlowTest {
     void stubTariffs() {
         stubFor(get(urlPathEqualTo("/tariffs"))
                 .withQueryParam("all", equalTo("true"))
-                .willReturn(okJson("[{\"productType\":\"any\",\"markupCoefficient\":1.0}]")));
+                .willReturn(okJson("""
+                        [{"productType":"any","markupCoefficient":1.0}]""")));
     }
 
     @AfterEach
