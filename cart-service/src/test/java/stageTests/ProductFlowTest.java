@@ -141,6 +141,21 @@ class ProductFlowTest {
 
         Assertions.assertNotNull(qty);
         Assertions.assertEquals(1, qty);
+
+        given()
+                .header("Authorization", token)
+                .contentType("application/json")
+                .body(Map.of("barcodeId", product.barcodeId()))
+                .when()
+                .post("/api/cart")
+                .then()
+                .statusCode(400);
+
+        Integer qtyAfter = jdbcTemplate.queryForObject(
+                "SELECT quantity FROM cart WHERE barcode_id = ?",
+                Integer.class,
+                product.barcodeId());
+        Assertions.assertEquals(1, qtyAfter);
     }
 
     record ProductPayload(Long barcodeId, String shortName, String description,

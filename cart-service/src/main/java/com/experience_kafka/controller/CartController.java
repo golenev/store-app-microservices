@@ -7,7 +7,9 @@ import com.experience_kafka.repository.CartItemRepository;
 import com.experience_kafka.entity.CartItem;
 import com.experience_kafka.service.ProductService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -32,13 +34,23 @@ public class CartController {
     @PostMapping
     public void addToCart(@Valid @RequestBody AddToCartRequest req) {
         Long barcode = req.barcodeId();
-        // проверяем наличие товара
-        productService.getProductById(barcode);
+        Product product = productService.getProductById(barcode);
+
         cartRepository.findById(barcode)
                 .ifPresentOrElse(item -> {
+                    if (item.getQuantity() >= product.getQuantity()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Not enough product in stock");
+                    }
                     item.setQuantity(item.getQuantity() + 1);
                     cartRepository.save(item);
-                }, () -> cartRepository.save(new CartItem(barcode, 1)));
+                }, () -> {
+                    if (product.getQuantity() <= 0) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Not enough product in stock");
+                    }
+                    cartRepository.save(new CartItem(barcode, 1));
+                });
     }
 
     @GetMapping
