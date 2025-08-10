@@ -41,6 +41,12 @@
             border-radius: 4px;
         }
 
+        .product-item button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
         #cart {
             margin-top: 40px;
         }
@@ -86,7 +92,7 @@
                             <p>Штрихкод: ${product.barcodeId}</p>
                             <p>${product.description}</p>
                             <p><strong>${product.price} руб.</strong></p>
-                            <button onclick="addToCart(${product.barcodeId})">Купить</button>
+                            <button onclick="addToCart(this, ${product.barcodeId})">Купить</button>
                         `;
                         container.appendChild(productDiv);
                     });
@@ -96,7 +102,7 @@
                 });
         }
 
-        function addToCart(barcodeId) {
+        function addToCart(button, barcodeId) {
             fetch('/api/cart', {
                 method: 'POST',
                 headers: {
@@ -107,13 +113,13 @@
             })
             .then(response => {
                 if (!response.ok) {
+                    button.disabled = true;
                     return response.text().then(text => { throw new Error(text) });
                 }
                 loadCart();
             })
             .catch(error => {
                 console.error('Ошибка при добавлении в корзину:', error);
-                alert('Ошибка при добавлении в корзину: ' + error.message);
             });
         }
 

@@ -1,10 +1,7 @@
 package stageTests;
 
 import io.restassured.RestAssured;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -36,6 +33,7 @@ import static org.awaitility.Awaitility.await;
 )
 @AutoConfigureWireMock(port = 0)
 @TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}")
+@DisplayName("Проверка появления товара и ограничения корзины")
 class ProductFlowTest {
 
     @Container
@@ -66,7 +64,8 @@ class ProductFlowTest {
     void stubTariffs() {
         stubFor(get(urlPathEqualTo("/tariffs"))
                 .withQueryParam("all", equalTo("true"))
-                .willReturn(okJson("[{\"productType\":\"any\",\"markupCoefficient\":1.0}]")));
+                .willReturn(okJson("""
+                        [{"productType":"any","markupCoefficient":1.0}]""")));
     }
 
     @AfterEach
@@ -79,6 +78,7 @@ class ProductFlowTest {
     }
 
     @Test
+    @DisplayName("товар появляется и не добавляется сверх остатка")
     void productAppearsInListAndCart() {
         RestAssured.baseURI = "http://localhost";
         RestAssured.port = port;
@@ -93,6 +93,7 @@ class ProductFlowTest {
                 false
         );
 
+        // получаем токен авторизации
         String token = given()
                 .contentType("application/json")
                 .body(Map.of("username", "user", "password", "qwerty"))
@@ -103,6 +104,7 @@ class ProductFlowTest {
                 .extract()
                 .path("token");
 
+        // отправляем товар в kafka
         given()
                 .header("Authorization", token)
                 .contentType("application/json")
@@ -113,6 +115,7 @@ class ProductFlowTest {
                 .statusCode(200);
 
         await().atMost(Duration.ofSeconds(20)).until(() -> {
+            // запрашиваем список продуктов до появления нашего товара
             List<Long> barcodes = given()
                     .header("Authorization", token)
                     .when()
@@ -125,6 +128,7 @@ class ProductFlowTest {
             return barcodes.contains(product.barcodeId());
         });
 
+        // добавляем товар в корзину
         given()
                 .header("Authorization", token)
                 .contentType("application/json")
@@ -141,6 +145,23 @@ class ProductFlowTest {
 
         Assertions.assertNotNull(qty);
         Assertions.assertEquals(1, qty);
+
+        // повторная попытка добавить товар в корзину
+        given()
+                .header("Authorization", token)
+                .contentType("application/json")
+                .body(Map.of("barcodeId", product.barcodeId()))
+                .when()
+                .post("/api/cart")
+                .then()
+                .statusCode(400);
+
+        // проверяем, что количество в корзине не изменилось
+        Integer qtyAfter = jdbcTemplate.queryForObject(
+                "SELECT quantity FROM cart WHERE barcode_id = ?",
+                Integer.class,
+                product.barcodeId());
+        Assertions.assertEquals(1, qtyAfter);
     }
 
     record ProductPayload(Long barcodeId, String shortName, String description,
