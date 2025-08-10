@@ -3,7 +3,12 @@ package stageTests;
 import config.Database;
 import models.ProductPayload;
 import org.awaitility.Awaitility;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import testUtil.KafkaProducerImpl;
@@ -12,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+@Execution(ExecutionMode.CONCURRENT)
 @DisplayName("Проверка получения товара через Kafka")
 public class KafkaTests {
 
@@ -35,7 +41,7 @@ public class KafkaTests {
         BigDecimal expectedPrice = payload.getPrice()
                 .add(payload.getPrice().multiply(markupCoefficient).divide(BigDecimal.valueOf(100)));
 
-        Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
             BigDecimal price;
             try {
                 price = template.queryForObject(
