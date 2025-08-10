@@ -44,6 +44,22 @@
         #cart {
             margin-top: 40px;
         }
+
+        #loader {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-top: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
     <script>
         const token = localStorage.getItem('authToken');
@@ -147,6 +163,14 @@
             });
       }
 
+        function showLoader() {
+            document.getElementById('loader').style.display = 'block';
+        }
+
+        function hideLoader() {
+            document.getElementById('loader').style.display = 'none';
+        }
+
         function createOrder() {
             fetch('/api/cart', { headers: { 'Authorization': token } })
                 .then(res => res.json())
@@ -162,22 +186,31 @@
                         orderSum: orderSum,
                         items: cartItems
                     };
-                    fetch('/order', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': token
-                        },
-                        body: JSON.stringify(order)
-                    })
-                    .then(response => {
+                    showLoader();
+                    Promise.all([
+                        fetch('/order', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': token
+                            },
+                            body: JSON.stringify(order)
+                        }),
+                        new Promise(resolve => setTimeout(resolve, 3000))
+                    ])
+                    .then(([response]) => {
                         if (!response.ok) return response.text().then(t => { throw new Error(t) });
+                        return fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } });
+                    })
+                    .then(() => {
+                        loadCart();
                         alert('Заказ создан');
                     })
                     .catch(err => {
                         console.error('Ошибка при создании заказа:', err);
                         alert('Ошибка при создании заказа: ' + err.message);
-                    });
+                    })
+                    .finally(() => hideLoader());
                 });
         }
 
@@ -188,5 +221,6 @@
 <div id="product-list"></div>
 
 <div id="cart"></div>
+<div id="loader"></div>
 </body>
 </html>
