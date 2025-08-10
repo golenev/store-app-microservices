@@ -71,14 +71,19 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(kafkaErrorHandler);
-        // allow multiple concurrent consumers for parallel processing
+        // Use three concurrent consumer threads. Kafka assigns one thread per partition,
+        // therefore matching the partition count (see sendTopic below) lets each thread read
+        // a different partition simultaneously. Messages within a partition remain ordered,
+        // but across partitions they are processed in parallel.
         factory.setConcurrency(3);
         return factory;
     }
 
     @Bean
     public NewTopic sendTopic() {
-        // ensure enough partitions for concurrent consumption
+        // Create topic with three partitions to provide work for the three listener threads above.
+        // Each partition is read independently, enabling KafkaService to consume multiple messages
+        // at the same time without breaking per-partition ordering.
         return new NewTopic("send-topic", 3, (short) 1);
     }
 }
