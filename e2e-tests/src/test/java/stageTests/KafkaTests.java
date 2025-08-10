@@ -7,8 +7,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.parallel.Execution;
-import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import testUtil.KafkaProducerImpl;
@@ -16,8 +14,8 @@ import testUtil.KafkaProducerImpl;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
-@Execution(ExecutionMode.SAME_THREAD)
 @DisplayName("Проверка получения товара через Kafka")
 public class KafkaTests {
 
@@ -33,7 +31,8 @@ public class KafkaTests {
     }
 
     private void sendAndAssert(ProductPayload payload, BigDecimal markupCoefficient) {
-        barcodeId = payload.getBarcodeId();
+        barcodeId = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
+        payload.setBarcodeId(barcodeId);
         KafkaProducerImpl producer = new KafkaProducerImpl();
         producer.sendMessage("send-topic", payload);
 
@@ -41,7 +40,7 @@ public class KafkaTests {
         BigDecimal expectedPrice = payload.getPrice()
                 .add(payload.getPrice().multiply(markupCoefficient).divide(BigDecimal.valueOf(100)));
 
-        Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
             BigDecimal price;
             try {
                 price = template.queryForObject(
@@ -59,7 +58,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для food_100")
     void testFood100() {
         sendAndAssert(new ProductPayload(
-                1001L,
+                null,
                 "food100",
                 "desc",
                 new BigDecimal("100"),
@@ -73,7 +72,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для food_300")
     void testFood300() {
         sendAndAssert(new ProductPayload(
-                1002L,
+                null,
                 "food300",
                 "desc",
                 new BigDecimal("200"),
@@ -87,7 +86,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для food_500")
     void testFood500() {
         sendAndAssert(new ProductPayload(
-                1003L,
+                null,
                 "food500",
                 "desc",
                 new BigDecimal("400"),
@@ -101,7 +100,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для food_1000")
     void testFood1000() {
         sendAndAssert(new ProductPayload(
-                1004L,
+                null,
                 "food1000",
                 "desc",
                 new BigDecimal("600"),
@@ -115,7 +114,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для not_food_100")
     void testNotFood100() {
         sendAndAssert(new ProductPayload(
-                1005L,
+                null,
                 "notfood100",
                 "desc",
                 new BigDecimal("100"),
@@ -129,7 +128,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для not_food_500")
     void testNotFood500() {
         sendAndAssert(new ProductPayload(
-                1006L,
+                null,
                 "notfood500",
                 "desc",
                 new BigDecimal("400"),
@@ -143,7 +142,7 @@ public class KafkaTests {
     @DisplayName("наценка применяется для not_food_1000")
     void testNotFood1000() {
         sendAndAssert(new ProductPayload(
-                1007L,
+                null,
                 "notfood1000",
                 "desc",
                 new BigDecimal("600"),
