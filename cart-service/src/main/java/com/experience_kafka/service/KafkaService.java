@@ -20,6 +20,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Random;
 
@@ -64,11 +65,54 @@ public class KafkaService {
             Product p = objectMapper.readValue(json, Product.class);
             List<TariffDto> tariffs = fetchTariffs();
             log.info("Received from tariffs-service: {}", tariffs);
+            applyTariff(p, tariffs);
             repo.save(p);
             log.info("Saved to DB: {}", p);
         } catch (Exception ex) {
             log.error("Ошибка при разборе или сохранении", ex);
             throw new RuntimeException(ex);
+        }
+    }
+
+    private void applyTariff(Product product, List<TariffDto> tariffs) {
+        String productType = determineProductType(product);
+        TariffDto tariff = tariffs.stream()
+                .filter(t -> t.getProductType().equals(productType))
+                .findFirst()
+                .orElse(null);
+        if (tariff != null) {
+            BigDecimal coefficient = tariff.getMarkupCoefficient();
+            BigDecimal price = product.getPrice();
+            BigDecimal newPrice = price.add(
+                    price.multiply(coefficient).divide(BigDecimal.valueOf(100))
+            );
+            product.setPrice(newPrice);
+            log.info("получен товар из кафки, присвоена тип товара {} с наценкой {}", productType, coefficient);
+        } else {
+            log.warn("получен товар из кафки, тариф для типа {} не найден", productType);
+        }
+    }
+
+    private String determineProductType(Product product) {
+        BigDecimal price = product.getPrice();
+        if (product.isFoodstuff()) {
+            if (price.compareTo(BigDecimal.valueOf(100)) <= 0) {
+                return "food_100";
+            } else if (price.compareTo(BigDecimal.valueOf(300)) <= 0) {
+                return "food_300";
+            } else if (price.compareTo(BigDecimal.valueOf(500)) <= 0) {
+                return "food_500";
+            } else {
+                return "food_1000";
+            }
+        } else {
+            if (price.compareTo(BigDecimal.valueOf(100)) <= 0) {
+                return "not_food_100";
+            } else if (price.compareTo(BigDecimal.valueOf(500)) <= 0) {
+                return "not_food_500";
+            } else {
+                return "not_food_1000";
+            }
         }
     }
 
