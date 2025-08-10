@@ -33,23 +33,23 @@ public class CartController {
 
     @PostMapping
     public void addToCart(@Valid @RequestBody AddToCartRequest req) {
-        Long barcode = req.barcodeId();
-        Product product = productService.getProductById(barcode);
+        Long barcode = req.barcodeId(); // получаем штрихкод из тела запроса
+        Product product = productService.getProductById(barcode); // ищем товар по штрихкоду
 
-        cartRepository.findById(barcode)
-                .ifPresentOrElse(item -> {
-                    if (item.getQuantity() >= product.getQuantity()) {
+        cartRepository.findById(barcode) // пытаемся найти товар в корзине
+                .ifPresentOrElse(item -> { // если нашли, выполняем этот блок
+                    if (item.getQuantity() >= product.getQuantity()) { // если количество в корзине уже максимальное
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                                "Not enough product in stock");
+                                "Not enough product in stock"); // сообщаем, что товара больше нет
                     }
-                    item.setQuantity(item.getQuantity() + 1);
-                    cartRepository.save(item);
-                }, () -> {
-                    if (product.getQuantity() <= 0) {
+                    item.setQuantity(item.getQuantity() + 1); // увеличиваем количество в корзине
+                    cartRepository.save(item); // сохраняем обновленный товар
+                }, () -> { // если по id не удалось найти товар, то выполняем этот блок
+                    if (product.getQuantity() <= 0) { // если товара нет на складе
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                                "Not enough product in stock");
+                                "Not enough product in stock"); // сообщаем об ошибке
                     }
-                    cartRepository.save(new CartItem(barcode, 1));
+                    cartRepository.save(new CartItem(barcode, 1)); // добавляем новый товар в корзину
                 });
     }
 

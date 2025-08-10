@@ -93,6 +93,7 @@ class ProductFlowTest {
                 false
         );
 
+        // получаем токен авторизации
         String token = given()
                 .contentType("application/json")
                 .body(Map.of("username", "user", "password", "qwerty"))
@@ -103,6 +104,7 @@ class ProductFlowTest {
                 .extract()
                 .path("token");
 
+        // отправляем товар в kafka
         given()
                 .header("Authorization", token)
                 .contentType("application/json")
@@ -113,6 +115,7 @@ class ProductFlowTest {
                 .statusCode(200);
 
         await().atMost(Duration.ofSeconds(20)).until(() -> {
+            // запрашиваем список продуктов до появления нашего товара
             List<Long> barcodes = given()
                     .header("Authorization", token)
                     .when()
@@ -125,6 +128,7 @@ class ProductFlowTest {
             return barcodes.contains(product.barcodeId());
         });
 
+        // добавляем товар в корзину
         given()
                 .header("Authorization", token)
                 .contentType("application/json")
@@ -142,6 +146,7 @@ class ProductFlowTest {
         Assertions.assertNotNull(qty);
         Assertions.assertEquals(1, qty);
 
+        // повторная попытка добавить товар в корзину
         given()
                 .header("Authorization", token)
                 .contentType("application/json")
