@@ -132,7 +132,7 @@
         }
 
        function loadCart() {
-        fetch('/api/cart', { headers: { 'Authorization': token } })
+        return fetch('/api/cart', { headers: { 'Authorization': token } })
             .then(response => response.json())
             .then(cartItems => {
                 const cartContainer = document.getElementById('cart');
@@ -140,14 +140,19 @@
                 cartContainer.innerHTML = `
                     <h2>Корзина</h2>
                     <button onclick="clearCart()">Очистить корзину</button>
-                    <button onclick="createOrder()">Создать заказ</button>
+                    <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
                 `;
+
+                const orderBtn = document.getElementById('order-btn');
 
                 // Если пусто
                 if (cartItems.length === 0) {
+                    orderBtn.disabled = true;
                     cartContainer.innerHTML += '<p>Корзина пуста.</p>';
                     return;
                 }
+
+                orderBtn.disabled = false;
 
                 // Иначе рисуем элементы
                 cartItems.forEach(item => {
@@ -165,10 +170,17 @@
 
         function showLoader() {
             document.getElementById('loader').style.display = 'block';
+            const orderBtn = document.getElementById('order-btn');
+            if (orderBtn) orderBtn.disabled = true;
         }
 
         function hideLoader() {
             document.getElementById('loader').style.display = 'none';
+            const orderBtn = document.getElementById('order-btn');
+            if (orderBtn) {
+                const hasItems = document.querySelectorAll('#cart > div').length > 0;
+                orderBtn.disabled = !hasItems;
+            }
         }
 
         function createOrder() {
@@ -187,7 +199,7 @@
                         items: cartItems
                     };
                     showLoader();
-                    Promise.all([
+                    return Promise.all([
                         fetch('/order', {
                             method: 'POST',
                             headers: {
@@ -202,8 +214,8 @@
                         if (!response.ok) return response.text().then(t => { throw new Error(t) });
                         return fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } });
                     })
+                    .then(() => loadCart())
                     .then(() => {
-                        loadCart();
                         alert('Заказ создан');
                     })
                     .catch(err => {
