@@ -2,6 +2,7 @@ package com.experience_kafka.config;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import lombok.extern.slf4j.Slf4j;
@@ -70,6 +71,14 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(kafkaErrorHandler);
+        // allow multiple concurrent consumers for parallel processing
+        factory.setConcurrency(3);
         return factory;
+    }
+
+    @Bean
+    public NewTopic sendTopic() {
+        // ensure enough partitions for concurrent consumption
+        return new NewTopic("send-topic", 3, (short) 1);
     }
 }
