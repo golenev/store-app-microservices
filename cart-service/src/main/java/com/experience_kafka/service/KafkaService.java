@@ -133,7 +133,7 @@ public class KafkaService {
     //Имитация бизнес логики
     private void sleepRandomTime () {
         try {
-            Thread.sleep(new Random().nextLong(10000, 15000));
+            Thread.sleep(new Random().nextLong(5000, 11000));
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

@@ -17,7 +17,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
-@Execution(ExecutionMode.CONCURRENT)
+@Execution(ExecutionMode.SAME_THREAD)
 @DisplayName("Проверка получения товара через Kafka")
 public class KafkaTests {
 
@@ -41,7 +41,7 @@ public class KafkaTests {
         BigDecimal expectedPrice = payload.getPrice()
                 .add(payload.getPrice().multiply(markupCoefficient).divide(BigDecimal.valueOf(100)));
 
-        Awaitility.await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
             BigDecimal price;
             try {
                 price = template.queryForObject(

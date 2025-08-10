@@ -2,6 +2,7 @@ package com.experience_kafka.config;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import lombok.extern.slf4j.Slf4j;
@@ -70,6 +71,25 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(kafkaErrorHandler);
+        // Используем восемь параллельных потоков. Kafka закрепляет поток за каждой партицией,
+        // поэтому количество потоков должно совпадать с числом партиций (см. sendTopic ниже),
+        // чтобы каждый поток читал свою партицию одновременно с другими. Координатор группы
+        // распределяет партиции между потоками и не позволяет нескольким потокам читать одну и
+        // ту же партицию одновременно; если потоков больше, чем партиций, лишние потоки
+        // простаивают. Порядок сообщений внутри партиции сохраняется, а разные партиции
+        // обрабатываются параллельно.
+        factory.setConcurrency(8);
         return factory;
+    }
+
+    @Bean
+    public NewTopic sendTopic() {
+        // Создаём топик с восемью партициями, чтобы обеспечить работу для восьми потоков
+        // слушателя. При отправке сообщения Kafka выбирает партицию по хешу ключа, а при
+        // отсутствии ключа распределяет сообщения по принципу round-robin, что равномерно
+        // распределяет нагрузку. Каждая партиция читается независимо, поэтому KafkaService может
+        // обрабатывать несколько сообщений одновременно и при этом не нарушает порядок внутри
+        // каждой партиции.
+        return new NewTopic("send-topic", 8, (short) 1);
     }
 }
