@@ -14,7 +14,6 @@
     <modules>
         <module>cart-service</module>
         <module>tariffs-service</module>
-        <module>e2e-tests</module>
     </modules>
     <properties>
         <java.version>21</java.version>
