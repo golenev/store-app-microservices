@@ -7,9 +7,9 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="e2e-tests" />
         <module name="warehouse-service" />
         <module name="cart-service" />
+        <module name="tariffs-service" />
       </profile>
     </annotationProcessing>
   </component>
