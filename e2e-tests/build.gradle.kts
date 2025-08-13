@@ -13,6 +13,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("org.apache.kafka:kafka-clients")
     runtimeOnly("org.postgresql:postgresql")
+    testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.0")
 
     testImplementation(kotlin("test"))
     testImplementation("io.kotest:kotest-assertions-core-jvm:5.9.1")

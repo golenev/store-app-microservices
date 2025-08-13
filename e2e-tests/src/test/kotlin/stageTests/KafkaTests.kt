@@ -1,29 +1,27 @@
 package stageTests
 
 import config.Database
-import models.ProductPayload
-import io.kotest.assertions.timing.eventually
+import config.Database.template
+import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
+import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.springframework.dao.EmptyResultDataAccessException
-import org.springframework.jdbc.core.JdbcTemplate
+import positiveConfig
 import testUtil.KafkaProducerImpl
 import java.math.BigDecimal
 import java.time.LocalDateTime
-import java.util.UUID
-import kotlin.time.Duration.Companion.seconds
 
 @DisplayName("Проверка получения товара через Kafka")
 class KafkaTests {
 
-    private var barcodeId: Long? = null
+    private var barcodeId: Long = (10000000000..99999999999).random()
 
     @AfterEach
     fun cleanup() {
-        barcodeId?.let {
+        barcodeId.let {
             val template = Database.template()
             template.update("DELETE FROM cart WHERE barcode_id = ?", it)
             template.update("DELETE FROM product WHERE barcode_id = ?", it)
@@ -31,27 +29,22 @@ class KafkaTests {
     }
 
     private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
-        barcodeId = UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE
         payload.barcodeId = barcodeId
-        val producer = KafkaProducerImpl()
-        producer.sendMessage("send-topic", payload)
+        KafkaProducerImpl().sendMessage("send-topic", payload)
 
-        val template = Database.template()
         val expectedPrice = payload.price.add(
             payload.price.multiply(markupCoefficient).divide(BigDecimal.valueOf(100))
         )
 
         runBlocking {
-            eventually(30.seconds) {
-                val price = try {
-                    template.queryForObject(
+            eventually(positiveConfig) {
+                val price =
+                    template().queryForObject(
                         "SELECT price FROM product WHERE barcode_id = ?",
                         BigDecimal::class.java,
                         barcodeId
                     )
-                } catch (e: EmptyResultDataAccessException) {
-                    throw AssertionError("Запись ещё не создана", e)
-                }
+
                 price.compareTo(expectedPrice) shouldBe 0
             }
         }
@@ -62,7 +55,7 @@ class KafkaTests {
     fun testFood100() {
         sendAndAssert(
             ProductPayload(
-                shortName = "food100",
+                shortName = "food999",
                 description = "desc",
                 price = BigDecimal("100"),
                 quantity = 1,
