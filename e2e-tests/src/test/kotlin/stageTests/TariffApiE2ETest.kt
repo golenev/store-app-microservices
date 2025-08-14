@@ -8,10 +8,12 @@ import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import positiveConfig
 
 @DisplayName("Тесты API тарифов")
 class TariffApiE2ETest {
+    private val logger = LoggerFactory.getLogger(TariffApiE2ETest::class.java)
 
     @Test
     @DisplayName("возвращает тарифы в формате JSON")
@@ -26,6 +28,7 @@ class TariffApiE2ETest {
                 response.statusCode shouldBe 200
                 val tariffs = response.jsonPath().getList<Any>("$")
                 tariffs.shouldNotBeEmpty()
+                logger.info("Received {} tariffs", tariffs.size)
             }
         }
     }
@@ -40,6 +43,7 @@ class TariffApiE2ETest {
                     baseUri = Endpoints.TARIFFS_BASE_URL
                 )
                 response.statusCode shouldBe 400
+                logger.info("Request without 'all' param returned 400 as expected")
             }
         }
     }

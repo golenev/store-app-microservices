@@ -9,6 +9,7 @@ import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import positiveConfig
 import testUtil.KafkaProducerImpl
 import java.math.BigDecimal
@@ -16,12 +17,13 @@ import java.time.LocalDateTime
 
 @DisplayName("Проверка получения товара через Kafka")
 class KafkaTariffTest {
-
+    private val logger = LoggerFactory.getLogger(KafkaTariffTest::class.java)
     private var barcodeId: Long = (10000000000..99999999999).random()
 
     @AfterEach
     fun cleanup() {
         barcodeId.let {
+            logger.info("Cleaning up records for barcode {}", it)
             val template = Database.template()
             template.update("DELETE FROM cart WHERE barcode_id = ?", it)
             template.update("DELETE FROM product WHERE barcode_id = ?", it)
@@ -30,6 +32,7 @@ class KafkaTariffTest {
 
     private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
         payload.barcodeId = barcodeId
+        logger.info("Sending payload with barcode {} to Kafka", barcodeId)
         KafkaProducerImpl().sendMessage("send-topic", payload)
 
         val expectedPrice = payload.price.add(
@@ -46,6 +49,7 @@ class KafkaTariffTest {
                     )
 
                 price.compareTo(expectedPrice) shouldBe 0
+                logger.info("Verified price {} for barcode {}", price, barcodeId)
             }
         }
     }
