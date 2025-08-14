@@ -25,9 +25,8 @@ class ProductFlowE2ETest {
 
     @AfterEach
     fun cleanup() {
-        val template = Database.template()
-        template.update("DELETE FROM cart WHERE barcode_id = ?", barcodeId)
-        template.update("DELETE FROM product WHERE barcode_id = ?", barcodeId)
+        Database.update("DELETE FROM cart WHERE barcode_id = ?", barcodeId)
+        Database.update("DELETE FROM product WHERE barcode_id = ?", barcodeId)
     }
 
     @Test
@@ -88,9 +87,8 @@ class ProductFlowE2ETest {
         }
         logger.info("Товар добавлен в корзину")
 
-        val template = Database.template()
         val qty = step("Проверка количества в корзине") {
-            template.queryForObject(
+            Database.queryForObject(
                 "SELECT quantity FROM cart WHERE barcode_id = ?",
                 Int::class.java,
                 barcodeId
@@ -112,7 +110,7 @@ class ProductFlowE2ETest {
         logger.info("Повторное добавление в корзину вернуло 400, как и ожидалось")
 
         val qtyAfter = step("Итоговое количество в корзине") {
-            template.queryForObject(
+            Database.queryForObject(
                 "SELECT quantity FROM cart WHERE barcode_id = ?",
                 Int::class.java,
                 barcodeId

@@ -5,6 +5,7 @@ import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.slf4j.LoggerFactory
+import io.qameta.allure.Allure
 import java.util.UUID
 
 abstract class AbstractKafkaProducer(private val config: KafkaProps) {
@@ -19,6 +20,7 @@ abstract class AbstractKafkaProducer(private val config: KafkaProps) {
             return
         }
         val key = UUID.randomUUID().toString()
+        Allure.addAttachment("Kafka message to $topic", "application/json", json)
         logger.info("Подготовка к отправке сообщения в топик '{}' с ключом {}", topic, key)
         send(topic, key, json)
     }

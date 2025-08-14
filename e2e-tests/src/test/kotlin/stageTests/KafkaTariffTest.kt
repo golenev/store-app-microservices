@@ -1,7 +1,6 @@
 package stageTests
 
 import config.Database
-import config.Database.template
 import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.shouldBe
@@ -25,9 +24,8 @@ class KafkaTariffTest {
     fun cleanup() {
         barcodeId.let {
             logger.info("Удаляем записи для штрихкода {}", it)
-            val template = Database.template()
-            template.update("DELETE FROM cart WHERE barcode_id = ?", it)
-            template.update("DELETE FROM product WHERE barcode_id = ?", it)
+            Database.update("DELETE FROM cart WHERE barcode_id = ?", it)
+            Database.update("DELETE FROM product WHERE barcode_id = ?", it)
         }
     }
 
@@ -45,12 +43,11 @@ class KafkaTariffTest {
         step("Проверка цены в базе") {
             runBlocking {
                 eventually(positiveConfig) {
-                    val price =
-                        template().queryForObject(
-                            "SELECT price FROM product WHERE barcode_id = ?",
-                            BigDecimal::class.java,
-                            barcodeId
-                        )
+                    val price = Database.queryForObject(
+                        "SELECT price FROM product WHERE barcode_id = ?",
+                        BigDecimal::class.java,
+                        barcodeId
+                    )
 
                     price.compareTo(expectedPrice) shouldBe 0
                     logger.info("Проверена цена {} для штрихкода {}", price, barcodeId)
