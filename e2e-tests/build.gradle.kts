@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "1.9.24"
+    id("io.qameta.allure") version "2.12.0"
 }
 
 repositories {
@@ -10,6 +11,7 @@ dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.9"))
     implementation("org.springframework:spring-jdbc")
     implementation("io.rest-assured:kotlin-extensions:5.5.0")
+    implementation("io.qameta.allure:allure-rest-assured:2.29.0")
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("org.apache.kafka:kafka-clients")
     implementation("org.slf4j:slf4j-api")
@@ -21,6 +23,7 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core-jvm:5.9.1")
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    testImplementation("io.qameta.allure:allure-junit5:2.29.0")
 }
 
 tasks.test {
@@ -29,5 +32,19 @@ tasks.test {
 
 kotlin {
     jvmToolchain(21)
+}
+
+allure {
+    report {
+        version.set("2.29.0")
+    }
+    adapter {
+        autoconfigure.set(true)
+        frameworks {
+            junit5 {
+                adapterVersion.set("2.29.0")
+            }
+        }
+    }
 }
 

@@ -8,11 +8,12 @@ import io.restassured.config.RestAssuredConfig as RAConfig
 import io.restassured.filter.log.RequestLoggingFilter
 import io.restassured.filter.log.ResponseLoggingFilter
 import io.restassured.specification.RequestSpecification
+import io.qameta.allure.restassured.AllureRestAssured
 
 object RestAssuredConfig {
     init {
         RestAssured.baseURI = Endpoints.BASE_URL
-        RestAssured.filters(RequestLoggingFilter(), ResponseLoggingFilter())
+        RestAssured.filters(AllureRestAssured(), RequestLoggingFilter(), ResponseLoggingFilter())
         RestAssured.config = RAConfig.config().objectMapperConfig(
             ObjectMapperConfig.objectMapperConfig()
                 .jackson2ObjectMapperFactory { _, _ -> ObjectMapper().findAndRegisterModules() }
