@@ -40,3 +40,17 @@
 Сообщения, отправленные в `send-topic`, автоматически сохраняются в базу и доступны через `/api/v1/products` и веб-страницу `products.html`.
 
 Остановить инфраструктуру можно командой `docker-compose down`.
+
+## E2E тесты и Allure Report
+
+В модуле `e2e-tests` подключена система отчётности [Allure](https://github.com/allure-framework/allure2).
+Чтобы запустить e2e-тесты и сгенерировать отчёт, выполните:
+
+```bash
+cd e2e-tests
+./gradlew test
+./gradlew allureReport
+```
+
+Готовый отчёт будет доступен в каталоге `e2e-tests/build/reports/allure-report/index.html`.
+Для интерактивного просмотра можно использовать команду `./gradlew allureServe`.

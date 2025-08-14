@@ -2,6 +2,7 @@ package stageTests
 
 import config.Database
 import config.Database.template
+import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
@@ -31,25 +32,29 @@ class KafkaTariffTest {
     }
 
     private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
-        payload.barcodeId = barcodeId
-        logger.info("Отправляем сообщение со штрихкодом {} в Kafka", barcodeId)
-        KafkaProducerImpl().sendMessage("send-topic", payload)
+        step("Отправка сообщения в Kafka") {
+            payload.barcodeId = barcodeId
+            logger.info("Отправляем сообщение со штрихкодом {} в Kafka", barcodeId)
+            KafkaProducerImpl().sendMessage("send-topic", payload)
+        }
 
         val expectedPrice = payload.price.add(
             payload.price.multiply(markupCoefficient).divide(BigDecimal.valueOf(100))
         )
 
-        runBlocking {
-            eventually(positiveConfig) {
-                val price =
-                    template().queryForObject(
-                        "SELECT price FROM product WHERE barcode_id = ?",
-                        BigDecimal::class.java,
-                        barcodeId
-                    )
+        step("Проверка цены в базе") {
+            runBlocking {
+                eventually(positiveConfig) {
+                    val price =
+                        template().queryForObject(
+                            "SELECT price FROM product WHERE barcode_id = ?",
+                            BigDecimal::class.java,
+                            barcodeId
+                        )
 
-                price.compareTo(expectedPrice) shouldBe 0
-                logger.info("Проверена цена {} для штрихкода {}", price, barcodeId)
+                    price.compareTo(expectedPrice) shouldBe 0
+                    logger.info("Проверена цена {} для штрихкода {}", price, barcodeId)
+                }
             }
         }
     }
@@ -57,7 +62,8 @@ class KafkaTariffTest {
     @Test
     @DisplayName("наценка применяется для food_100")
     fun testFood100() {
-        sendAndAssert(
+        step("Проверка наценки для food_100") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "food999",
                 description = "desc",
@@ -68,12 +74,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(1)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для food_300")
     fun testFood300() {
-        sendAndAssert(
+        step("Проверка наценки для food_300") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "food300",
                 description = "desc",
@@ -84,12 +92,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(3)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для food_500")
     fun testFood500() {
-        sendAndAssert(
+        step("Проверка наценки для food_500") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "food500",
                 description = "desc",
@@ -100,12 +110,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(5)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для food_1000")
     fun testFood1000() {
-        sendAndAssert(
+        step("Проверка наценки для food_1000") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "food1000",
                 description = "desc",
@@ -116,12 +128,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(10)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_100")
     fun testNotFood100() {
-        sendAndAssert(
+        step("Проверка наценки для not_food_100") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "notfood100",
                 description = "desc",
@@ -132,12 +146,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(5)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_500")
     fun testNotFood500() {
-        sendAndAssert(
+        step("Проверка наценки для not_food_500") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "notfood500",
                 description = "desc",
@@ -148,12 +164,14 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(10)
         )
+        }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_1000")
     fun testNotFood1000() {
-        sendAndAssert(
+        step("Проверка наценки для not_food_1000") {
+            sendAndAssert(
             ProductPayload(
                 shortName = "notfood1000",
                 description = "desc",
@@ -164,6 +182,7 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(20)
         )
+        }
     }
 }
 

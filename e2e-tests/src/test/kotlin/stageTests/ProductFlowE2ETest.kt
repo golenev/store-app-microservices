@@ -4,6 +4,7 @@ import config.Database
 import config.HttpClient
 import constants.Endpoints
 import models.ProductPayload
+import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeExactly
@@ -42,67 +43,81 @@ class ProductFlowE2ETest {
             isFoodstuff = false
         )
         logger.info("Сгенерирован товар со штрихкодом {}", barcodeId)
-        val tokenResponse = HttpClient.post(
-            url = Endpoints.AUTH,
-            body = mapOf("username" to "user", "password" to "qwerty")
-        )
-        tokenResponse.statusCode shouldBeExactly 200
-        val token = tokenResponse.jsonPath().getString("token")
+        val token = step("Получение токена") {
+            val tokenResponse = HttpClient.post(
+                url = Endpoints.AUTH,
+                body = mapOf("username" to "user", "password" to "qwerty")
+            )
+            tokenResponse.statusCode shouldBeExactly 200
+            tokenResponse.jsonPath().getString("token")
+        }
         logger.info("Получен токен авторизации")
 
-        val sendResponse = HttpClient.post(
-            url = Endpoints.SEND_TO_KAFKA,
-            headers = mapOf("Authorization" to token),
-            body = product
-        )
-        sendResponse.statusCode shouldBeExactly 200
+        step("Отправка товара через API") {
+            val sendResponse = HttpClient.post(
+                url = Endpoints.SEND_TO_KAFKA,
+                headers = mapOf("Authorization" to token),
+                body = product
+            )
+            sendResponse.statusCode shouldBeExactly 200
+        }
         logger.info("Товар отправлен в Kafka через API")
 
-        runBlocking {
-            eventually(positiveConfig) {
-                val listResponse = HttpClient.get(
-                    url = Endpoints.PRODUCTS,
-                    headers = mapOf("Authorization" to token)
-                )
-                listResponse.statusCode shouldBeExactly 200
-                val barcodes = listResponse.jsonPath().getList<Long>("barcodeId")
-                barcodes.shouldContain(barcodeId)
-                logger.info("Товар со штрихкодом {} появился в списке товаров", barcodeId)
+        step("Проверка появления товара в списке") {
+            runBlocking {
+                eventually(positiveConfig) {
+                    val listResponse = HttpClient.get(
+                        url = Endpoints.PRODUCTS,
+                        headers = mapOf("Authorization" to token)
+                    )
+                    listResponse.statusCode shouldBeExactly 200
+                    val barcodes = listResponse.jsonPath().getList<Long>("barcodeId")
+                    barcodes.shouldContain(barcodeId)
+                    logger.info("Товар со штрихкодом {} появился в списке товаров", barcodeId)
+                }
             }
         }
 
-        val addResponse = HttpClient.post(
-            url = Endpoints.CART,
-            headers = mapOf("Authorization" to token),
-            body = mapOf("barcodeId" to barcodeId)
-        )
-        addResponse.statusCode shouldBeExactly 200
+        step("Добавление товара в корзину") {
+            val addResponse = HttpClient.post(
+                url = Endpoints.CART,
+                headers = mapOf("Authorization" to token),
+                body = mapOf("barcodeId" to barcodeId)
+            )
+            addResponse.statusCode shouldBeExactly 200
+        }
         logger.info("Товар добавлен в корзину")
 
         val template = Database.template()
-        val qty = template.queryForObject(
-            "SELECT quantity FROM cart WHERE barcode_id = ?",
-            Int::class.java,
-            barcodeId
-        )
+        val qty = step("Проверка количества в корзине") {
+            template.queryForObject(
+                "SELECT quantity FROM cart WHERE barcode_id = ?",
+                Int::class.java,
+                barcodeId
+            )
+        }
 
         qty.shouldNotBeNull()
         qty shouldBeExactly 1
         logger.info("Проверено количество 1 в корзине для штрихкода {}", barcodeId)
 
-        val repeatResponse = HttpClient.post(
-            url = Endpoints.CART,
-            headers = mapOf("Authorization" to token),
-            body = mapOf("barcodeId" to barcodeId)
-        )
-        repeatResponse.statusCode shouldBeExactly 400
+        step("Проверка невозможности повторного добавления") {
+            val repeatResponse = HttpClient.post(
+                url = Endpoints.CART,
+                headers = mapOf("Authorization" to token),
+                body = mapOf("barcodeId" to barcodeId)
+            )
+            repeatResponse.statusCode shouldBeExactly 400
+        }
         logger.info("Повторное добавление в корзину вернуло 400, как и ожидалось")
 
-        val qtyAfter = template.queryForObject(
-            "SELECT quantity FROM cart WHERE barcode_id = ?",
-            Int::class.java,
-            barcodeId
-        )
+        val qtyAfter = step("Итоговое количество в корзине") {
+            template.queryForObject(
+                "SELECT quantity FROM cart WHERE barcode_id = ?",
+                Int::class.java,
+                barcodeId
+            )
+        }
         qtyAfter shouldBeExactly 1
         logger.info("Итоговое количество остаётся 1 для штрихкода {}", barcodeId)
     }

@@ -2,6 +2,7 @@ package stageTests
 
 import config.HttpClient
 import constants.Endpoints
+import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
@@ -20,15 +21,17 @@ class TariffApiE2ETest {
     fun returnsTariffsAsJson() {
         runBlocking {
             eventually(positiveConfig) {
-                val response = HttpClient.get(
-                    url = Endpoints.TARIFFS,
-                    params = mapOf("all" to true),
-                    baseUri = Endpoints.TARIFFS_BASE_URL
-                )
-                response.statusCode shouldBe 200
-                val tariffs = response.jsonPath().getList<Any>("$")
-                tariffs.shouldNotBeEmpty()
-                logger.info("Получено {} тарифов", tariffs.size)
+                step("Запрос тарифов с параметром all=true") {
+                    val response = HttpClient.get(
+                        url = Endpoints.TARIFFS,
+                        params = mapOf("all" to true),
+                        baseUri = Endpoints.TARIFFS_BASE_URL
+                    )
+                    response.statusCode shouldBe 200
+                    val tariffs = response.jsonPath().getList<Any>("$")
+                    tariffs.shouldNotBeEmpty()
+                    logger.info("Получено {} тарифов", tariffs.size)
+                }
             }
         }
     }
@@ -38,12 +41,14 @@ class TariffApiE2ETest {
     fun missingParamReturnsBadRequest() {
         runBlocking {
             eventually(positiveConfig) {
-                val response = HttpClient.get(
-                    url = Endpoints.TARIFFS,
-                    baseUri = Endpoints.TARIFFS_BASE_URL
-                )
-                response.statusCode shouldBe 400
-                logger.info("Запрос без параметра 'all' вернул 400, как и ожидалось")
+                step("Запрос тарифов без параметра all") {
+                    val response = HttpClient.get(
+                        url = Endpoints.TARIFFS,
+                        baseUri = Endpoints.TARIFFS_BASE_URL
+                    )
+                    response.statusCode shouldBe 400
+                    logger.info("Запрос без параметра 'all' вернул 400, как и ожидалось")
+                }
             }
         }
     }
