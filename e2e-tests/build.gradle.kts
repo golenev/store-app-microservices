@@ -12,8 +12,10 @@ dependencies {
     implementation("io.rest-assured:kotlin-extensions:5.5.0")
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("org.apache.kafka:kafka-clients")
+    implementation("org.slf4j:slf4j-api")
     runtimeOnly("org.postgresql:postgresql")
     testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.0")
+    testImplementation("ch.qos.logback:logback-classic")
 
     testImplementation(kotlin("test"))
     testImplementation("io.kotest:kotest-assertions-core-jvm:5.9.1")
