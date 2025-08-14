@@ -15,7 +15,7 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @DisplayName("Проверка получения товара через Kafka")
-class KafkaTests {
+class KafkaTariffTest {
 
     private var barcodeId: Long = (10000000000..99999999999).random()
 

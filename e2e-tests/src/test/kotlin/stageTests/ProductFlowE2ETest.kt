@@ -1,42 +1,38 @@
 package stageTests
 
 import config.Database
+import config.HttpClient
 import constants.Endpoints
 import models.ProductPayload
-import io.kotest.assertions.timing.eventually
+import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
-import io.restassured.module.kotlin.extensions.Given
-import io.restassured.module.kotlin.extensions.When
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.springframework.jdbc.core.JdbcTemplate
 import java.math.BigDecimal
 import java.time.LocalDateTime
-import kotlin.time.Duration.Companion.seconds
+import positiveConfig
 
 @DisplayName("Проверка потока продукта на уровне e2e")
-class ProductFlowTest {
+class ProductFlowE2ETest {
 
-    private var product: ProductPayload? = null
+    private var barcodeId: Long = (10000000000..99999999999).random()
 
     @AfterEach
     fun cleanup() {
-        product?.let {
-            val template = Database.template()
-            template.update("DELETE FROM cart WHERE barcode_id = ?", it.barcodeId)
-            template.update("DELETE FROM product WHERE barcode_id = ?", it.barcodeId)
-        }
+        val template = Database.template()
+        template.update("DELETE FROM cart WHERE barcode_id = ?", barcodeId)
+        template.update("DELETE FROM product WHERE barcode_id = ?", barcodeId)
     }
 
     @Test
     @DisplayName("товар добавляется один раз и больше не добавляется")
     fun productAppearsInListAndCart() {
-        product = ProductPayload(
-            barcodeId = 999L,
+        val product = ProductPayload(
+            barcodeId = barcodeId,
             shortName = "Test product",
             description = "Desc",
             price = BigDecimal("10.00"),
@@ -45,69 +41,60 @@ class ProductFlowTest {
             isFoodstuff = false
         )
 
-        val tokenResponse = Given {
-            contentType("application/json")
-            body(mapOf("username" to "user", "password" to "qwerty"))
-        } When {
-            post(Endpoints.AUTH)
-        }
+        val tokenResponse = HttpClient.post(
+            url = Endpoints.AUTH,
+            body = mapOf("username" to "user", "password" to "qwerty")
+        )
         tokenResponse.statusCode shouldBeExactly 200
         val token = tokenResponse.jsonPath().getString("token")
 
-        val sendResponse = Given {
-            header("Authorization", token)
-            contentType("application/json")
-            body(product!!)
-        } When {
-            post(Endpoints.SEND_TO_KAFKA)
-        }
+        val sendResponse = HttpClient.post(
+            url = Endpoints.SEND_TO_KAFKA,
+            headers = mapOf("Authorization" to token),
+            body = product
+        )
         sendResponse.statusCode shouldBeExactly 200
 
         runBlocking {
-            eventually(20.seconds) {
-                val listResponse = Given {
-                    header("Authorization", token)
-                } When {
-                    get(Endpoints.PRODUCTS)
-                }
+            eventually(positiveConfig) {
+                val listResponse = HttpClient.get(
+                    url = Endpoints.PRODUCTS,
+                    headers = mapOf("Authorization" to token)
+                )
                 listResponse.statusCode shouldBeExactly 200
                 val barcodes = listResponse.jsonPath().getList<Long>("barcodeId")
-                barcodes.shouldContain(product!!.barcodeId)
+                barcodes.shouldContain(barcodeId)
             }
         }
 
-        val addResponse = Given {
-            header("Authorization", token)
-            contentType("application/json")
-            body(mapOf("barcodeId" to product!!.barcodeId))
-        } When {
-            post(Endpoints.CART)
-        }
+        val addResponse = HttpClient.post(
+            url = Endpoints.CART,
+            headers = mapOf("Authorization" to token),
+            body = mapOf("barcodeId" to barcodeId)
+        )
         addResponse.statusCode shouldBeExactly 200
 
         val template = Database.template()
         val qty = template.queryForObject(
             "SELECT quantity FROM cart WHERE barcode_id = ?",
             Int::class.java,
-            product!!.barcodeId
+            barcodeId
         )
 
         qty.shouldNotBeNull()
         qty shouldBeExactly 1
 
-        val repeatResponse = Given {
-            header("Authorization", token)
-            contentType("application/json")
-            body(mapOf("barcodeId" to product!!.barcodeId))
-        } When {
-            post(Endpoints.CART)
-        }
+        val repeatResponse = HttpClient.post(
+            url = Endpoints.CART,
+            headers = mapOf("Authorization" to token),
+            body = mapOf("barcodeId" to barcodeId)
+        )
         repeatResponse.statusCode shouldBeExactly 400
 
         val qtyAfter = template.queryForObject(
             "SELECT quantity FROM cart WHERE barcode_id = ?",
             Int::class.java,
-            product!!.barcodeId
+            barcodeId
         )
         qtyAfter shouldBeExactly 1
     }
