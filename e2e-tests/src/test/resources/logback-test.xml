@@ -5,6 +5,12 @@
         </encoder>
     </appender>
 
+    <logger name="org.apache.kafka.clients.producer.ProducerConfig" level="OFF"/>
+    <logger name="org.apache.kafka.common.utils.AppInfoParser" level="OFF"/>
+    <logger name="org.apache.kafka.clients.Metadata" level="OFF"/>
+    <logger name="org.apache.kafka.clients.producer.internals.TransactionManager" level="OFF"/>
+    <logger name="org.apache.kafka.common.metrics.Metrics" level="OFF"/>
+
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
     </root>

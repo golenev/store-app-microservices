@@ -28,7 +28,7 @@ class TariffApiE2ETest {
                 response.statusCode shouldBe 200
                 val tariffs = response.jsonPath().getList<Any>("$")
                 tariffs.shouldNotBeEmpty()
-                logger.info("Received {} tariffs", tariffs.size)
+                logger.info("Получено {} тарифов", tariffs.size)
             }
         }
     }
@@ -43,7 +43,7 @@ class TariffApiE2ETest {
                     baseUri = Endpoints.TARIFFS_BASE_URL
                 )
                 response.statusCode shouldBe 400
-                logger.info("Request without 'all' param returned 400 as expected")
+                logger.info("Запрос без параметра 'all' вернул 400, как и ожидалось")
             }
         }
     }

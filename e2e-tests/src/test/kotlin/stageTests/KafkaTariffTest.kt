@@ -23,7 +23,7 @@ class KafkaTariffTest {
     @AfterEach
     fun cleanup() {
         barcodeId.let {
-            logger.info("Cleaning up records for barcode {}", it)
+            logger.info("Удаляем записи для штрихкода {}", it)
             val template = Database.template()
             template.update("DELETE FROM cart WHERE barcode_id = ?", it)
             template.update("DELETE FROM product WHERE barcode_id = ?", it)
@@ -32,7 +32,7 @@ class KafkaTariffTest {
 
     private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
         payload.barcodeId = barcodeId
-        logger.info("Sending payload with barcode {} to Kafka", barcodeId)
+        logger.info("Отправляем сообщение со штрихкодом {} в Kafka", barcodeId)
         KafkaProducerImpl().sendMessage("send-topic", payload)
 
         val expectedPrice = payload.price.add(
@@ -49,7 +49,7 @@ class KafkaTariffTest {
                     )
 
                 price.compareTo(expectedPrice) shouldBe 0
-                logger.info("Verified price {} for barcode {}", price, barcodeId)
+                logger.info("Проверена цена {} для штрихкода {}", price, barcodeId)
             }
         }
     }

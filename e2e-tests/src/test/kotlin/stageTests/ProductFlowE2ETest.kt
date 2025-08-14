@@ -41,14 +41,14 @@ class ProductFlowE2ETest {
             addedAtTariffs = LocalDateTime.now().toString(),
             isFoodstuff = false
         )
-        logger.info("Generated product with barcode {}", barcodeId)
+        logger.info("Сгенерирован товар со штрихкодом {}", barcodeId)
         val tokenResponse = HttpClient.post(
             url = Endpoints.AUTH,
             body = mapOf("username" to "user", "password" to "qwerty")
         )
         tokenResponse.statusCode shouldBeExactly 200
         val token = tokenResponse.jsonPath().getString("token")
-        logger.info("Received auth token")
+        logger.info("Получен токен авторизации")
 
         val sendResponse = HttpClient.post(
             url = Endpoints.SEND_TO_KAFKA,
@@ -56,7 +56,7 @@ class ProductFlowE2ETest {
             body = product
         )
         sendResponse.statusCode shouldBeExactly 200
-        logger.info("Product sent to Kafka via API")
+        logger.info("Товар отправлен в Kafka через API")
 
         runBlocking {
             eventually(positiveConfig) {
@@ -67,7 +67,7 @@ class ProductFlowE2ETest {
                 listResponse.statusCode shouldBeExactly 200
                 val barcodes = listResponse.jsonPath().getList<Long>("barcodeId")
                 barcodes.shouldContain(barcodeId)
-                logger.info("Product with barcode {} appeared in product list", barcodeId)
+                logger.info("Товар со штрихкодом {} появился в списке товаров", barcodeId)
             }
         }
 
@@ -77,7 +77,7 @@ class ProductFlowE2ETest {
             body = mapOf("barcodeId" to barcodeId)
         )
         addResponse.statusCode shouldBeExactly 200
-        logger.info("Product added to cart")
+        logger.info("Товар добавлен в корзину")
 
         val template = Database.template()
         val qty = template.queryForObject(
@@ -88,7 +88,7 @@ class ProductFlowE2ETest {
 
         qty.shouldNotBeNull()
         qty shouldBeExactly 1
-        logger.info("Verified quantity 1 in cart for barcode {}", barcodeId)
+        logger.info("Проверено количество 1 в корзине для штрихкода {}", barcodeId)
 
         val repeatResponse = HttpClient.post(
             url = Endpoints.CART,
@@ -96,7 +96,7 @@ class ProductFlowE2ETest {
             body = mapOf("barcodeId" to barcodeId)
         )
         repeatResponse.statusCode shouldBeExactly 400
-        logger.info("Duplicate add to cart returned 400 as expected")
+        logger.info("Повторное добавление в корзину вернуло 400, как и ожидалось")
 
         val qtyAfter = template.queryForObject(
             "SELECT quantity FROM cart WHERE barcode_id = ?",
@@ -104,7 +104,7 @@ class ProductFlowE2ETest {
             barcodeId
         )
         qtyAfter shouldBeExactly 1
-        logger.info("Final quantity remains 1 for barcode {}", barcodeId)
+        logger.info("Итоговое количество остаётся 1 для штрихкода {}", barcodeId)
     }
 }
 

@@ -15,34 +15,34 @@ abstract class AbstractKafkaProducer(private val config: KafkaProps) {
         val json = try {
             if (message is String) message else mapper.writeValueAsString(message)
         } catch (e: Exception) {
-            logger.error("Failed to serialize message for topic {}: {}", topic, e.message, e)
+            logger.error("Не удалось сериализовать сообщение для топика {}: {}", topic, e.message, e)
             return
         }
         val key = UUID.randomUUID().toString()
-        logger.info("Preparing to send message to topic '{}' with key {}", topic, key)
+        logger.info("Подготовка к отправке сообщения в топик '{}' с ключом {}", topic, key)
         send(topic, key, json)
     }
 
     private fun send(topic: String, key: String, value: String) {
-        logger.info("Connecting to Kafka to send to topic '{}'", topic)
+        logger.info("Подключаемся к Kafka для отправки в топик '{}'", topic)
         KafkaProducer<String, String>(config.toProperties()).use { producer: Producer<String, String> ->
-            logger.info("Connected to Kafka, preparing record for topic '{}'", topic)
+            logger.info("Подключение к Kafka выполнено, создаём запись для топика '{}'", topic)
             val record = ProducerRecord(topic, key, value)
-            logger.debug("Record: key={} value={}", key, value)
+            logger.debug("Запись: key={} value={}", key, value)
             producer.send(record) { metadata, exception ->
                 if (exception != null) {
-                    logger.error("Failed to send message to topic '{}': {}", topic, exception.message, exception)
+                    logger.error("Не удалось отправить сообщение в топик '{}': {}", topic, exception.message, exception)
                 } else {
                     logger.info(
-                        "Message delivered to topic '{}' partition {} offset {}",
+                        "Сообщение доставлено в топик '{}' раздел {} смещение {}",
                         topic, metadata?.partition(), metadata?.offset()
                     )
                 }
             }
             producer.flush()
-            logger.info("Message flushed for topic '{}'", topic)
+            logger.info("Буфер продюсера очищен для топика '{}'", topic)
         }
-        logger.info("Kafka producer closed for topic '{}'", topic)
+        logger.info("Продюсер Kafka закрыт для топика '{}'", topic)
     }
 }
 
