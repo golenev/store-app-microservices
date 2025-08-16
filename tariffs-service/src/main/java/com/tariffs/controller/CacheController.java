@@ -17,14 +17,14 @@ public class CacheController {
     }
 
     @PostMapping("/resetCache")
-    public ResponseEntity<Void> resetCache(@RequestParam(required = false) Boolean now) {
+    public ResponseEntity<String> resetCache(@RequestParam(required = false) Boolean now) {
         if (now == null || !now) {
             log.warn("Cache reset requested without now=true");
             return ResponseEntity.badRequest().build();
         }
         service.resetCache();
         log.info("Tariff cache reset via API");
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok("выполнен сброс кэша");
     }
 }
 

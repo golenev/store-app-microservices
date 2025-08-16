@@ -76,8 +76,12 @@ class TariffServiceCacheTest {
         restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
 
         // reset cache via API
-        var resetResp = restTemplate.postForEntity("http://localhost:" + port + "/api/v1/resetCache?now=true", null, Void.class);
+        var resetResp = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/v1/resetCache?now=true",
+                null,
+                String.class);
         assertThat(resetResp.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(resetResp.getBody()).isEqualTo("выполнен сброс кэша");
 
         long start = System.currentTimeMillis();
         var afterResetFirst = restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
