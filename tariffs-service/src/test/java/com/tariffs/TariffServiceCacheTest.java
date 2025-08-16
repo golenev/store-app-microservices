@@ -66,4 +66,30 @@ class TariffServiceCacheTest {
         assertThat(firstDuration).isGreaterThanOrEqualTo(5000);
         assertThat(secondDuration).isLessThan(firstDuration);
     }
+
+    @Test
+    void cacheResetForcesNextCallToHitDb() {
+        repository.save(new Tariff("reset", BigDecimal.TEN));
+
+        // warm up cache
+        restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
+        restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
+
+        // reset cache via API
+        var resetResp = restTemplate.postForEntity("http://localhost:" + port + "/api/v1/resetCache?now=true", null, Void.class);
+        assertThat(resetResp.getStatusCode().is2xxSuccessful()).isTrue();
+
+        long start = System.currentTimeMillis();
+        var afterResetFirst = restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
+        long firstDuration = System.currentTimeMillis() - start;
+        assertThat(afterResetFirst.getStatusCode().is2xxSuccessful()).isTrue();
+
+        start = System.currentTimeMillis();
+        var afterResetSecond = restTemplate.getForEntity("http://localhost:" + port + "/tariffs?all=true", Tariff[].class);
+        long secondDuration = System.currentTimeMillis() - start;
+        assertThat(afterResetSecond.getStatusCode().is2xxSuccessful()).isTrue();
+
+        assertThat(firstDuration).isGreaterThanOrEqualTo(5000);
+        assertThat(secondDuration).isLessThan(firstDuration);
+    }
 }
