@@ -17,13 +17,11 @@ spring:
     driverClassName: org.postgresql.Driver
     username: myuser
     password: mypassword
-    jpa:
-      hibernate:
-        ddl-auto: update
   data:
     redis:
-      host: localhost
+      host: redis
       port: 6379
 
 server:
   port: 6790
+

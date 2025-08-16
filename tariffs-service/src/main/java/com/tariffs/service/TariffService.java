@@ -21,12 +21,17 @@ public class TariffService {
 
     @Cacheable("tariffs") // кэширует список тарифов в кеше "tariffs"
     public List<Tariff> findAll() {
+        simulateBusinessLogicDelay();
+        return repository.findAll();
+    }
+
+    private void simulateBusinessLogicDelay() {
+        log.info("Пауза 5 секунд: имитация долгой бизнес-логики перед чтением тарифов");
         try {
-            Thread.sleep(5000); // имитация длительной бизнес-логики
+            Thread.sleep(5000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        return repository.findAll();
     }
 
     @CacheEvict(value = "tariffs", allEntries = true) // очищает весь кэш "tariffs" при создании
