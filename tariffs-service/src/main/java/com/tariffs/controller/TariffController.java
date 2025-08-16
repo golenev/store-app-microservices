@@ -1,7 +1,7 @@
 package com.tariffs.controller;
 
 import com.tariffs.entity.Tariff;
-import com.tariffs.repository.TariffRepository;
+import com.tariffs.service.TariffService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,10 +11,10 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 public class TariffController {
 
-    private final TariffRepository repository;
+    private final TariffService service;
 
-    public TariffController(TariffRepository repository) {
-        this.repository = repository;
+    public TariffController(TariffService service) {
+        this.service = service;
     }
 
     @GetMapping
@@ -23,32 +23,28 @@ public class TariffController {
             log.warn("Request without required parameter 'all'");
             return ResponseEntity.badRequest().body("Required parameter must be present");
         }
-        var tariffs = repository.findAll();
+        var tariffs = service.findAll();
         log.info("Returning {} tariffs", tariffs.size());
         return ResponseEntity.ok(tariffs);
     }
 
     @PostMapping
     public Tariff create(@RequestBody Tariff tariff) {
-        return repository.save(tariff);
+        return service.create(tariff);
     }
 
     @PutMapping("/{productType}")
     public ResponseEntity<Tariff> update(@PathVariable String productType, @RequestBody Tariff tariff) {
-        return repository.findById(productType)
-                .map(existing -> {
-                    existing.setMarkupCoefficient(tariff.getMarkupCoefficient());
-                    return ResponseEntity.ok(repository.save(existing));
-                })
+        return service.update(productType, tariff)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{productType}")
     public ResponseEntity<Void> delete(@PathVariable String productType) {
-        if (!repository.existsById(productType)) {
-            return ResponseEntity.notFound().build();
+        if (service.delete(productType)) {
+            return ResponseEntity.noContent().build();
         }
-        repository.deleteById(productType);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.notFound().build();
     }
 }
