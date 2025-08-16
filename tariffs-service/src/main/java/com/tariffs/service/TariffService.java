@@ -57,6 +57,11 @@ public class TariffService {
         return true;
     }
 
+    @CacheEvict(value = "tariffs", allEntries = true) // очищает кэш по запросу
+    public void resetCache() {
+        log.info("Tariff cache reset on demand");
+    }
+
     @Scheduled(cron = "0 0 6 * * *") // запускает метод ежедневно в 6:00
     @CacheEvict(value = "tariffs", allEntries = true) // очищает кэш, чтобы следующий запрос перечитал БД
     public void clearCache() {
