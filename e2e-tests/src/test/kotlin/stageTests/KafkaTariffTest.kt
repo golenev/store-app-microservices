@@ -1,9 +1,13 @@
 package stageTests
 
 import config.Database
+import config.HttpClient
+import constants.Endpoints
 import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.longs.shouldBeGreaterThan
+import io.kotest.matchers.longs.shouldBeLessThan
 import kotlinx.coroutines.runBlocking
 import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
@@ -14,6 +18,7 @@ import positiveConfig
 import testUtil.KafkaProducerImpl
 import java.math.BigDecimal
 import java.time.LocalDateTime
+import kotlin.system.measureTimeMillis
 
 @DisplayName("Проверка получения товара через Kafka")
 class KafkaTariffTest {
@@ -179,6 +184,48 @@ class KafkaTariffTest {
             ),
             BigDecimal.valueOf(20)
         )
+        }
+    }
+
+    @Test
+    @DisplayName("первый запрос тарифов медленный, повторный быстрый")
+    fun tariffsCacheTimeTest() {
+        runBlocking {
+            eventually(positiveConfig) {
+                step("Сброс кэша тарифов") {
+                    val response = HttpClient.post(
+                        url = "/api/v1/resetCache?now=true",
+                        baseUri = Endpoints.TARIFFS_BASE_URL
+                    )
+                    response.statusCode shouldBe 200
+                }
+
+                step("Первый запрос тарифов занимает более 5 секунд") {
+                    val duration = measureTimeMillis {
+                        val resp = HttpClient.get(
+                            url = Endpoints.TARIFFS,
+                            params = mapOf("all" to true),
+                            baseUri = Endpoints.TARIFFS_BASE_URL
+                        )
+                        resp.statusCode shouldBe 200
+                    }
+                    duration.shouldBeGreaterThan(5000)
+                    logger.info("Первый запрос занял {} мс", duration)
+                }
+
+                step("Повторный запрос тарифов быстрее 5 секунд") {
+                    val duration = measureTimeMillis {
+                        val resp = HttpClient.get(
+                            url = Endpoints.TARIFFS,
+                            params = mapOf("all" to true),
+                            baseUri = Endpoints.TARIFFS_BASE_URL
+                        )
+                        resp.statusCode shouldBe 200
+                    }
+                    duration.shouldBeLessThan(5000)
+                    logger.info("Повторный запрос занял {} мс", duration)
+                }
+            }
         }
     }
 }
