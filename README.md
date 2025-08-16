@@ -15,7 +15,7 @@
 - **WireMock** – эмуляция внешних сервисов в интеграционных тестах.
 - **Docker Compose** – запуск инфраструктуры (PostgreSQL, Kafka, Redis, консоли Kafdrop и Redpanda).
 - **Testcontainers** – изолированные интеграционные тесты.
-- **Kotlin, JUnit 5, Kotest, Rest Assured, Allure** – e2e‑тесты и отчётность.
+- **Kotlin, JUnit 5, Kotest, Rest Assured, Spring JDBC, Allure** – e2e‑тесты и отчётность.
 
 ## Запуск
 1. Клонируйте репозиторий
