@@ -19,7 +19,7 @@ spring:
     password: mypassword
   data:
     redis:
-      host: redis
+      host: ${REDIS_HOST:localhost}
       port: 6379
 
 server:
