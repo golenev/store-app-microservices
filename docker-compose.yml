@@ -39,6 +39,10 @@ services:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
       POSTGRES_DB: tariffs_db
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:latest
     container_name: redpanda-ui
