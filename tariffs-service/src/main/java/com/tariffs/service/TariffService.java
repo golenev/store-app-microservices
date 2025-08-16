@@ -5,7 +5,6 @@ import com.tariffs.repository.TariffRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -22,6 +21,11 @@ public class TariffService {
 
     @Cacheable("tariffs") // кэширует список тарифов в кеше "tariffs"
     public List<Tariff> findAll() {
+        try {
+            Thread.sleep(5000); // имитация длительной бизнес-логики
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         return repository.findAll();
     }
 
@@ -49,9 +53,8 @@ public class TariffService {
     }
 
     @Scheduled(cron = "0 0 6 * * *") // запускает метод ежедневно в 6:00
-    @CachePut("tariffs") // обновляет значение кэша "tariffs" данными из БД
-    public List<Tariff> refreshCache() {
-        log.info("Refreshing tariffs cache from DB");
-        return repository.findAll();
+    @CacheEvict(value = "tariffs", allEntries = true) // очищает кэш, чтобы следующий запрос перечитал БД
+    public void clearCache() {
+        log.info("Evicting tariffs cache at 6 AM");
     }
 }
