@@ -5,9 +5,9 @@ import config.HttpClient
 import constants.Endpoints
 import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeLessThan
+import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
@@ -190,8 +190,6 @@ class KafkaTariffTest {
     @Test
     @DisplayName("первый запрос тарифов медленный, повторный быстрый")
     fun tariffsCacheTimeTest() {
-        runBlocking {
-            eventually(positiveConfig) {
                 step("Сброс кэша тарифов") {
                     val response = HttpClient.post(
                         url = "/api/v1/resetCache?now=true",
@@ -226,7 +224,5 @@ class KafkaTariffTest {
                     logger.info("Повторный запрос занял {} мс", duration)
                 }
             }
-        }
-    }
 }
 
