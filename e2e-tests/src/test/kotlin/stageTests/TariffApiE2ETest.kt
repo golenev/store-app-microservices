@@ -16,30 +16,30 @@ class TariffApiE2ETest {
     @Test
     @DisplayName("возвращает тарифы в формате JSON")
     fun returnsTariffsAsJson() {
-                    step("Запрос тарифов с параметром all=true") {
-                    val response = HttpClient.get(
-                        url = Endpoints.TARIFFS,
-                        params = mapOf("all" to true),
-                        baseUri = Endpoints.TARIFFS_BASE_URL
-                    )
-                    response.statusCode shouldBe 200
-                    val tariffs = response.jsonPath().getList<Any>("$")
-                    tariffs.shouldNotBeEmpty()
-                    logger.info("Получено {} тарифов", tariffs.size)
-                }
+        step("Выполняем GET ${Endpoints.TARIFFS}?all=true и ожидаем непустой список тарифов") {
+            val response = HttpClient.get(
+                url = Endpoints.TARIFFS,
+                params = mapOf("all" to true),
+                baseUri = Endpoints.TARIFFS_BASE_URL
+            )
+            response.statusCode shouldBe 200
+            val tariffs = response.jsonPath().getList<Any>("$")
+            tariffs.shouldNotBeEmpty()
+            logger.info("Получено {} тарифов", tariffs.size)
+        }
     }
 
     @Test
     @DisplayName("без параметра all получаем 400")
     fun missingParamReturnsBadRequest() {
-                step("Запрос тарифов без параметра all") {
-                    val response = HttpClient.get(
-                        url = Endpoints.TARIFFS,
-                        baseUri = Endpoints.TARIFFS_BASE_URL
-                    )
-                    response.statusCode shouldBe 400
-                    logger.info("Запрос без параметра 'all' вернул 400, как и ожидалось")
-                }
+        step("Выполняем GET ${Endpoints.TARIFFS} без параметра all и ожидаем код 400") {
+            val response = HttpClient.get(
+                url = Endpoints.TARIFFS,
+                baseUri = Endpoints.TARIFFS_BASE_URL
+            )
+            response.statusCode shouldBe 400
+            logger.info("Запрос без параметра 'all' вернул 400, как и ожидалось")
+        }
     }
 }
 
