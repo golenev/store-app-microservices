@@ -6,6 +6,7 @@ object Endpoints {
     const val SEND_TO_KAFKA = "/api/v1/sendToKafka"
     const val PRODUCTS = "/api/v1/products"
     const val CART = "/api/cart"
+    const val ORDER = "/order"
 
     const val TARIFFS_BASE_URL = "http://localhost:6790"
     const val TARIFFS = "/tariffs"
