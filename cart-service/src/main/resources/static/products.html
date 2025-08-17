@@ -62,7 +62,16 @@
         }
 
         #cart {
-            margin-top: 40px;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 320px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
         .cart-item {
@@ -99,8 +108,19 @@
             text-align: center;
         }
 
-        #cart > button {
-            margin: 10px 10px 20px 0;
+        .cart-total {
+            margin-top: 10px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .cart-actions {
+            margin-top: 10px;
+            text-align: right;
+        }
+
+        .cart-actions button {
+            margin-left: 10px;
             padding: 10px 16px;
             cursor: pointer;
             background-color: #0071e3;
@@ -110,7 +130,7 @@
             font-size: 14px;
         }
 
-        #cart > button:disabled {
+        .cart-actions button:disabled {
             background-color: #d2d2d7;
             cursor: not-allowed;
             opacity: 0.6;
@@ -215,27 +235,27 @@
                 .then(response => response.json())
                 .then(cartItems => {
                     const cartContainer = document.getElementById('cart');
-                    // Заголовок + кнопка очистки
-                    cartContainer.innerHTML = `
-                        <h2>Корзина</h2>
-                        <button onclick="clearCart()">Очистить корзину</button>
-                        <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
-                    `;
+                    cartContainer.innerHTML = '<h2>Корзина</h2>';
 
                     cartData.clear();
-                    const orderBtn = document.getElementById('order-btn');
 
                     // Если пусто
                     if (cartItems.length === 0) {
-                        orderBtn.disabled = true;
-                        cartContainer.innerHTML += '<p>Корзина пуста.</p>';
+                        const actions = document.createElement('div');
+                        actions.className = 'cart-actions';
+                        actions.innerHTML = `
+                            <button onclick="clearCart()" disabled>Очистить корзину</button>
+                            <button id="order-btn" disabled onclick="createOrder()">Оформить заказ</button>
+                        `;
+                        cartContainer.appendChild(actions);
+                        const emptyMsg = document.createElement('p');
+                        emptyMsg.textContent = 'Корзина пуста.';
+                        cartContainer.appendChild(emptyMsg);
                         updateProductButtons();
                         return;
                     }
 
-                    orderBtn.disabled = false;
-
-                    // Иначе рисуем элементы
+                    // Рисуем элементы
                     cartItems.forEach(item => {
                         cartData.set(item.barcodeId, item.quantity);
                         const product = productsData.get(item.barcodeId) || { quantity: 0 };
@@ -247,17 +267,43 @@
                             <div class="cart-counter">
                                 <button onclick="changeQuantity(${item.barcodeId}, -1)">−</button>
                                 <span>${item.quantity}</span>
-                                <button ${plusDisabled} onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
+                                <button class="cart-plus" data-barcode="${item.barcodeId}" ${plusDisabled} onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
                             </div>
                             <span class="cart-price">${item.price} руб.</span>
                         `;
                         cartContainer.appendChild(itemDiv);
                     });
+
+                    const totalPrice = cartItems.reduce((sum, item) => sum + Number(item.total), 0);
+                    const totalDiv = document.createElement('div');
+                    totalDiv.className = 'cart-total';
+                    totalDiv.textContent = `Итого: ${totalPrice} руб.`;
+                    cartContainer.appendChild(totalDiv);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'cart-actions';
+                    actions.innerHTML = `
+                        <button onclick="clearCart()">Очистить корзину</button>
+                        <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
+                    `;
+                    cartContainer.appendChild(actions);
+
                     updateProductButtons();
+                    updateCartPlusButtons();
                 })
                 .catch(error => {
                     console.error('Ошибка при загрузке корзины:', error);
                 });
+        }
+
+        function updateCartPlusButtons() {
+            cartData.forEach((qty, barcodeId) => {
+                const product = productsData.get(barcodeId);
+                const btn = document.querySelector(`#cart button.cart-plus[data-barcode="${barcodeId}"]`);
+                if (btn && product) {
+                    btn.disabled = qty >= product.quantity;
+                }
+            });
         }
 
         function changeQuantity(barcodeId, delta) {
