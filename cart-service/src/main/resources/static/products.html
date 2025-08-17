@@ -65,6 +65,57 @@
             margin-top: 40px;
         }
 
+        .cart-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-top: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cart-item .cart-counter {
+            display: flex;
+            align-items: center;
+        }
+
+        .cart-item .cart-counter button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background-color: #e5e5ea;
+            color: #000;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .cart-item .cart-counter span {
+            margin: 0 8px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        #cart > button {
+            margin: 10px 10px 20px 0;
+            padding: 10px 16px;
+            cursor: pointer;
+            background-color: #0071e3;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        #cart > button:disabled {
+            background-color: #d2d2d7;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
         #loader {
             display: none;
             border: 4px solid #f3f3f3;
@@ -154,7 +205,7 @@
                 });
         }
 
-       function loadCart() {
+        function loadCart() {
         return fetch('/api/cart', { headers: { 'Authorization': token } })
             .then(response => response.json())
             .then(cartItems => {
@@ -180,8 +231,15 @@
                 // Иначе рисуем элементы
                 cartItems.forEach(item => {
                     const itemDiv = document.createElement('div');
+                    itemDiv.className = 'cart-item';
                     itemDiv.innerHTML = `
-                        <p>${item.shortName} — ${item.quantity} шт. x ${item.price} руб.</p>
+                        <span class="cart-title">${item.shortName}</span>
+                        <div class="cart-counter">
+                            <button onclick="changeQuantity(${item.barcodeId}, -1)">−</button>
+                            <span>${item.quantity}</span>
+                            <button onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
+                        </div>
+                        <span class="cart-price">${item.price} руб.</span>
                     `;
                     cartContainer.appendChild(itemDiv);
                 });
@@ -190,6 +248,25 @@
                 console.error('Ошибка при загрузке корзины:', error);
             });
       }
+
+        function changeQuantity(barcodeId, delta) {
+            const url = delta > 0 ? '/api/cart' : '/api/cart/decrement';
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token
+                },
+                body: JSON.stringify({ barcodeId: barcodeId })
+            })
+            .then(res => {
+                if (!res.ok) return res.text().then(t => { throw new Error(t) });
+                return loadCart();
+            })
+            .catch(err => {
+                console.error('Ошибка при изменении количества:', err);
+            });
+        }
 
         function showLoader() {
             document.getElementById('loader').style.display = 'block';

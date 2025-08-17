@@ -1,11 +1,11 @@
 package com.experience_kafka.controller;
 
 import com.experience_kafka.model.AddToCartRequest;
-import com.experience_kafka.model.CartView;
 import com.experience_kafka.entity.Product;
 import com.experience_kafka.repository.CartItemRepository;
 import com.experience_kafka.entity.CartItem;
 import com.experience_kafka.service.ProductService;
+import com.experience_kafka.model.CartView;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -61,8 +61,24 @@ public class CartController {
                     BigDecimal price = product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
                     int quantity = item.getQuantity();
                     BigDecimal total = price.multiply(BigDecimal.valueOf(quantity));
-                    return new CartView(product.getShortName(), price, quantity, total);
+                    return new CartView(item.getBarcodeId(), product.getShortName(), price, quantity, total);
                 })
                 .toList();
+    }
+
+    @PostMapping("/decrement")
+    public void decrementFromCart(@Valid @RequestBody AddToCartRequest req) {
+        Long barcode = req.barcodeId();
+        cartRepository.findById(barcode)
+                .ifPresentOrElse(item -> {
+                    if (item.getQuantity() <= 1) {
+                        cartRepository.delete(item);
+                    } else {
+                        item.setQuantity(item.getQuantity() - 1);
+                        cartRepository.save(item);
+                    }
+                }, () -> {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not in cart");
+                });
     }
 }
