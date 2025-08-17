@@ -138,29 +138,35 @@
             window.location.href = '/login.html';
         }
 
-        document.addEventListener("DOMContentLoaded", function () {
-            loadProducts();
-            loadCart();
+        const productsData = new Map();
+        const cartData = new Map();
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            await loadProducts();
+            await loadCart();
         });
 
         function loadProducts() {
-            fetch('/api/v1/products', { headers: { 'Authorization': token } })
+            return fetch('/api/v1/products', { headers: { 'Authorization': token } })
                 .then(response => response.json())
                 .then(products => {
                     const container = document.getElementById('product-list');
                     container.innerHTML = '';
+                    productsData.clear();
                     products.forEach(product => {
+                        productsData.set(product.barcodeId, product);
+                        const inCart = cartData.get(product.barcodeId) || 0;
+                        const availableText = product.quantity > 0 ? `В наличии ${product.quantity} шт.` : 'Нет в наличии';
+                        const disabledAttr = (product.quantity - inCart) > 0 ? '' : 'disabled';
                         const productDiv = document.createElement('div');
                         productDiv.className = 'product-item';
-                        const availableText = product.quantity > 0 ? `В наличии ${product.quantity} шт.` : 'Нет в наличии';
-                        const disabledAttr = product.quantity > 0 ? '' : 'disabled';
                         productDiv.innerHTML = `
                             <h3>${product.shortName}</h3>
                             <p>Штрихкод: ${product.barcodeId}</p>
                             <p>${product.description}</p>
                             <p><strong>${product.price} руб.</strong></p>
                             <p class="stock">${availableText}</p>
-                            <button ${disabledAttr} onclick="addToCart(this, ${product.barcodeId})">Купить</button>
+                            <button data-barcode="${product.barcodeId}" ${disabledAttr} onclick="addToCart(this, ${product.barcodeId})">Купить</button>
                         `;
                         container.appendChild(productDiv);
                     });
@@ -184,7 +190,7 @@
                     button.disabled = true;
                     return response.text().then(text => { throw new Error(text) });
                 }
-                loadCart();
+                return loadCart();
             })
             .catch(error => {
                 console.error('Ошибка при добавлении в корзину:', error);
@@ -196,7 +202,6 @@
             fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } })
                 .then(res => {
                     if (!res.ok) return res.text().then(t => { throw new Error(t) });
-                    return res.text();
                 })
                 .then(() => loadCart())
                 .catch(err => {
@@ -206,48 +211,54 @@
         }
 
         function loadCart() {
-        return fetch('/api/cart', { headers: { 'Authorization': token } })
-            .then(response => response.json())
-            .then(cartItems => {
-                const cartContainer = document.getElementById('cart');
-                // Заголовок + кнопка очистки
-                cartContainer.innerHTML = `
-                    <h2>Корзина</h2>
-                    <button onclick="clearCart()">Очистить корзину</button>
-                    <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
-                `;
-
-                const orderBtn = document.getElementById('order-btn');
-
-                // Если пусто
-                if (cartItems.length === 0) {
-                    orderBtn.disabled = true;
-                    cartContainer.innerHTML += '<p>Корзина пуста.</p>';
-                    return;
-                }
-
-                orderBtn.disabled = false;
-
-                // Иначе рисуем элементы
-                cartItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'cart-item';
-                    itemDiv.innerHTML = `
-                        <span class="cart-title">${item.shortName}</span>
-                        <div class="cart-counter">
-                            <button onclick="changeQuantity(${item.barcodeId}, -1)">−</button>
-                            <span>${item.quantity}</span>
-                            <button onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
-                        </div>
-                        <span class="cart-price">${item.price} руб.</span>
+            return fetch('/api/cart', { headers: { 'Authorization': token } })
+                .then(response => response.json())
+                .then(cartItems => {
+                    const cartContainer = document.getElementById('cart');
+                    // Заголовок + кнопка очистки
+                    cartContainer.innerHTML = `
+                        <h2>Корзина</h2>
+                        <button onclick="clearCart()">Очистить корзину</button>
+                        <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
                     `;
-                    cartContainer.appendChild(itemDiv);
+
+                    cartData.clear();
+                    const orderBtn = document.getElementById('order-btn');
+
+                    // Если пусто
+                    if (cartItems.length === 0) {
+                        orderBtn.disabled = true;
+                        cartContainer.innerHTML += '<p>Корзина пуста.</p>';
+                        updateProductButtons();
+                        return;
+                    }
+
+                    orderBtn.disabled = false;
+
+                    // Иначе рисуем элементы
+                    cartItems.forEach(item => {
+                        cartData.set(item.barcodeId, item.quantity);
+                        const product = productsData.get(item.barcodeId) || { quantity: 0 };
+                        const plusDisabled = item.quantity >= product.quantity ? 'disabled' : '';
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'cart-item';
+                        itemDiv.innerHTML = `
+                            <span class="cart-title">${item.shortName}</span>
+                            <div class="cart-counter">
+                                <button onclick="changeQuantity(${item.barcodeId}, -1)">−</button>
+                                <span>${item.quantity}</span>
+                                <button ${plusDisabled} onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
+                            </div>
+                            <span class="cart-price">${item.price} руб.</span>
+                        `;
+                        cartContainer.appendChild(itemDiv);
+                    });
+                    updateProductButtons();
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке корзины:', error);
                 });
-            })
-            .catch(error => {
-                console.error('Ошибка при загрузке корзины:', error);
-            });
-      }
+        }
 
         function changeQuantity(barcodeId, delta) {
             const url = delta > 0 ? '/api/cart' : '/api/cart/decrement';
@@ -265,6 +276,16 @@
             })
             .catch(err => {
                 console.error('Ошибка при изменении количества:', err);
+            });
+        }
+
+        function updateProductButtons() {
+            productsData.forEach((product, barcodeId) => {
+                const inCart = cartData.get(barcodeId) || 0;
+                const btn = document.querySelector(`button[data-barcode="${barcodeId}"]`);
+                if (btn) {
+                    btn.disabled = inCart >= product.quantity || product.quantity <= 0;
+                }
             });
         }
 
@@ -315,6 +336,7 @@
                         return fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } });
                     })
                     .then(() => loadCart())
+                    .then(() => loadProducts())
                     .then(() => {
                         alert('Заказ создан');
                     })
@@ -325,7 +347,6 @@
                     .finally(() => hideLoader());
                 });
         }
-
     </script>
 </head>
 <body>
