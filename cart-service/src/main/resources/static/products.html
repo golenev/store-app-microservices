@@ -5,50 +5,142 @@
     <title>Продукты</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            margin: 0;
             padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+                Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
         }
 
         #product-list {
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
+            justify-content: center;
         }
 
         .product-item {
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            padding: 16px;
-            width: 200px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            width: 220px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
         }
 
         .product-item h3 {
             margin: 0 0 10px 0;
+            font-weight: 600;
         }
 
         .product-item p {
             margin: 5px 0;
         }
 
+        .product-item p.stock {
+            color: #6e6e73;
+            font-size: 14px;
+        }
+
         .product-item button {
             margin-top: 10px;
-            padding: 8px 12px;
+            padding: 10px 16px;
             cursor: pointer;
-            background-color: #007bff;
-            color: white;
+            background-color: #0071e3;
+            color: #fff;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
+            font-size: 14px;
         }
 
         .product-item button:disabled {
-            background-color: #cccccc;
+            background-color: #d2d2d7;
             cursor: not-allowed;
+            color: #fff;
             opacity: 0.6;
         }
 
         #cart {
-            margin-top: 40px;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 320px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cart-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-top: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cart-item .cart-counter {
+            display: flex;
+            align-items: center;
+        }
+
+        .cart-item .cart-counter button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background-color: #e5e5ea;
+            color: #000;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .cart-item .cart-counter button:disabled {
+            background-color: #d2d2d7;
+            color: #fff;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .cart-item .cart-counter span {
+            margin: 0 8px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .cart-total {
+            margin-top: 10px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .cart-actions {
+            margin-top: 10px;
+            text-align: right;
+        }
+
+        .cart-actions button {
+            margin-left: 10px;
+            padding: 10px 16px;
+            cursor: pointer;
+            background-color: #0071e3;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .cart-actions button:disabled {
+            background-color: #d2d2d7;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
 
         #loader {
@@ -73,18 +165,26 @@
             window.location.href = '/login.html';
         }
 
-        document.addEventListener("DOMContentLoaded", function () {
-            loadProducts();
-            loadCart();
+        const productsData = new Map();
+        const cartData = new Map();
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            await loadProducts();
+            await loadCart();
         });
 
         function loadProducts() {
-            fetch('/api/v1/products', { headers: { 'Authorization': token } })
+            return fetch('/api/v1/products', { headers: { 'Authorization': token } })
                 .then(response => response.json())
                 .then(products => {
                     const container = document.getElementById('product-list');
                     container.innerHTML = '';
+                    productsData.clear();
                     products.forEach(product => {
+                        productsData.set(product.barcodeId, product);
+                        const inCart = cartData.get(product.barcodeId) || 0;
+                        const availableText = product.quantity > 0 ? `В наличии ${product.quantity} шт.` : 'Нет в наличии';
+                        const disabledAttr = (product.quantity - inCart) > 0 ? '' : 'disabled';
                         const productDiv = document.createElement('div');
                         productDiv.className = 'product-item';
                         productDiv.innerHTML = `
@@ -92,7 +192,8 @@
                             <p>Штрихкод: ${product.barcodeId}</p>
                             <p>${product.description}</p>
                             <p><strong>${product.price} руб.</strong></p>
-                            <button onclick="addToCart(this, ${product.barcodeId})">Купить</button>
+                            <p class="stock">${availableText}</p>
+                            <button data-barcode="${product.barcodeId}" ${disabledAttr} onclick="addToCart(this, ${product.barcodeId})">Купить</button>
                         `;
                         container.appendChild(productDiv);
                     });
@@ -116,7 +217,7 @@
                     button.disabled = true;
                     return response.text().then(text => { throw new Error(text) });
                 }
-                loadCart();
+                return loadCart();
             })
             .catch(error => {
                 console.error('Ошибка при добавлении в корзину:', error);
@@ -128,7 +229,6 @@
             fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } })
                 .then(res => {
                     if (!res.ok) return res.text().then(t => { throw new Error(t) });
-                    return res.text();
                 })
                 .then(() => loadCart())
                 .catch(err => {
@@ -137,42 +237,110 @@
                 });
         }
 
-       function loadCart() {
-        return fetch('/api/cart', { headers: { 'Authorization': token } })
-            .then(response => response.json())
-            .then(cartItems => {
-                const cartContainer = document.getElementById('cart');
-                // Заголовок + кнопка очистки
-                cartContainer.innerHTML = `
-                    <h2>Корзина</h2>
-                    <button onclick="clearCart()">Очистить корзину</button>
-                    <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
-                `;
+        function loadCart() {
+            return fetch('/api/cart', { headers: { 'Authorization': token } })
+                .then(response => response.json())
+                .then(cartItems => {
+                    const cartContainer = document.getElementById('cart');
+                    cartContainer.innerHTML = '<h2>Корзина</h2>';
 
-                const orderBtn = document.getElementById('order-btn');
+                    cartData.clear();
 
-                // Если пусто
-                if (cartItems.length === 0) {
-                    orderBtn.disabled = true;
-                    cartContainer.innerHTML += '<p>Корзина пуста.</p>';
-                    return;
-                }
+                    // Если пусто
+                    if (cartItems.length === 0) {
+                        const actions = document.createElement('div');
+                        actions.className = 'cart-actions';
+                        actions.innerHTML = `
+                            <button onclick="clearCart()" disabled>Очистить корзину</button>
+                            <button id="order-btn" disabled onclick="createOrder()">Оформить заказ</button>
+                        `;
+                        cartContainer.appendChild(actions);
+                        const emptyMsg = document.createElement('p');
+                        emptyMsg.textContent = 'Корзина пуста.';
+                        cartContainer.appendChild(emptyMsg);
+                        updateProductButtons();
+                        return;
+                    }
 
-                orderBtn.disabled = false;
+                    // Рисуем элементы
+                    cartItems.forEach(item => {
+                        cartData.set(item.barcodeId, item.quantity);
+                        const product = productsData.get(item.barcodeId) || { quantity: 0 };
+                        const plusDisabled = item.quantity >= product.quantity ? 'disabled' : '';
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'cart-item';
+                        itemDiv.innerHTML = `
+                            <span class="cart-title">${item.shortName}</span>
+                            <div class="cart-counter">
+                                <button onclick="changeQuantity(${item.barcodeId}, -1)">−</button>
+                                <span>${item.quantity}</span>
+                                <button class="cart-plus" data-barcode="${item.barcodeId}" ${plusDisabled} onclick="changeQuantity(${item.barcodeId}, 1)">+</button>
+                            </div>
+                            <span class="cart-price">${item.price} руб.</span>
+                        `;
+                        cartContainer.appendChild(itemDiv);
+                    });
 
-                // Иначе рисуем элементы
-                cartItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.innerHTML = `
-                        <p>${item.shortName} — ${item.quantity} шт. x ${item.price} руб.</p>
+                    const totalPrice = cartItems.reduce((sum, item) => sum + Number(item.total), 0);
+                    const totalDiv = document.createElement('div');
+                    totalDiv.className = 'cart-total';
+                    totalDiv.textContent = `Итого: ${totalPrice} руб.`;
+                    cartContainer.appendChild(totalDiv);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'cart-actions';
+                    actions.innerHTML = `
+                        <button onclick="clearCart()">Очистить корзину</button>
+                        <button id="order-btn" onclick="createOrder()">Оформить заказ</button>
                     `;
-                    cartContainer.appendChild(itemDiv);
+                    cartContainer.appendChild(actions);
+
+                    updateProductButtons();
+                    updateCartPlusButtons();
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке корзины:', error);
                 });
-            })
-            .catch(error => {
-                console.error('Ошибка при загрузке корзины:', error);
+        }
+
+        function updateCartPlusButtons() {
+            cartData.forEach((qty, barcodeId) => {
+                const product = productsData.get(barcodeId);
+                const btn = document.querySelector(`#cart button.cart-plus[data-barcode="${barcodeId}"]`);
+                if (btn && product) {
+                    btn.disabled = qty >= product.quantity;
+                }
             });
-      }
+        }
+
+        function changeQuantity(barcodeId, delta) {
+            const url = delta > 0 ? '/api/cart' : '/api/cart/decrement';
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token
+                },
+                body: JSON.stringify({ barcodeId: barcodeId })
+            })
+            .then(res => {
+                if (!res.ok) return res.text().then(t => { throw new Error(t) });
+                return loadCart();
+            })
+            .catch(err => {
+                console.error('Ошибка при изменении количества:', err);
+            });
+        }
+
+        function updateProductButtons() {
+            productsData.forEach((product, barcodeId) => {
+                const inCart = cartData.get(barcodeId) || 0;
+                const btn = document.querySelector(`button[data-barcode="${barcodeId}"]`);
+                if (btn) {
+                    btn.disabled = inCart >= product.quantity || product.quantity <= 0;
+                }
+            });
+        }
 
         function showLoader() {
             document.getElementById('loader').style.display = 'block';
@@ -221,6 +389,7 @@
                         return fetch('/api/cart/clear', { method: 'DELETE', headers: { 'Authorization': token } });
                     })
                     .then(() => loadCart())
+                    .then(() => loadProducts())
                     .then(() => {
                         alert('Заказ создан');
                     })
@@ -231,7 +400,6 @@
                     .finally(() => hideLoader());
                 });
         }
-
     </script>
 </head>
 <body>

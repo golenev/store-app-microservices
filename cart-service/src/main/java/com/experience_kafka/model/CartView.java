@@ -4,10 +4,11 @@ import java.math.BigDecimal;
 
 /**
  * Модель для фронта, возвращает состояние корзины
- * @param shortName
- * @param price
- * @param quantity
- * @param total
+ * @param barcodeId штрихкод товара
+ * @param shortName краткое название товара
+ * @param price цена за единицу
+ * @param quantity количество
+ * @param total сумма
  */
-public record CartView(String shortName, BigDecimal price, int quantity, BigDecimal total) {}
+public record CartView(Long barcodeId, String shortName, BigDecimal price, int quantity, BigDecimal total) {}
 
