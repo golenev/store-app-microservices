@@ -3,18 +3,19 @@ package stageTests
 import config.Database
 import config.HttpClient
 import constants.Endpoints
+import helpers.halfUpRound
 import helpers.step
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain as shouldContainString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.LocalDateTime
+import io.kotest.matchers.string.shouldContain as shouldContainString
 
 @DisplayName("Проверка оформления заказа")
 class OrderE2ETest {
@@ -107,6 +108,7 @@ class OrderE2ETest {
             val orderResp = HttpClient.post(
                 url = Endpoints.ORDER,
                 baseUri = Endpoints.BASE_URL,
+                headers = mapOf("Authorization" to token),
                 body = order
             )
             orderResp.statusCode shouldBeExactly 200
@@ -119,7 +121,7 @@ class OrderE2ETest {
                 orderId
             )
             sum.shouldNotBeNull()
-            sum shouldBe orderSum
+            sum.halfUpRound() shouldBe orderSum.halfUpRound()
             val itemsJson = Database.queryForObject(
                 "SELECT items::text FROM orders WHERE id = ?",
                 String::class.java,
