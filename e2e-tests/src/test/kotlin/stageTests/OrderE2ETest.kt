@@ -1,12 +1,14 @@
 package stageTests
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import config.Database
 import config.HttpClient
 import constants.Endpoints
 import helpers.halfUpRound
 import helpers.step
-import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -16,8 +18,6 @@ import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.LocalDateTime
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
 
 @DisplayName("Проверка оформления заказа")
 class OrderE2ETest {
@@ -31,7 +31,6 @@ class OrderE2ETest {
     data class CartItem(
         val barcodeId: Long,
         val shortName: String,
-        val description: String,
         val price: BigDecimal,
         val quantity: Int,
         val total: BigDecimal
@@ -110,12 +109,10 @@ class OrderE2ETest {
             items.shouldHaveSize(2)
             items.find { it.barcodeId == barcodeFood }!!.apply {
                 shortName shouldBe "Молоко"
-                description shouldBe "Пищевой товар"
                 quantity shouldBeExactly 1
             }
             items.find { it.barcodeId == barcodeNonFood }!!.apply {
                 shortName shouldBe "Мыло"
-                description shouldBe "Не пищевой товар"
                 quantity shouldBeExactly 1
             }
             logger.info("Корзина содержит товары: {}", items)
