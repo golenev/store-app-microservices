@@ -35,7 +35,7 @@ class KafkaTariffTest {
     }
 
     private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
-        step("Отправка сообщения в Kafka") {
+        step("Отправляем сообщение о товаре в Kafka") {
             payload.barcodeId = barcodeId
             logger.info("Отправляем сообщение со штрихкодом {} в Kafka", barcodeId)
             KafkaProducerImpl().sendMessage("send-topic", payload)
@@ -45,7 +45,7 @@ class KafkaTariffTest {
             payload.price.multiply(markupCoefficient).divide(BigDecimal.valueOf(100))
         )
 
-        step("Проверка цены в базе") {
+        step("Ждём появления товара в БД и проверяем цену с учётом наценки") {
             runBlocking {
                 eventually(positiveConfig) {
                     val price = Database.queryForObject(
@@ -64,165 +64,165 @@ class KafkaTariffTest {
     @Test
     @DisplayName("наценка применяется для food_100")
     fun testFood100() {
-        step("Проверка наценки для food_100") {
+        step("Отправляем товар 'food_100' и проверяем наценку 1%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "food999",
-                description = "desc",
-                price = BigDecimal("100"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = true
-            ),
-            BigDecimal.valueOf(1)
-        )
+                ProductPayload(
+                    shortName = "food999",
+                    description = "desc",
+                    price = BigDecimal("100"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = true
+                ),
+                BigDecimal.valueOf(1)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для food_300")
     fun testFood300() {
-        step("Проверка наценки для food_300") {
+        step("Отправляем товар 'food_300' и проверяем наценку 3%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "food300",
-                description = "desc",
-                price = BigDecimal("200"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = true
-            ),
-            BigDecimal.valueOf(3)
-        )
+                ProductPayload(
+                    shortName = "food300",
+                    description = "desc",
+                    price = BigDecimal("200"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = true
+                ),
+                BigDecimal.valueOf(3)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для food_500")
     fun testFood500() {
-        step("Проверка наценки для food_500") {
+        step("Отправляем товар 'food_500' и проверяем наценку 5%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "food500",
-                description = "desc",
-                price = BigDecimal("400"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = true
-            ),
-            BigDecimal.valueOf(5)
-        )
+                ProductPayload(
+                    shortName = "food500",
+                    description = "desc",
+                    price = BigDecimal("400"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = true
+                ),
+                BigDecimal.valueOf(5)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для food_1000")
     fun testFood1000() {
-        step("Проверка наценки для food_1000") {
+        step("Отправляем товар 'food_1000' и проверяем наценку 10%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "food1000",
-                description = "desc",
-                price = BigDecimal("600"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = true
-            ),
-            BigDecimal.valueOf(10)
-        )
+                ProductPayload(
+                    shortName = "food1000",
+                    description = "desc",
+                    price = BigDecimal("600"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = true
+                ),
+                BigDecimal.valueOf(10)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_100")
     fun testNotFood100() {
-        step("Проверка наценки для not_food_100") {
+        step("Отправляем товар 'not_food_100' и проверяем наценку 5%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "notfood100",
-                description = "desc",
-                price = BigDecimal("100"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = false
-            ),
-            BigDecimal.valueOf(5)
-        )
+                ProductPayload(
+                    shortName = "notfood100",
+                    description = "desc",
+                    price = BigDecimal("100"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = false
+                ),
+                BigDecimal.valueOf(5)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_500")
     fun testNotFood500() {
-        step("Проверка наценки для not_food_500") {
+        step("Отправляем товар 'not_food_500' и проверяем наценку 10%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "notfood500",
-                description = "desc",
-                price = BigDecimal("400"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = false
-            ),
-            BigDecimal.valueOf(10)
-        )
+                ProductPayload(
+                    shortName = "notfood500",
+                    description = "desc",
+                    price = BigDecimal("400"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = false
+                ),
+                BigDecimal.valueOf(10)
+            )
         }
     }
 
     @Test
     @DisplayName("наценка применяется для not_food_1000")
     fun testNotFood1000() {
-        step("Проверка наценки для not_food_1000") {
+        step("Отправляем товар 'not_food_1000' и проверяем наценку 20%") {
             sendAndAssert(
-            ProductPayload(
-                shortName = "notfood1000",
-                description = "desc",
-                price = BigDecimal("600"),
-                quantity = 1,
-                addedAtTariffs = LocalDateTime.now().toString(),
-                isFoodstuff = false
-            ),
-            BigDecimal.valueOf(20)
-        )
+                ProductPayload(
+                    shortName = "notfood1000",
+                    description = "desc",
+                    price = BigDecimal("600"),
+                    quantity = 1,
+                    addedAtTariffs = LocalDateTime.now().toString(),
+                    isFoodstuff = false
+                ),
+                BigDecimal.valueOf(20)
+            )
         }
     }
 
     @Test
     @DisplayName("первый запрос тарифов медленный, повторный быстрый")
     fun tariffsCacheTimeTest() {
-                step("Сброс кэша тарифов") {
-                    val response = HttpClient.post(
-                        url = "/api/v1/resetCache?now=true",
-                        baseUri = Endpoints.TARIFFS_BASE_URL
-                    )
-                    response.statusCode shouldBe 200
-                }
+        step("Сбрасываем кэш тарифов через POST /api/v1/resetCache?now=true") {
+            val response = HttpClient.post(
+                url = "/api/v1/resetCache?now=true",
+                baseUri = Endpoints.TARIFFS_BASE_URL
+            )
+            response.statusCode shouldBe 200
+        }
 
-                step("Первый запрос тарифов занимает более 5 секунд") {
-                    val duration = measureTimeMillis {
-                        val resp = HttpClient.get(
-                            url = Endpoints.TARIFFS,
-                            params = mapOf("all" to true),
-                            baseUri = Endpoints.TARIFFS_BASE_URL
-                        )
-                        resp.statusCode shouldBe 200
-                    }
-                    duration.shouldBeGreaterThan(5000)
-                    logger.info("Первый запрос занял {} мс", duration)
-                }
-
-                step("Повторный запрос тарифов быстрее 5 секунд") {
-                    val duration = measureTimeMillis {
-                        val resp = HttpClient.get(
-                            url = Endpoints.TARIFFS,
-                            params = mapOf("all" to true),
-                            baseUri = Endpoints.TARIFFS_BASE_URL
-                        )
-                        resp.statusCode shouldBe 200
-                    }
-                    duration.shouldBeLessThan(5000)
-                    logger.info("Повторный запрос занял {} мс", duration)
-                }
+        step("Первый GET ${Endpoints.TARIFFS}?all=true должен выполняться более 5 секунд") {
+            val duration = measureTimeMillis {
+                val resp = HttpClient.get(
+                    url = Endpoints.TARIFFS,
+                    params = mapOf("all" to true),
+                    baseUri = Endpoints.TARIFFS_BASE_URL
+                )
+                resp.statusCode shouldBe 200
             }
+            duration.shouldBeGreaterThan(5000)
+            logger.info("Первый запрос занял {} мс", duration)
+        }
+
+        step("Повторный GET ${Endpoints.TARIFFS}?all=true должен быть быстрее 5 секунд") {
+            val duration = measureTimeMillis {
+                val resp = HttpClient.get(
+                    url = Endpoints.TARIFFS,
+                    params = mapOf("all" to true),
+                    baseUri = Endpoints.TARIFFS_BASE_URL
+                )
+                resp.statusCode shouldBe 200
+            }
+            duration.shouldBeLessThan(5000)
+            logger.info("Повторный запрос занял {} мс", duration)
+        }
+    }
 }
 

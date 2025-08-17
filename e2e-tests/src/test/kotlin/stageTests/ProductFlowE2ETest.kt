@@ -23,6 +23,9 @@ class ProductFlowE2ETest {
     private val logger = LoggerFactory.getLogger(ProductFlowE2ETest::class.java)
     private var barcodeId: Long = (10000000000..99999999999).random()
 
+    data class AuthRequest(val username: String, val password: String)
+    data class AddToCartRequest(val barcodeId: Long)
+
     @AfterEach
     fun cleanup() {
         Database.update("DELETE FROM cart WHERE barcode_id = ?", barcodeId)
@@ -42,17 +45,17 @@ class ProductFlowE2ETest {
             isFoodstuff = false
         )
         logger.info("Сгенерирован товар со штрихкодом {}", barcodeId)
-        val token = step("Получение токена") {
+        val token = step("Получаем JWT-токен через POST ${Endpoints.AUTH}") {
             val tokenResponse = HttpClient.post(
                 url = Endpoints.AUTH,
-                body = mapOf("username" to "user", "password" to "qwerty")
+                body = AuthRequest("user", "qwerty")
             )
             tokenResponse.statusCode shouldBeExactly 200
             tokenResponse.jsonPath().getString("token")
         }
         logger.info("Получен токен авторизации")
 
-        step("Отправка товара через API") {
+        step("Отправляем товар через POST ${Endpoints.SEND_TO_KAFKA}") {
             val sendResponse = HttpClient.post(
                 url = Endpoints.SEND_TO_KAFKA,
                 headers = mapOf("Authorization" to token),
@@ -62,7 +65,7 @@ class ProductFlowE2ETest {
         }
         logger.info("Товар отправлен в Kafka через API")
 
-        step("Проверка появления товара в списке") {
+        step("Ожидаем появление товара в списке через GET ${Endpoints.PRODUCTS}") {
             runBlocking {
                 eventually(positiveConfig) {
                     val listResponse = HttpClient.get(
@@ -77,17 +80,17 @@ class ProductFlowE2ETest {
             }
         }
 
-        step("Добавление товара в корзину") {
+        step("Добавляем товар в корзину через POST ${Endpoints.CART}") {
             val addResponse = HttpClient.post(
                 url = Endpoints.CART,
                 headers = mapOf("Authorization" to token),
-                body = mapOf("barcodeId" to barcodeId)
+                body = AddToCartRequest(barcodeId)
             )
             addResponse.statusCode shouldBeExactly 200
         }
         logger.info("Товар добавлен в корзину")
 
-        val qty = step("Проверка количества в корзине") {
+        val qty = step("Считываем количество товара в корзине из БД") {
             Database.queryForObject(
                 "SELECT quantity FROM cart WHERE barcode_id = ?",
                 Int::class.java,
@@ -99,17 +102,17 @@ class ProductFlowE2ETest {
         qty shouldBeExactly 1
         logger.info("Проверено количество 1 в корзине для штрихкода {}", barcodeId)
 
-        step("Проверка невозможности повторного добавления") {
+        step("Пытаемся повторно добавить товар и ожидаем код 400") {
             val repeatResponse = HttpClient.post(
                 url = Endpoints.CART,
                 headers = mapOf("Authorization" to token),
-                body = mapOf("barcodeId" to barcodeId)
+                body = AddToCartRequest(barcodeId)
             )
             repeatResponse.statusCode shouldBeExactly 400
         }
         logger.info("Повторное добавление в корзину вернуло 400, как и ожидалось")
 
-        val qtyAfter = step("Итоговое количество в корзине") {
+        val qtyAfter = step("Повторно читаем количество товара в корзине") {
             Database.queryForObject(
                 "SELECT quantity FROM cart WHERE barcode_id = ?",
                 Int::class.java,
