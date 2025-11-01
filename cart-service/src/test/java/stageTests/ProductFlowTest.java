@@ -26,36 +26,36 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static io.restassured.RestAssured.given;
 import static org.awaitility.Awaitility.await;
 
-@Testcontainers
-@SpringBootTest(
+@Testcontainers // Подключает поддержку Testcontainers для запуска контейнеров перед тестами
+@SpringBootTest( // Инстанцирует рабочий Spring Boot контекст сервиса внутри интеграционного теста
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = com.experience_kafka.KafkaSpringApplication.class
+        classes = com.experience_kafka.KafkaSpringApplication.class // Загружает корневую конфигурацию сервиса: Spring создаёт идентичный граф бинов и подключений, поэтому весь технологический ландшафт (включая единственную продукционную БД) реплицируется в одноразовом Testcontainers-инстансе вместе с обнаруженными @Entity
 )
-@AutoConfigureWireMock(port = 0)
-@TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}")
+@AutoConfigureWireMock(port = 0) // Настраивает WireMock с динамическим портом для эмуляции внешнего сервиса
+@TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}") // Переопределяет URL сервиса тарифов, указывая на WireMock
 @DisplayName("Проверка появления товара и ограничения корзины")
 class ProductFlowTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container // Помечает контейнер PostgreSQL как управляемый жизненным циклом Testcontainers
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine"); // Создаёт контейнер PostgreSQL на базе образа postgres:16-alpine
 
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
+    @Container // Помечает контейнер Kafka как управляемый Testcontainers
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0")); // Создаёт контейнер Kafka из указанного Docker-образа
 
-    @DynamicPropertySource
+    @DynamicPropertySource // Позволяет программно переопределить свойства приложения во время тестов
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.datasource.url", postgres::getJdbcUrl); // Перенастраивает DataSource на временную БД контейнера, поэтому Hibernate подключается именно к ней
+        registry.add("spring.datasource.username", postgres::getUsername); // Подставляет учётные данные контейнера, делая тестовую БД единственной доступной для Hibernate
+        registry.add("spring.datasource.password", postgres::getPassword); // Завершает конфигурацию DataSource для временного контейнера PostgreSQL
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "update");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "update"); // Hibernate генерирует схему и типы данных по метаданным @Entity (например CartItem с @Table("cart")), найденным при старте контекста Spring Boot
         registry.add("spring.sql.init.mode", () -> "always");
     }
 
-    @LocalServerPort
+    @LocalServerPort // Впрыскивает случайный порт, на котором запущен встроенный сервер
     int port;
 
-    @Autowired
+    @Autowired // Автоматически подставляет бин JdbcTemplate из контекста Spring
     JdbcTemplate jdbcTemplate;
 
     ProductPayload product;
