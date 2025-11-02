@@ -14,5 +14,5 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: maven
-      - name: Run ProductFlowTest
-        run: mvn -pl cart-service -am -Dtest=ProductFlowTest test
+      - name: Run cart-service stage and unit tests
+        run: mvn -pl cart-service -am -Dtest="stageTests.*Test,unit.*Test" test
