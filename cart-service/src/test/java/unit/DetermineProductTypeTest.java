@@ -11,6 +11,11 @@ import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Аналогично тарифам, для {@code determineProductType} достаточно реальных объектов
+ * {@link Product}: метод не обращается к внешним сервисам, поэтому ReflectionTestUtils
+ * позволяет протестировать чистую логику без использования Mockito.
+ */
 class DetermineProductTypeTest {
 
     private KafkaService kafkaService;

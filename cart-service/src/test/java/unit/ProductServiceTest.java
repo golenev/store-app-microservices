@@ -17,12 +17,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
+/**
+ * В этом юнит-тесте применяем Mockito: сервис зависит от {@link ProductRepository},
+ * поэтому подменяем репозиторий мок-объектом, чтобы изолировать бизнес-логику и
+ * описать ожидаемые ответы без реальной базы данных.
+ */
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
 
-    /**
-     * Мокаем репозиторий, чтобы полностью контролировать его ответы и не поднимать настоящую инфраструктуру.
-     */
     @Mock
     ProductRepository productRepository;
 

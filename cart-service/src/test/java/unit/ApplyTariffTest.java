@@ -13,6 +13,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Для проверки приватного {@code applyTariff} не нужны моки: метод полностью
+ * основан на переданных моделях {@link Product} и списке {@link TariffDto},
+ * поэтому используем реальные экземпляры и через ReflectionTestUtils вызываем
+ * чистую бизнес-логику без подмены зависимостей.
+ */
 class ApplyTariffTest {
 
     private KafkaService kafkaService;
