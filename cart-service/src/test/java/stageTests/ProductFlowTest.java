@@ -32,6 +32,11 @@ import static org.awaitility.Awaitility.await;
         classes = com.experience_kafka.KafkaSpringApplication.class // Загружает корневую конфигурацию сервиса: Spring создаёт идентичный граф бинов и подключений, поэтому весь технологический ландшафт (включая единственную продукционную БД) реплицируется в одноразовом Testcontainers-инстансе вместе с обнаруженными @Entity
 )
 @AutoConfigureWireMock(port = 0) // Настраивает WireMock с динамическим портом для эмуляции внешнего сервиса
+// Интеграционный сценарий поднимает настоящий HTTP-стек приложения: KafkaListener читает тарифы через RestTemplate,
+// поэтому единственный способ детерминированно управлять ответами внешнего HTTP-сервиса — поднять изолированный HTTP-сервер.
+// WireMock выступает таким сервером: он реализует контракт REST поверх реального TCP-порта, чего нельзя добиться Mockito,
+// ограниченным проксированием Java-объектов. WireMock гарантирует, что RestTemplate выполнит настоящий HTTP-запрос и
+// получит ожидаемый ответ без доступа к продовому tariffs-service.
 @TestPropertySource(properties = "tariffs-service.base-url=http://localhost:${wiremock.server.port}") // Переопределяет URL сервиса тарифов, указывая на WireMock
 @DisplayName("Проверка появления товара и ограничения корзины")
 class ProductFlowTest {
