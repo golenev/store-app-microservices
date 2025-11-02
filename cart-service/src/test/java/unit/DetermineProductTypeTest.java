@@ -14,7 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Аналогично тарифам, для {@code determineProductType} достаточно реальных объектов
  * {@link Product}: метод не обращается к внешним сервисам, поэтому ReflectionTestUtils
- * позволяет протестировать чистую логику без использования Mockito.
+ * позволяет протестировать чистую логику без использования Mockito. WireMock также
+ * не понадобился бы, ведь метод не вызывает HTTP или другие внешние системы —
+ * дополнительная инфраструктура только усложнила бы тест.
  */
 class DetermineProductTypeTest {
 
