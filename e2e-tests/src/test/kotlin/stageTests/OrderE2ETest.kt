@@ -12,6 +12,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.qameta.allure.AllureId
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -49,6 +50,7 @@ class OrderE2ETest {
         Database.update("DELETE FROM product WHERE barcode_id IN (?, ?)", barcodeFood, barcodeNonFood)
     }
 
+    @AllureId("112")
     @Test
     fun orderCreatedAndPersisted() {
         step("Добавляем тестовые продукты напрямую в БД") {

@@ -3,20 +3,21 @@ package stageTests
 import config.Database
 import config.HttpClient
 import constants.Endpoints
-import models.ProductPayload
 import helpers.step
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.qameta.allure.AllureId
 import kotlinx.coroutines.runBlocking
+import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
+import positiveConfig
 import java.math.BigDecimal
 import java.time.LocalDateTime
-import positiveConfig
 
 @DisplayName("Проверка потока продукта на уровне e2e")
 class ProductFlowE2ETest {
@@ -32,6 +33,7 @@ class ProductFlowE2ETest {
         Database.update("DELETE FROM product WHERE barcode_id = ?", barcodeId)
     }
 
+    @AllureId("152")
     @Test
     @DisplayName("товар добавляется один раз и больше не добавляется")
     fun productAppearsInListAndCart() {

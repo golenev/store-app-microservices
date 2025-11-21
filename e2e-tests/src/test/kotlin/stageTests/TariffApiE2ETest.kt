@@ -5,6 +5,7 @@ import constants.Endpoints
 import helpers.step
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
+import io.qameta.allure.AllureId
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory
 class TariffApiE2ETest {
     private val logger = LoggerFactory.getLogger(TariffApiE2ETest::class.java)
 
+    @AllureId("12")
     @Test
     @DisplayName("возвращает тарифы в формате JSON")
     fun returnsTariffsAsJson() {
@@ -29,6 +31,7 @@ class TariffApiE2ETest {
         }
     }
 
+    @AllureId("13")
     @Test
     @DisplayName("без параметра all получаем 400")
     fun missingParamReturnsBadRequest() {

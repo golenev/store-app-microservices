@@ -8,6 +8,7 @@ import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
+import io.qameta.allure.AllureId
 import kotlinx.coroutines.runBlocking
 import models.ProductPayload
 import org.junit.jupiter.api.AfterEach
@@ -61,6 +62,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("15")
     @Test
     @DisplayName("наценка применяется для food_100")
     fun testFood100() {
@@ -79,6 +81,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("16")
     @Test
     @DisplayName("наценка применяется для food_300")
     fun testFood300() {
@@ -97,6 +100,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("17")
     @Test
     @DisplayName("наценка применяется для food_500")
     fun testFood500() {
@@ -115,6 +119,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("18")
     @Test
     @DisplayName("наценка применяется для food_1000")
     fun testFood1000() {
@@ -133,6 +138,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("19")
     @Test
     @DisplayName("наценка применяется для not_food_100")
     fun testNotFood100() {
@@ -151,6 +157,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("20")
     @Test
     @DisplayName("наценка применяется для not_food_500")
     fun testNotFood500() {
@@ -169,6 +176,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("20")
     @Test
     @DisplayName("наценка применяется для not_food_1000")
     fun testNotFood1000() {
@@ -187,6 +195,7 @@ class KafkaTariffTest {
         }
     }
 
+    @AllureId("21")
     @Test
     @DisplayName("первый запрос тарифов медленный, повторный быстрый")
     fun tariffsCacheTimeTest() {
