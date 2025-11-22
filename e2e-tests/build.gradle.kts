@@ -36,6 +36,8 @@ kotlin {
     jvmToolchain(21)
 }
 
+val allureTestCasesPath = layout.buildDirectory.dir("reports/allure-report/allureReport/data/test-cases")
+
 allure {
     report {
         version.set("2.29.0")
@@ -66,4 +68,5 @@ tasks.register<JavaExec>("runMyKotlinFunction") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("helpers.MyRunner")
     dependsOn("testClasses")
+    systemProperty("allure.testCasesPath", allureTestCasesPath.get().asFile.absolutePath)
 }
