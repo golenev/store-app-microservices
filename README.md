@@ -76,11 +76,21 @@
 
 ## E2E тесты и Allure Report
 Тесты написаны на Kotlin с использованием JUnit 5, Kotest и Rest Assured; для отчётности подключён [Allure](https://github.com/allure-framework/allure2).
-Чтобы запустить e2e-тесты и сгенерировать отчёт, выполните:
-```bash
-cd e2e-tests
-./gradlew test
-./gradlew allureReport
-```
-Готовый отчёт будет доступен в каталоге `e2e-tests/build/reports/allure-report/index.html`.
-Для интерактивного просмотра можно использовать команду `./gradlew allureServe`.
+
+### Как сгенерировать и открыть Allure-отчёт для e2e-тестов
+1. Перейдите в каталог e2e-тестов:
+   ```bash
+   cd e2e-tests
+   ```
+2. Запустите e2e-тесты и соберите артефакты Allure:
+   ```bash
+   ./gradlew test
+   ```
+3. Сформируйте статический отчёт Allure (создаст папку `build/reports/allure-report`):
+   ```bash
+   ./gradlew allureReport
+   ```
+4. Откройте отчёт в браузере, указав путь `e2e-tests/build/reports/allure-report/index.html`, либо запустите интерактивный сервер:
+   ```bash
+   ./gradlew allureServe
+   ```
