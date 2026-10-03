@@ -1,0 +1,38 @@
+{
+  "storeId": "S-1",
+  "deliveryId": "D-1",
+  "deliverySequence": 1,
+  "state": "REJECTED",
+  "receivedAt": "2026-10-03T10:00:01Z",
+  "attemptCount": 0,
+  "lastError": {
+    "code": "VALIDATION_ERROR",
+    "message": "Позиции с повторным productId"
+  },
+  "items": [],
+  "rejectedPayload": {
+    "deliveryId": "D-1",
+    "items": [
+      {
+        "lineId": "L-1",
+        "productId": "P-1",
+        "productType": "NON_FOOD",
+        "shortName": "Мыло",
+        "description": "Учебный товар",
+        "quantity": 10,
+        "purchasePrice": "100.00",
+        "currency": "RUB"
+      },
+      {
+        "lineId": "L-2",
+        "productId": "P-1",
+        "productType": "NON_FOOD",
+        "shortName": "Мыло",
+        "description": "Учебный товар",
+        "quantity": 10,
+        "purchasePrice": "100.00",
+        "currency": "RUB"
+      }
+    ]
+  }
+}

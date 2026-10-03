@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-10-03T10:00:04Z",
+  "status": 409,
+  "code": "INSUFFICIENT_STOCK",
+  "message": "Недостаточно остатка товара",
+  "path": "/stores/S-1/carts/b5000000-0000-4000-8000-000000000001/submit",
+  "details": [
+    {
+      "field": "items[0].quantity",
+      "message": "Доступно 0, запрошено 3"
+    }
+  ]
+}

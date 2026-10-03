@@ -1,0 +1,1394 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Учебный магазин — целевые HTTP-контракты",
+    "version": "1.0.0",
+    "description": "Спецификация задачи 1, endpoints ещё не реализованы. Каждый сервис обслуживает операции только своего tag. Порты будут определены в задаче 2."
+  },
+  "tags": [
+    {
+      "name": "TARIFFS"
+    },
+    {
+      "name": "WAREHOUSE"
+    },
+    {
+      "name": "STORE"
+    }
+  ],
+  "paths": {
+    "/tariffs/quote": {
+      "get": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "quoteTariff",
+        "parameters": [
+          {
+            "name": "productType",
+            "in": "query",
+            "required": true,
+            "description": "Параметр quote.",
+            "schema": {
+              "enum": [
+                "FOOD",
+                "NON_FOOD"
+              ]
+            }
+          },
+          {
+            "name": "purchasePrice",
+            "in": "query",
+            "required": true,
+            "description": "Параметр quote.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+              "not": {
+                "const": "0.00"
+              }
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": true,
+            "description": "Параметр quote.",
+            "schema": {
+              "const": "RUB"
+            }
+          },
+          {
+            "name": "cityId",
+            "in": "query",
+            "required": true,
+            "description": "Параметр quote.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Коэффициент и версия выбранного правила.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/QuoteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "TARIFF_NOT_FOUND.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TARIFF_AMBIGUOUS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tariffs/rules": {
+      "get": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "listTariffRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Правила из БД; quote-кеш не изменяется.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRulesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "createTariffRule",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Новое правило версии 1; кеш не сбрасывается.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRuleRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tariffs/rules/{tariffRuleId}": {
+      "get": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "getTariffRule",
+        "parameters": [
+          {
+            "name": "tariffRuleId",
+            "in": "path",
+            "required": true,
+            "description": "Идентификатор правила.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Правило из БД.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "updateTariffRule",
+        "parameters": [
+          {
+            "name": "tariffRuleId",
+            "in": "path",
+            "required": true,
+            "description": "Идентификатор правила.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Версия увеличена; заполненный кеш сохранён.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/shop-v1.schema.json#/$defs/TariffRuleRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "deleteTariffRule",
+        "parameters": [
+          {
+            "name": "tariffRuleId",
+            "in": "path",
+            "required": true,
+            "description": "Идентификатор правила.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Правило удалено; кеш не сброшен."
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tariffs/cache/reset": {
+      "post": {
+        "tags": [
+          "TARIFFS"
+        ],
+        "operationId": "resetTariffCache",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Сброшен только namespace tariff-quotes; при недоступном Redis — 503.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CacheResetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/deliveries/{deliveryId}": {
+      "get": {
+        "tags": [
+          "WAREHOUSE"
+        ],
+        "operationId": "getDelivery",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "description": "Поставка внутри магазина.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Сохраняемое состояние; POSTED не гарантирует наличие товара в STORE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/DeliveryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/deliveries/{deliveryId}/retry-pricing": {
+      "post": {
+        "tags": [
+          "WAREHOUSE"
+        ],
+        "operationId": "requestPricingRetry",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "description": "Поставка внутри магазина.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Следующая фоновая попытка назначена немедленно; pricing ещё может не завершиться.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/DeliveryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DELIVERY_NOT_WAITING_PRICING.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/technical/deliveries": {
+      "post": {
+        "tags": [
+          "WAREHOUSE"
+        ],
+        "operationId": "publishDelivery",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Учебный эмулятор: Kafka подтвердила DeliveryReceived; приёмка ещё может не начаться.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/DeliveryPublishResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/shop-v1.schema.json#/$defs/DeliveryReceived"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/catalog": {
+      "get": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "getCatalog",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Одна позиция продукта; нулевой остаток видим.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/carts": {
+      "post": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "createCart",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Пустая OPEN-корзина с version=0; запрос без body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/carts/{cartId}": {
+      "get": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "getCart",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Независимая корзина магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OPEN показывает текущие цены; SUBMITTED — принятый snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/carts/{cartId}/items/{stockItemId}": {
+      "put": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "setCartItem",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Независимая корзина магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "stockItemId",
+            "in": "path",
+            "required": true,
+            "description": "Стабильная inventory-позиция данного магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Установлено итоговое quantity; version увеличена на 1, даже если quantity прежнее.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INSUFFICIENT_STOCK, CART_VERSION_CONFLICT или CART_ALREADY_SUBMITTED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/shop-v1.schema.json#/$defs/PutCartItemRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "removeCartItem",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Независимая корзина магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "stockItemId",
+            "in": "path",
+            "required": true,
+            "description": "Стабильная inventory-позиция данного магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "expectedCartVersion",
+            "in": "query",
+            "required": true,
+            "description": "Версия до удаления.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Позиция удалена; version увеличена на 1.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/CartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Корзина/позиция не найдена; состояние не меняется.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INSUFFICIENT_STOCK, CART_VERSION_CONFLICT или CART_ALREADY_SUBMITTED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/carts/{cartId}/submit": {
+      "post": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "submitCart",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Независимая корзина магазина.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Уникален внутри storeId; повтор использует прежний ключ и expectedCartVersion.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Commit завершён: количество списано, корзина закрыта, snapshot в outbox. Повтор возвращает прежнюю операцию.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/SubmissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR, включая пустую корзину.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INSUFFICIENT_STOCK, CART_VERSION_CONFLICT или CART_ALREADY_SUBMITTED. Либо IDEMPOTENCY_KEY_REUSED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/shop-v1.schema.json#/$defs/SubmitRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stores/{storeId}/submissions/{submissionId}": {
+      "get": {
+        "tags": [
+          "STORE"
+        ],
+        "operationId": "getSubmission",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "description": "Магазин.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "description": "Техническая операция передачи.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Только состояние передачи; PUBLISHED означает broker ack, не оплату.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/SubmissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: недопустимые идентификаторы/параметры.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND в пределах указанного магазина.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR без stack trace и секретов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE. Неопределённый результат изменяющей операции восстанавливается прежним ключом и параметрами.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/shop-v1.schema.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

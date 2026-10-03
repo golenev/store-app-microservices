@@ -12,6 +12,7 @@
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
+        <module>contract-tests</module>
         <module>cart-service</module>
         <module>tariffs-service</module>
     </modules>

@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "tariffRuleId": "b3000000-0000-4000-8000-000000000001",
+      "version": 1,
+      "productType": "NON_FOOD",
+      "cityId": "MOSCOW",
+      "currency": "RUB",
+      "lowerBound": "0.00",
+      "upperBound": "500.00",
+      "markupRate": "0.20"
+    }
+  ]
+}

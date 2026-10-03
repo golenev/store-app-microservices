@@ -1,0 +1,8 @@
+{
+  "productType": "NON_FOOD",
+  "cityId": "MOSCOW",
+  "currency": "RUB",
+  "lowerBound": "0.00",
+  "upperBound": "500.00",
+  "markupRate": "0.20"
+}
