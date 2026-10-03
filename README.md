@@ -1,117 +1,137 @@
 # Store App Microservices
 
-## Согласованная переделка архитектуры
+Учебный Java 21 / Spring Boot 3 проект с Kafka, PostgreSQL и Redis. Исходная версия появилась после курсов QA.GURU и консультаций [Alexandr056](https://github.com/Alexandr056).
 
-**Статус:** новая архитектура запланирована; текущий код пока содержит два сервиса, описанных ниже. Подготовленные контракты и сценарии не следует считать уже реализованным API.
+## Текущее состояние
 
-Задача 1 реализует [контракты v1](contracts/README.md): [JSON Schema](contracts/schemas/shop-v1.schema.json), [OpenAPI](contracts/openapi.json), примеры событий/HTTP и отдельный тестовый Maven-модуль. Новые endpoints ещё не работают; бизнес-реализация начинается со следующих задач.
+Задача 1 включена в master через PR #37: [контракты v1](contracts/README.md), JSON Schema, OpenAPI и 62 проверки. Задача 2 добавляет три запускаемых приложения, Flyway и локальную среду. Новый бизнес-поток ещё не реализован.
 
-Проверка контрактов на Java 21, без Docker и запущенных сервисов:
+- **STORE** (`store-service`, package `com.shop.store`) — перенесённый legacy каталог, глобальная корзина, Basic auth и старый `/order`.
+- **TARIFFS** (`tariffs-service`) — прежний список процентных наценок и Redis-кеш. Старые задержки, TTL и правила сброса сохраняются до задачи 3.
+- **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — HTTP runtime, health и fixtures магазинов. Поставки пока не принимает.
+
+Legacy STORE всё ещё принимает сырой Product из `send-topic`, сам запрашивает тарифы и сохраняет продукт по barcode. Здесь пока нет независимых корзин, нового накопления остатка, атомарного списания, идемпотентности и outbox. HTML сохранён и работает через прежние endpoints; адаптация — задача 7.
+
+[План из восьми задач](docs/implementation-plan.md), [CASES](CASES.md), [правила реализации](AGENTS.md), [первоначальное ревью](docs/architecture-review.md). Каждая задача получает отдельную ветку и PR.
+
+Целевая цепочка: DeliveryReceived → WAREHOUSE → HTTP quote TARIFFS → GoodsPosted outbox → STORE → OrderSubmitted outbox. STORE хранит одну позицию на продукт и магазин; новая поставка добавляет количество и меняет цену всего остатка, поздняя старая поставка цену не откатывает. Корзины ничего не резервируют. Оплата, отмены, доставка и авторизация исключены из целевого проекта.
+
+## Локальная среда
+
+Нужны JDK 21, Maven 3.9+ и работающий Docker с Compose v2. Проверьте `java -version`: Java 8 для этого проекта не подходит.
+
+Одна PostgreSQL 16 содержит три отдельные БД и роли. Это разделение владения данными, но не три независимо отказоустойчивых инстанса. Учебные пароли ниже хранятся в bootstrap SQL и Compose.
+
+| Приложение | HTTP | База | Роль / локальный пароль |
+| --- | --- | --- | --- |
+| STORE | 6789 | store_db | store_app / store_local |
+| TARIFFS | 6790 | tariffs_db | tariffs_app / tariffs_local |
+| WAREHOUSE | 6791 | warehouse_db | warehouse_app / warehouse_local |
+
+PostgreSQL доступна на `localhost:34567`, Kafka — `localhost:9092`, Redis — `localhost:6379`. Внутри Compose используются `postgres:5432`, `kafka:29092`, `redis:6379` и `http://tariffs-service:6790`. Kafka работает в KRaft без ZooKeeper. Единственный UI — Kafdrop, включается отдельно на порту 9000.
+
+### Инфраструктура в Docker, приложения из IDEA
+
+```shell
+docker compose config --quiet
+docker compose up -d --wait
+```
+
+В IDEA импортируйте корневой `pom.xml`, выберите JDK 21 и запускайте:
+
+1. `com.tariffs.TariffsServiceApplication`.
+2. `com.shop.warehouse.WarehouseServiceApplication`.
+3. `com.shop.store.StoreServiceApplication`.
+
+Или выполните в трёх терминалах:
+
+```shell
+mvn -pl tariffs-service spring-boot:run
+mvn -pl warehouse-service spring-boot:run
+mvn -pl store-service spring-boot:run
+```
+
+Приложения по умолчанию используют localhost и свои роли. Дополнительного профиля для IDEA не требуется. Для другого окружения доступны `DB_URL`, `DB_USER`, `DB_PASSWORD`, `SERVER_PORT`, `KAFKA_BOOTSTRAP_SERVERS`, `TARIFFS_BASE_URL`, `REDIS_HOST`, `REDIS_PORT`.
+
+### Полностью в Docker
+
+```shell
+docker compose --profile apps config --quiet
+docker compose --profile apps up -d --build --wait
+docker compose --profile apps ps
+```
+
+Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; STORE также ждёт TARIFFS. Первый build требует доступа к Docker Hub, Maven Central и пакетному репозиторию базового образа.
+
+Дополнительный UI в любом режиме:
+
+```shell
+docker compose --profile ui up -d kafdrop
+```
+
+HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE пока не подтверждает обработку поставок.
+
+Остановка контейнеров с сохранением данных:
+
+```shell
+docker compose --profile apps --profile ui down
+```
+
+Compose использует имя проекта `shop-runtime` и отдельные volumes `postgres-data`, `kafka-data`, `redis-data`. Старые volumes прежней конфигурации не удаляются и не подключаются. Если старые контейнеры занимают порты, сначала остановите своё прежнее окружение или задайте `POSTGRES_PORT`, `KAFKA_PORT`, `REDIS_PORT`, `STORE_PORT`, `TARIFFS_PORT`, `WAREHOUSE_PORT`, `KAFDROP_PORT`. Для IDEA при смене портов также меняйте соответствующие URL; `KAFKA_HOST` задаёт адрес external listener.
+
+## Миграции и fixtures
+
+Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса; Hibernate использует `ddl-auto: validate`. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
+
+- STORE V1 создаёт прежние `product`, `cart`, `orders` с FK и проверками количества/цены.
+- TARIFFS V1 создаёт прежнюю `tariffs`; V2 однократно добавляет семь процентных тарифов. Скрытый CommandLineRunner больше не заполняет БД.
+- WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB.
+
+Повторный старт валидирует checksum и не повторяет выполненные миграции. Применённые SQL-файлы не редактируют: изменения схемы оформляют следующей версией миграции.
+
+`infra/postgres/init/01-databases.sql` создаёт БД и роли только при первом запуске нового PostgreSQL volume. Каждая роль подключается только к своей БД; чужие сервисные и служебные БД запрещены. Изменение bootstrap SQL само по себе не обновляет существующий volume. Исторические данные не мигрируются, существующие базы и volumes автоматически не удаляются.
+
+## Legacy API и HTML
+
+Откройте `http://localhost:6789/login.html`, пользователь `user`, пароль `qwerty`. Для прямых API-запросов передавайте Basic auth.
+
+| Endpoint STORE | Текущее действие |
+| --- | --- |
+| POST `/api/v1/sendToKafka` | Отправить legacy Product в send-topic |
+| GET `/api/v1/products` | Прочитать старый каталог |
+| POST `/api/cart` | Добавить единицу barcodeId в общую корзину |
+| GET `/api/cart` | Прочитать общую корзину |
+| POST `/api/cart/decrement` | Уменьшить позицию |
+| DELETE `/api/cart/clear` | Очистить общую корзину |
+| POST `/order` | Сохранить клиентский snapshot без нового submit |
+
+TARIFFS по-прежнему предоставляет `GET /tariffs?all=true` и `POST /api/v1/resetCache?now=true`. Новые endpoints из OpenAPI добавляются задачами 3–6. Сброс legacy кеша не переоценивает сохранённые товары.
+
+## Проверки
+
+```shell
+mvn -B -ntp test
+```
+
+Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway и Hibernate validate; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
+
+На Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
+
+Только контракты, без Docker:
 
 ```shell
 mvn -pl contract-tests test
 ```
 
-Результат проверки задачи 1: 62 теста, 0 ошибок/падений/пропусков. Проверены форма JSON, UTC/UUID/денежные строки, состояния ответов, примеры и разрешение OpenAPI-ссылок. Это не запуск новых E2E-сценариев CASES.
+CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Сквозной CI нового потока — задача 8; текущие CASES не объявляются пройденными по runtime health.
+Отдельный Compose smoke job собирает все три образа, проверяет health и сохранность записи/fixtures после пересоздания приложений; сохраняет логи как CI artifact.
 
-- [План реализации](docs/implementation-plan.md) — согласованные правила и 8 задач, каждая со своей веткой, тестами и PR.
-- [CASES](CASES.md) — ключевые сквозные сценарии и ожидаемые результаты новой версии.
-- [Правила для следующих изменений](AGENTS.md) — документация над функциями и критерии готовности PR.
-- [Контракты событий и HTTP](contracts/README.md) — точные поля, идентификаторы, денежные форматы, повторы и доступность по этапам.
-- [Первоначальное ревью](docs/architecture-review.md) — анализ текущего кода; последующие изменения решений отмечены в плане.
+Kotlin E2E остаётся набором прежнего API, а не проверкой новой архитектуры. Его STORE JDBC defaults обновлены на store_db; переопределения: `STORE_DB_URL`, `STORE_DB_USER`, `STORE_DB_PASSWORD`. Для старого набора при запущенной среде:
 
-Цель: три Java 21/Spring Boot-сервиса. WAREHOUSE принимает поставки, автоматически повторяет расчёт цен и публикует GoodsPosted через outbox. TARIFFS выбирает правило и кеширует quote в Redis. STORE ведёт единственный остаток, независимые корзины и атомарно принимает заявку со списанием и OrderSubmitted outbox.
-
-Для одного продукта в одном магазине будет одна позиция каталога. Новые поставки добавляют количество; цена последней поставки применяется ко всему оставшемуся количеству. Позднее завершение старой поставки добавляет её количество, но не откатывает более новую цену. Корзина ничего не резервирует: остаток проверяется при изменении её состава и повторно при оформлении.
-
-Существующий HTML будет адаптирован под новый API. Авторизация и последующий жизненный цикл заказа исключены. Новая версия запускается на чистых базах с fixtures; существующие данные автоматически не удаляются. Будут поддерживаться запуск приложений из IDEA с инфраструктурой в Docker и полный Compose.
-
-Проверено 3 октября 2026 года: `mvn -pl cart-service -Dtest=unit.*Test test` на Java 21 — 7 unit-тестов прошли. Новые CASES, интеграционные проверки и E2E этим запуском не проверялись.
-
-## Текущая реализация
-
-Данный учебный проект был написан благодаря пройденным курсам по тестированию Spring приложений на QA.GURU, 
-частным консультациям у ментора https://github.com/Alexandr056 , а также ChatGPT 5. Постоянно обновляется.
-
-Учебный проект демонстрирует работу цепочки из двух Spring Boot‑микросервисов: **cart-service** отвечает за каталог, авторизацию и
-оформление заказов, а **tariffs-service** рассчитывает наценку на основе тарифов. Поставка товара имитируется логистической
-службой, отправляющей сообщения в Kafka. При приёмке товара cart-service синхронно запрашивает тарифы, применяет коэффициент
-надбавки и сохраняет итоговую цену в PostgreSQL. Чтобы не перегружать tariffs-service, рассчитанные тарифы кешируются в Redis и
-сбрасываются по cron‑задаче или ручным вызовом API.
-
-По E2E сценарию логистическая служба привозит на склад набор продуктов(сообщение через Kafka), при приёме товара на баланс,
-сервис корзины обращается в сервис цен за получением коэффициента добавочной стоимости в зависимости от типа товара,
-его исходной цены, города. Поскольку предполагается, что магазинов тысячи или даже десятки тысяч - тарифы добавочной
-стоимости хранятся в кэше(Redis) для экономии запросов в базу. Кэш обновляется по крону раз в сутки. После получения
-коэффициента надбавки она суммируется с исходной стоимостью и товар отображается на баланса и его можно "купить",
-положив в корзину. Покупка осуществляется через оформление заказа для товаров лежащих в корзине.
-
-## Бизнес-логика
-- **tariffs-service** хранит и предоставляет коэффициенты наценки для разных типов товаров. Первый запрос к сервису рассчитывает их из базы и кеширует в Redis, последующие обращения берут данные из кэша.
-- **cart-service** принимает сообщения о товарах из Kafka, сохраняет их в PostgreSQL и даёт пользователю API для авторизации, просмотра каталога и работы с корзиной. Перед сохранением товара сервис запрашивает тарифы и применяет наценку.
-- **логистическая служба** эмулируется отправкой сообщений в Kafka: поставка товара на склад инициирует начисление наценки через tariffs-service. Кэширование тарифов в Redis избавляет от обращения к базе при каждом сканировании штрихкода.
-
-## Используемые технологии
-- **Spring Boot 3 (Java 21)** – основа микросервисов, REST API, безопасность (Spring Security) и валидация.
-- **Spring Data JPA + PostgreSQL** – хранение данных каталога и заказов.
-- **Spring Kafka + Apache Kafka** – обмен сообщениями между логистикой и корзиной.
-- **Redis** – кэш тарифов и ускорение запросов тарифа.
-- **Docker Compose** – инфраструктурные зависимости (PostgreSQL, Kafka, Redis, Kafdrop, Redpanda Console).
-- **Testcontainers** – подъём временных PostgreSQL, Kafka и Redis в интеграционных тестах.
-- **WireMock** – изолированная эмуляция tariffs-service во время тестов cart-service.
-- **JUnit 5, Mockito, Rest Assured, Awaitility** – тестирование Java‑модулей.
-- **Kotlin + Gradle, Kotest, Allure** – e2e‑сценарии и отчётность.
-
-## Запуск
-1. Клонируйте репозиторий
-   ```bash
-   git clone <repo-url>
-   ```
-2. Поднимите окружение
-   ```bash
-   docker-compose up -d
-   ```
-3. Запустите приложение
-   ```bash
-   mvn spring-boot:run
-   ```
-4. Откройте [http://localhost:6789/login.html](http://localhost:6789/login.html) и авторизуйтесь.
-   Пользователь по умолчанию: `user` / `qwerty`.
-
-## Основные возможности
-- **POST `/api/v1/sendToKafka`** — отправка описания товара в Kafka.
-  ```bash
-  curl -X POST \
-    -H "Content-Type: application/json" \
-    -d '{"barcodeId":123,"shortName":"Чай","description":"Чёрный чай","price":55,"quantity":10,"addedAtTariffs":"2024-01-01T12:00","isFoodstuff":true}' \
-    http://localhost:6789/api/v1/sendToKafka
-  ```
-- **GET `/api/v1/products`** — список товаров из базы данных.
-- **POST `/api/cart`** — добавить товар в корзину (тело запроса `{ "barcodeId": 123 }`).
-- **GET `/api/cart`** — содержимое корзины.
-- **DELETE `/api/cart/clear`** — очистить корзину.
-
-Сообщения, отправленные в `send-topic`, автоматически сохраняются в базу и доступны через `/api/v1/products` и веб-страницу `products.html`.
-
-Остановить инфраструктуру можно командой `docker-compose down`.
-
-## Тесты
-- `cart-service/src/test/java/unit` — юнит‑тесты бизнес-логики корзины: проверяют расчёт тарифов, определение типа товара и получение
-  продукта из репозитория с помощью JUnit 5 и Mockito.
-- `cart-service/src/test/java/stageTests` — интеграционный сценарий ProductFlowTest поднимает PostgreSQL, Kafka и WireMock через
-  Testcontainers, прогоняет end-to-end процесс добавления товара и проверяет ограничения корзины.
-- `tariffs-service/src/test/java/com/tariffs/TariffServiceCacheTest.java` — интеграционные тесты сервиса тарифов с Testcontainers
-  для PostgreSQL и Redis: убеждаемся, что первый запрос идёт в базу, а повторный — в кэш, и что сброс очищает кэш.
-- `e2e-tests/src/test/kotlin/stageTests` — внешние end-to-end тесты на Kotlin (Kotest + Rest Assured), покрывающие API тарифов,
-  обработку Kafka и оформление заказа; результаты публикуются в Allure-отчёте.
-
-## E2E тесты и Allure Report
-Тесты написаны на Kotlin с использованием JUnit 5, Kotest и Rest Assured; для отчётности подключён [Allure](https://github.com/allure-framework/allure2).
-Чтобы запустить e2e-тесты и сгенерировать отчёт, выполните:
-```bash
+```shell
 cd e2e-tests
 ./gradlew test
 ./gradlew allureReport
 ```
-Готовый отчёт будет доступен в каталоге `e2e-tests/build/reports/allure-report/index.html`.
-Для интерактивного просмотра можно использовать команду `./gradlew allureServe`.
+
+Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E и адаптация HTML идут отдельными задачами.

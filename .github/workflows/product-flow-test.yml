@@ -1,4 +1,4 @@
-name: Product Flow CI
+name: Shop Runtime CI
 
 on:
   pull_request:
@@ -14,5 +14,37 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: maven
-      - name: Run cart-service stage and unit tests
-        run: mvn -pl cart-service -am -Dtest="stageTests.*Test,unit.*Test" test
+      - name: Validate both Compose modes
+        run: docker compose config --quiet && docker compose --profile apps --profile ui config --quiet
+      - name: Run reactor unit and integration tests
+        run: mvn -B -ntp test
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start all services
+        run: docker compose --profile apps up -d --build --wait --wait-timeout 180
+      - name: Verify health, roles and restart persistence
+        shell: bash
+        run: |
+          for port in 6789 6790 6791; do
+            curl --fail --silent "http://localhost:$port/actuator/health" | grep '"status":"UP"'
+          done
+          docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -v ON_ERROR_STOP=1 -c "INSERT INTO orders(id,created_at,order_sum,items) VALUES(987654321,now(),1.00,'[]'::jsonb);"
+          docker compose --profile apps up -d --no-deps --force-recreate --no-build --wait --wait-timeout 180 store-service tariffs-service warehouse-service
+          test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM orders WHERE id=987654321')" = 1
+          test "$(docker compose exec -T -e PGPASSWORD=tariffs_local postgres psql -h localhost -U tariffs_app -d tariffs_db -Atc 'SELECT count(*) FROM tariffs')" = 7
+          test "$(docker compose exec -T -e PGPASSWORD=warehouse_local postgres psql -h localhost -U warehouse_app -d warehouse_db -Atc 'SELECT count(*) FROM stores')" = 2
+      - name: Save Compose diagnostics
+        if: always()
+        run: docker compose --profile apps logs --no-color > compose-smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-smoke-logs
+          path: compose-smoke.log
+      - name: Stop smoke containers
+        if: always()
+        run: docker compose --profile apps down

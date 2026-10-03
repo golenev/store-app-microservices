@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. Новые бизнес-сценарии/E2E ещё не реализованы и не выполнены. В задаче 1 реализована проверка структурных контрактов (см. ниже); она и семь зелёных unit-тестов старого cart-service не являются выполнением этих E2E. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
+Статус: спецификация целевого поведения. Новые бизнес-сценарии/E2E ещё не реализованы и не выполнены. В задаче 1 реализована проверка структурных контрактов, в задаче 2 — runtime и миграции (см. ниже). Эти проверки и семь legacy unit-тестов перенесённого STORE не являются выполнением новых E2E. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -96,3 +96,22 @@
 | OpenAPI и внешние schema refs | `HttpContractTest`, `openApiDocumentParsesWithoutDiagnostics`, `openApiReferencesResolveToCanonicalDefinitions`, `submitDocumentsRequiredKeyAndAcceptedResponse` | Спецификация целевого API; ни один новый endpoint не считается доступным |
 
 После реализации каждого сценария добавлять отдельную запись покрытия: ID → абсолютный/репозиторный путь тестового файла, имя метода, уровень проверки, команда запуска и результат последнего проверенного запуска. Несколько уровней для одного сценария допустимы; module integration и сквозной E2E обозначать явно. Не ставить «пройден» по наличию теста без запуска.
+
+## Проверки runtime задачи 2
+
+Это подготовка окружения, а не выполнение CASES-01–34. WAREHOUSE пока не обрабатывает поставки; legacy STORE не списывает остаток при оформлении.
+
+Команда: `mvn -B -ntp test` на Java 21 с работающим Docker. Проверенный запуск 3 октября 2026: 78 тестов, 0 failures/errors/skipped. Из них 62 контрактных, 7 legacy unit и 9 module integration/runtime.
+
+| Проверка | Файл и метод | Уровень / инвариант |
+| --- | --- | --- |
+| Чистая и повторная STORE-миграция | `store-service/src/test/java/stageTests/StoreRuntimeTest.java`, `migrationIsRepeatableWithoutDestroyingData` | PostgreSQL: V1 применяется один раз, сохранённый order не удаляется |
+| Изоляция ролей | тот же файл, `applicationRolesCannotConnectToOtherServiceDatabases` | Реальный bootstrap SQL: своя БД доступна, чужие сервисные и служебные БД отклоняют соединение |
+| STORE health | тот же файл, `healthIsPublicAndDatabaseIsUp` | Полный Spring HTTP + PostgreSQL, health доступен без Basic auth |
+| Совместимость перенесённого legacy потока | `store-service/src/test/java/stageTests/ProductFlowTest.java`, `productAppearsInListAndCart` | Реальные Kafka/PostgreSQL + WireMock, появление товара и запрет добавления сверх остатка; не независимые корзины |
+| TARIFFS схема и health | `tariffs-service/src/test/java/com/tariffs/TariffServiceCacheTest.java`, `migrationsAndHealthAreReady` | PostgreSQL/Redis: семь legacy fixtures, повторная миграция не выполняет SQL, health UP |
+| Старый кеш | тот же файл, `firstCallHitsDbSecondUsesCache`, `cacheResetForcesNextCallToHitDb` | Legacy list/cache/reset с прежними задержками; не новый quote CASES-10–13 |
+| WAREHOUSE fixtures | `warehouse-service/src/test/java/com/shop/warehouse/WarehouseRuntimeTest.java`, `fixturesSurviveRepeatedMigration` | PostgreSQL: S-1/MOSCOW и S-2/SPB, V1/V2 применены один раз |
+| WAREHOUSE health | тот же файл, `healthIsUp` | HTTP runtime с реальной БД; не подтверждение приёмки |
+
+Infrastructure-only запуск: `docker compose up -d --wait`; все три зависимости healthy. Полный запуск и повторный старт проверяются отдельно командами `docker compose --profile apps up -d --build --wait` и `docker compose --profile apps restart`; результаты описаны в README после фактической проверки. Существующие volumes не удаляются.

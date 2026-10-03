@@ -13,8 +13,9 @@
     <packaging>pom</packaging>
     <modules>
         <module>contract-tests</module>
-        <module>cart-service</module>
+        <module>store-service</module>
         <module>tariffs-service</module>
+        <module>warehouse-service</module>
     </modules>
     <properties>
         <java.version>21</java.version>

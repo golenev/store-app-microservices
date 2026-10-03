@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: store-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:34567/store_db}
+    username: ${DB_USER:store_app}
+    password: ${DB_PASSWORD:store_local}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    clean-disabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+server:
+  port: ${SERVER_PORT:6789}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+tariffs-service:
+  base-url: ${TARIFFS_BASE_URL:http://localhost:6790}
+resilience4j:
+  circuitbreaker:
+    instances:
+      tariffs:
+        slidingWindowSize: 5
+        failureRateThreshold: 50
+  retry:
+    instances:
+      tariffs:
+        maxAttempts: 3
+        waitDuration: 500ms
