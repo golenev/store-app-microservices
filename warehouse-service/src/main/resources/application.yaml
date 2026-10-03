@@ -5,10 +5,6 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:34567/warehouse_db}
     username: ${DB_USER:warehouse_app}
     password: ${DB_PASSWORD:warehouse_local}
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
   sql:
     init:
       mode: never
@@ -18,6 +14,36 @@ spring:
     clean-disabled: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      max-poll-records: 10
+      properties:
+        max.partition.fetch.bytes: 16777216
+    listener:
+      ack-mode: record
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 2000
+        request.timeout.ms: 2000
+        delivery.timeout.ms: 4000
+        max.request.size: 16777216
+  task:
+    scheduling:
+      pool:
+        size: 2
+tariffs:
+  base-url: ${TARIFFS_BASE_URL:http://localhost:6790}
+warehouse:
+  lease-ms: 30000
+  pricing-poll-ms: 500
+  sender-poll-ms: 500
 server:
   port: ${SERVER_PORT:6791}
 management:

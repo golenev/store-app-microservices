@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. В задаче 1 проверены структурные контракты, в задаче 2 — runtime и миграции, в задаче 3 — тарифный API с реальными PostgreSQL/Redis. Тарифная часть CASES-10–13 проверена на уровне module integration; новая сквозная поставка, расчёт продажной цены и оформление заказа ещё не реализованы. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
+Статус: спецификация целевого поведения. Задачи 1–3 проверили контракты, runtime и TARIFFS. Задача 4 реализует и проверяет WAREHOUSE: приёмку Kafka, pricing, автоматическое восстановление и GoodsPosted outbox. Покрытые части перечислены ниже. Применение GoodsPosted в STORE, новые корзины и оформление заказа ещё не реализованы; полный сквозной сценарий не объявляется выполненным по успеху отдельного сервиса.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -120,6 +120,8 @@ Infrastructure-only запуск: `docker compose up -d --wait`; все три �
 
 ## Проверки тарифного API задачи 3
 
+Исторический результат задачи 3. Отмеченные здесь будущими WAREHOUSE pricing/HALF_UP проверены в следующем разделе; применение цены к STORE остаётся будущим.
+
 Уровень: module integration. Файл: `tariffs-service/src/test/java/com/tariffs/TariffApiTest.java`. Каждый HTTP-запрос проходит через полный Spring runtime; PostgreSQL 16 и Redis 7 запускаются Testcontainers. Отказы воспроизводятся паузой настоящего контейнера. Правила тестовых городов изолированы; проверки глобального reset выполняются последовательно.
 
 Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 3 октября 2026: **138 тестов, 0 failures/errors/skipped** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 2. После настройки readiness повторно выполнено `mvn -B -ntp -pl tariffs-service test`: **63 теста, 0 failures/errors/skipped**. Сборка всех модулей `mvn -B -ntp -DskipTests package` также прошла; локально использован offline Maven settings для уже загруженных зависимостей.
@@ -135,3 +137,29 @@ Infrastructure-only запуск: `docker compose up -d --wait`; все три �
 | Миграции / совместимость | `migrationsPreserveFixturesAndHealth`, `legacyStoreEndpointsRemainOperationalWithoutDelayOrLegacyCache`, `routingErrorsDoNotBecomeServerErrors` | V1–V4 повторно не меняют данные; семь legacy тарифов доступны старому STORE без искусственного sleep. Legacy таблица и новые правила независимы до задачи 5. |
 
 CI Compose smoke дополнен HTTP-сценарием: создать правило → quote v1 → PUT v2 → получить прежний cached quote → reset → получить quote v2 → удалить правило. После рестарта проверяется сохранность 14 новых и 7 legacy fixtures. Результат удалённого запуска указывается в PR после выполнения; наличие workflow само по себе не считается успешным запуском.
+
+## Проверки приёмки WAREHOUSE задачи 4
+
+Уровень: module integration с настоящими PostgreSQL 16/Kafka 7.6 и HTTP WireMock вместо TARIFFS. `DeliveryIntegrationTest` запускает полный HTTP/consumer runtime; worker ticks в этом классе вызываются управляемо. `WarehouseRecoveryTest` создаёт и закрывает независимые Spring application contexts с сохранённой контейнерной БД, затем проверяет настоящий scheduler. Это рестарт приложения, а не имитация состояния одним Mockito вызовом.
+
+Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 4 октября 2026: **202 теста, 0 failures/errors/skipped** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 66. После замены неиспользуемого ORM WAREHOUSE на JDBC и исправления ожидания lastError выполнено `mvn -B -ntp -pl warehouse-service test`: **66 тестов, 0 failures/errors/skipped**. Контейнеры одноразовые, пользовательские volumes не удаляются.
+
+Файлы: `warehouse-service/src/test/java/com/shop/warehouse/DeliveryIntegrationTest.java`, `WarehouseRecoveryTest.java` и `WarehouseRuntimeTest.java` в том же каталоге.
+
+| CASES / проверка | Класс и методы | Проверенный результат и границы |
+| --- | --- | --- |
+| CASES-01: приёмка и отправка | DeliveryIntegrationTest: `technicalPublishReachesReceptionPricingAndKafka` | HTTP 202 после broker ack → реальная Kafka-приёмка → сохранённый WAITING → HALF_UP цена 120.00 → один outbox → реальный GoodsPosted, key/store и timestamps. Приход в STORE ещё не реализован. |
+| CASES-02 | DeliveryIntegrationTest: `reorderedDeliveryWithNewEventDoesNotCreateAnotherAcceptance`, `concurrentReceptionHasOneDeliveryAndSequence` | Повтор eventId, новый транспортный envelope и обратный порядок строк сохраняют один результат/sequence/receivedAt; конкурентный повтор не создаёт вторую поставку. Дедупликация STORE относится к задаче 5. |
+| CASES-04: WAREHOUSE | DeliveryIntegrationTest: `changedDeliveryContentIsDiagnosed`, `eventIdentifierCannotMoveBetweenStores` | Изменение quantity/price/name/description/type/productId/lineId под прежним deliveryId и смена магазина при прежнем eventId дают сохраняемый конфликт; принятое содержимое неизменно. Вход STORE ещё не проверен. |
+| CASES-05 | DeliveryIntegrationTest: `invalidPayloadIsPersistedRejected`, `invalidEnvelopeIsDiagnosed`, `routingAndUnknownStoreAreDiagnosed`, `diagnosticStorageFailureDoesNotReturnSuccess`, `kafkaOffsetWaitsForDurableDiagnostic` | Invalid payload сохраняет REJECTED/raw payload, без item rows/outbox/retry. Битый JSON, версия, duplicate/unknown fields, UTC/UUID, пустой документ и tombstone диагностируются по Kafka coordinates. Реальный consumer offset не продвигается при ошибке хранения и продвигается после recovery. |
+| CASES-06/33: pricing | WarehouseRecoveryTest: `missingRuleRecoversWithAutomaticPersistedBackoff`; DeliveryIntegrationTest: `missingRuleCanRecoverWithoutChangingAcceptance` | После 404 worker сам повторяет и завершает поставку при появлении правила, без ручного retry. attemptCount/backoff сохраняются; cityId определяется fixture магазина. Полный приход STORE остаётся задачей 5/8. |
+| CASES-07/26: WAREHOUSE restart | WarehouseRecoveryTest: `restartAutomaticallyRecoversPricingLeaseAndPendingOutbox` | Два отдельных запуска приложения с прежней БД: истёкшая pricing lease восстанавливается, POSTED PENDING публикуется; sequence/receivedAt и сохранённый event payload неизменны. Истечение lease задаётся SQL для управляемого crash window; prod lease — 30 s. STORE restart здесь не проверяется. |
+| CASES-12: цена | DeliveryIntegrationTest: `salePriceUsesExactHalfUp`, `salePriceOverflowIsNotSilentlyRoundedOrStored`, `tariffFailureNeverPartiallyPosts`, `secondLineFailureDoesNotPersistFirstLinePricing` | Полкопейки 0.055 → 0.06, шесть знаков rate, overflow без обрезания. Timeout/503/ambiguity/invalid quote не сохраняют частичные строки и outbox. Границы правил покрыты TARIFFS задачей 3. |
+| CASES-25: WAREHOUSE sender | DeliveryIntegrationTest: `kafkaOutageKeepsOutboxPendingThenRecovers`, `pendingEventIsIndependentOfPricingAfterCommit` | Реальная pause/unpause Kafka сохраняет PENDING и попытку, затем публикует без пересчёта тарифа. STORE sender ещё отсутствует. |
+| CASES-27: WAREHOUSE ack window | DeliveryIntegrationTest: `lostPublishedMarkReplaysSameEventAndPayload` | После настоящего broker ack тестовый spy прерывает запись отметки. Повтор даёт две идентичные физические Kafka-записи и один outbox, прежние eventId/key/payload. Приход/расход STORE пока не проверен. |
+| CASES-32 | DeliveryIntegrationTest: `invalidPayloadIsPersistedRejected` | Повтор productId/lineId внутри поставки сохраняет REJECTED с исходными строками, без расчёта и прихода. |
+| CASES-34 | DeliveryIntegrationTest: `manualRetryAndReclaimedWorkerCannotPostTwice`, `concurrentPricingClaimsHaveOneOwner` | Retry не сбрасывает активный token; одна claim из двух конкурирующих. Reclaim блокирует renew/post/failure старого worker; новый завершает ровно один outbox. |
+| Atomic result/outbox | DeliveryIntegrationTest: `outboxFailureRollsBackPostedAndLinePrices` | Настоящий SQL trigger падает на INSERT outbox после обновления строк: вся транзакция откатывается, последующая попытка может завершиться. Trigger существует только в тестовой БД. |
+| Лимиты / scope / миграции | DeliveryIntegrationTest: `thousandLineDeliveryTraversesKafkaWithoutTruncation`, `exhaustedStoreSequenceIsDiagnosedWithoutOverflow`, `statusApiValidatesScopeAndErrors`; WarehouseRuntimeTest: `fixturesSurviveRepeatedMigration`, `healthIsUp` | Более 1 MB / 1000 строк проходит через Kafka без усечения, 1001 отклоняется; sequence не переполняется; GET не смешивает магазины; ошибки имеют безопасный UTC формат; V1–V3 повторно не меняют fixtures. |
+
+CI Compose smoke дополнен настоящей цепочкой технический publisher → Kafka → WAREHOUSE → TARIFFS → POSTED/outbox PUBLISHED. Повторяется исходное событие, затем приложения пересоздаются с прежней БД; GET и SQL проверяют один результат/outbox и прежнюю цену. Результат удалённого source-build прогона указывается в PR после выполнения. Это проверка поставки до границы WAREHOUSE, не полный CASES-01 с inventory STORE.

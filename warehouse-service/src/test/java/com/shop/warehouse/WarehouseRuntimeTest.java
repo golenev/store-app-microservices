@@ -31,6 +31,7 @@ class WarehouseRuntimeTest {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.kafka.admin.auto-create", () -> "false");
     }
 
     /** Initial migration creates both known stores; a repeated migration neither duplicates nor resets them. */
@@ -40,7 +41,7 @@ class WarehouseRuntimeTest {
                 .containsExactly("S-1:MOSCOW", "S-2:SPB");
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject("select count(*) from stores", Integer.class)).isEqualTo(2);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(3);
     }
 
     /** HTTP health proves runtime/database startup; it makes no claim about future delivery processing. */

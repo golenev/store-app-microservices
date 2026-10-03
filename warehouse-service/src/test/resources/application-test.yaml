@@ -1,8 +1,10 @@
 # Tests supply real container endpoints; schema creation remains Flyway-only.
+warehouse:
+  workers:
+    enabled: false
+  listener:
+    enabled: false
 spring:
-  jpa:
-    hibernate:
-      ddl-auto: validate
   sql:
     init:
       mode: never
