@@ -3,7 +3,7 @@ name: shop-runtime
 x-app: &app
   profiles: [apps]
   restart: "no"
-  healthcheck:
+  healthcheck: &app-health
     test: [CMD-SHELL, 'curl --fail --silent http://localhost:$$SERVER_PORT/actuator/health > /dev/null']
     interval: 10s
     timeout: 5s
@@ -86,6 +86,9 @@ services:
       tariffs-service: {condition: service_healthy}
   tariffs-service:
     <<: *app
+    healthcheck:
+      <<: *app-health
+      test: [CMD-SHELL, 'curl --fail --silent http://localhost:$$SERVER_PORT/actuator/health/readiness > /dev/null']
     build: {context: ., args: {SERVICE_MODULE: tariffs-service}}
     ports: ['${TARIFFS_PORT:-6790}:6790']
     environment:
@@ -97,7 +100,7 @@ services:
       REDIS_PORT: 6379
     depends_on:
       postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
+      redis: {condition: service_started}
   warehouse-service:
     <<: *app
     build: {context: ., args: {SERVICE_MODULE: warehouse-service}}

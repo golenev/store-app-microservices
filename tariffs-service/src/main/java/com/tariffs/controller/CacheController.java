@@ -12,10 +12,12 @@ public class CacheController {
 
     private final TariffService service;
 
+    /** Receives the transitional reset alias service without connecting to dependencies. */
     public CacheController(TariffService service) {
         this.service = service;
     }
 
+    /** Requires now=true and delegates to the quote namespace reset; Redis failure becomes HTTP 503. */
     @PostMapping("/resetCache")
     public ResponseEntity<String> resetCache(@RequestParam(required = false) Boolean now) {
         if (now == null || !now) {

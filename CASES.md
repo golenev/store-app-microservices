@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. Новые бизнес-сценарии/E2E ещё не реализованы и не выполнены. В задаче 1 реализована проверка структурных контрактов, в задаче 2 — runtime и миграции (см. ниже). Эти проверки и семь legacy unit-тестов перенесённого STORE не являются выполнением новых E2E. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
+Статус: спецификация целевого поведения. В задаче 1 проверены структурные контракты, в задаче 2 — runtime и миграции, в задаче 3 — тарифный API с реальными PostgreSQL/Redis. Тарифная часть CASES-10–13 проверена на уровне module integration; новая сквозная поставка, расчёт продажной цены и оформление заказа ещё не реализованы. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -27,7 +27,7 @@
 
 ## Сценарии
 
-Для всех записей ниже первоначальный статус: **запланирован**. Номера задач соответствуют implementation-plan.md.
+Для всех записей ниже первоначальный статус: **запланирован**. Выполненные части перечислены в разделе покрытия; они не означают выполнение всего E2E. Номера задач соответствуют implementation-plan.md.
 
 Точные JSON/HTTP-форматы — в [контрактах v1](contracts/README.md). Для PUT/DELETE состава клиент передаёт expectedCartVersion; POSTED и PUBLISHED требуют своих timestamps. Отображаемое имя/описание inventory меняется вместе с ценой только более новым deliverySequence. SUBMITTED-корзина показывает принятый snapshot.
 
@@ -99,6 +99,8 @@
 
 ## Проверки runtime задачи 2
 
+Исторический результат PR #38. `TariffServiceCacheTest` существовал в этом PR; в задаче 3 его заменил `TariffApiTest`, искусственные задержки и legacy cache удалены.
+
 Это подготовка окружения, а не выполнение CASES-01–34. WAREHOUSE пока не обрабатывает поставки; legacy STORE не списывает остаток при оформлении.
 
 Команда: `mvn -B -ntp test` на Java 21 с работающим Docker. Проверенный запуск 3 октября 2026: 78 тестов, 0 failures/errors/skipped. Из них 62 контрактных, 7 legacy unit и 9 module integration/runtime.
@@ -115,3 +117,21 @@
 | WAREHOUSE health | тот же файл, `healthIsUp` | HTTP runtime с реальной БД; не подтверждение приёмки |
 
 Infrastructure-only запуск: `docker compose up -d --wait`; все три зависимости healthy. [CI run 37148872985](https://github.com/golenev/store-app-microservices/actions/runs/37148872985) для code commit `8d0cd98`: reactor и полный source-build Compose smoke прошли. После `up --force-recreate --no-build --no-deps --wait` трёх приложений сохранён order, тарифов 7, магазинов 2. Локально те же инварианты подтверждены с предварительно собранными JAR; три HTTP health вернули UP. Это runtime/restart smoke, не сквозная бизнес-поставка. Существующие volumes не удалялись.
+
+## Проверки тарифного API задачи 3
+
+Уровень: module integration. Файл: `tariffs-service/src/test/java/com/tariffs/TariffApiTest.java`. Каждый HTTP-запрос проходит через полный Spring runtime; PostgreSQL 16 и Redis 7 запускаются Testcontainers. Отказы воспроизводятся паузой настоящего контейнера. Правила тестовых городов изолированы; проверки глобального reset выполняются последовательно.
+
+Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 3 октября 2026: **138 тестов, 0 failures/errors/skipped** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 2. После настройки readiness повторно выполнено `mvn -B -ntp -pl tariffs-service test`: **63 теста, 0 failures/errors/skipped**. Сборка всех модулей `mvn -B -ntp -DskipTests package` также прошла; локально использован offline Maven settings для уже загруженных зависимостей.
+
+| CASES / проверка | Методы TariffApiTest | Проверенный результат и границы |
+| --- | --- | --- |
+| CASES-10 | `repeatedQuoteUsesCacheWithoutDatabaseReadOrTtl`, `updateKeepsCachedSnapshotUntilManualReset`, `deletionKeepsSnapshotUntilReset` | Повтор не читает правила из БД. PUT/DELETE не очищают snapshot; TTL отсутствует. Новый запрос цены может получить новую версию до reset. |
+| CASES-11 | `resetDoesNotFlushOtherRedisNamespaces`, `scheduledResetUsesMoscowMidnightAndTheSameNamespace`, `inFlightOldCalculationCannotRefillAfterReset`, `lostGenerationDoesNotRevalidateOldFillToken` | Ручной и плановый reset очищают только quote entries; cron настроен на полночь Москвы. Отложенный расчёт со старым token не заполняет кеш после reset или потери epoch. Плановый метод вызывается управляемо, ожидание реальной полуночи не тестируется. Inventory ещё не реализован. |
+| CASES-12: тарифная часть | `fixtureBoundaries`, `missingRuleIsNotCachedAsZeroRate`, `overlappingRulesNeverSelectAnArbitraryWinner`, `fractionalRateIsExactWithoutDoubleOrPrematureRounding` | Границы [lower, upper), 14 fixtures двух городов, ошибки 404/409, точный decimal rate. HALF_UP и продажная цена относятся к WAREHOUSE задачи 4 и ещё не проверены. |
+| CASES-13: тарифная часть | `redisOutageFallsBackToDatabaseAndResetReturns503`, `databaseOutageOnCacheMissReturns503`, `cachedQuoteSurvivesDatabaseOutage` | Без Redis quote вычисляется через БД, reset возвращает 503, readiness остаётся 200. Без БД cache miss возвращает 503, cache hit работает. WAITING_PRICING относится к задаче 4. |
+| CRUD / конкуренция | `crudUsesVersionedFullReplacementAndExplicitNullUpperBound`, `concurrentUpdatesIncrementVersionTwice`, `creationRespectsTheCatalogLimit`, `concurrentCreatesCannotExceedCatalogLimit` | UUID, версия 1 и атомарное увеличение, явный nullable upperBound, лимит 1000 правил даже при конкурентном создании последнего места. |
+| Валидация / изоляция | `invalidQuotePrices`, `invalidDimensionsAndIdentifiers`, `invalidRuleValues`, `malformedRuleJson`, `invalidReplacementDoesNotChangeTheRule`, `databaseRejectsInvalidBounds`, `cityAndProductTypeAreSeparateCacheDimensions`, `malformedCacheEntryIsRecomputed` | Ошибочные деньги, диапазоны, UUID, типы, неизвестные/повторные поля отклоняются; invalid PUT не меняет правило; ключ включает город, тип, валюту и цену. Повреждённый JSON кеша пересчитывается. |
+| Миграции / совместимость | `migrationsPreserveFixturesAndHealth`, `legacyStoreEndpointsRemainOperationalWithoutDelayOrLegacyCache`, `routingErrorsDoNotBecomeServerErrors` | V1–V4 повторно не меняют данные; семь legacy тарифов доступны старому STORE без искусственного sleep. Legacy таблица и новые правила независимы до задачи 5. |
+
+CI Compose smoke дополнен HTTP-сценарием: создать правило → quote v1 → PUT v2 → получить прежний cached quote → reset → получить quote v2 → удалить правило. После рестарта проверяется сохранность 14 новых и 7 legacy fixtures. Результат удалённого запуска указывается в PR после выполнения; наличие workflow само по себе не считается успешным запуском.
