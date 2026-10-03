@@ -1,66 +1,118 @@
+name: shop-runtime
+
+x-app: &app
+  profiles: [apps]
+  restart: "no"
+  healthcheck:
+    test: [CMD-SHELL, 'curl --fail --silent http://localhost:$$SERVER_PORT/actuator/health > /dev/null']
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 60s
+
 services:
-  kafdrop:
-    image: obsidiandynamics/kafdrop
-    restart: "no"
-    ports:
-      - "9000:9000"
+  postgres:
+    image: postgres:16-alpine
+    ports: ['${POSTGRES_PORT:-34567}:5432']
     environment:
-      KAFKA_BROKERCONNECT: "kafka:29092"
-    depends_on:
-      - "kafka"
+      POSTGRES_USER: bootstrap_admin
+      POSTGRES_PASSWORD: bootstrap_local
+      POSTGRES_DB: bootstrap_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U bootstrap_admin -d bootstrap_db']
+      interval: 5s
+      timeout: 5s
+      retries: 20
   kafka:
-    image: obsidiandynamics/kafka
-    restart: "no"
-    ports:
-      - "2181:2181"
-      - "9092:9092"
+    image: confluentinc/cp-kafka:7.6.0
+    ports: ['${KAFKA_PORT:-9092}:9092']
     environment:
-      KAFKA_LISTENERS: "INTERNAL://:29092,EXTERNAL://:9092"
-      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,EXTERNAL://localhost:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
-      KAFKA_ZOOKEEPER_SESSION_TIMEOUT: "6000"
-      KAFKA_RESTART_ATTEMPTS: "10"
-      KAFKA_RESTART_DELAY: "5"
-      ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL: "0"
-  postgres-products:
-    image: postgres:latest
-    ports:
-      - "34567:5432"
-    environment:
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: mydatabase
-  postgres-tariffs:
-    image: postgres:latest
-    ports:
-      - "34568:5432"
-    environment:
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: tariffs_db
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://${KAFKA_HOST:-localhost}:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes: [kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD-SHELL, 'kafka-topics --bootstrap-server localhost:29092 --list > /dev/null']
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-  redpanda-console:
-    image: docker.redpanda.com/redpandadata/console:latest
-    container_name: redpanda-ui
-    ports:
-      - "8081:8080"
+    ports: ['${REDIS_PORT:-6379}:6379']
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  kafdrop:
+    profiles: [ui]
+    image: obsidiandynamics/kafdrop:4.0.2
+    ports: ['${KAFDROP_PORT:-9000}:9000']
     environment:
-      KAFKA_BROKERS: "kafka:29092"
+      KAFKA_BROKERCONNECT: kafka:29092
     depends_on:
-      - kafka
-  redpanda-console-remote:
-    image: docker.redpanda.com/redpandadata/console:latest
-    container_name: redpanda-ui-remote
-    restart: unless-stopped
-    ports:
-      - "8017:8080"  # выставляем на другой порт, например 8082
+      kafka: {condition: service_healthy}
+  store-service:
+    <<: *app
+    build: {context: ., args: {SERVICE_MODULE: store-service}}
+    ports: ['${STORE_PORT:-6789}:6789']
     environment:
-      KAFKA_BROKERS: #host:8080
-      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
-      KAFKA_SASL_MECHANISM: SCRAM-SHA-256
-      KAFKA_SASL_USERNAME: #login
-      KAFKA_SASL_PASSWORD: #password
+      SERVER_PORT: 6789
+      DB_URL: jdbc:postgresql://postgres:5432/store_db
+      DB_USER: store_app
+      DB_PASSWORD: store_local
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TARIFFS_BASE_URL: http://tariffs-service:6790
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      tariffs-service: {condition: service_healthy}
+  tariffs-service:
+    <<: *app
+    build: {context: ., args: {SERVICE_MODULE: tariffs-service}}
+    ports: ['${TARIFFS_PORT:-6790}:6790']
+    environment:
+      SERVER_PORT: 6790
+      DB_URL: jdbc:postgresql://postgres:5432/tariffs_db
+      DB_USER: tariffs_app
+      DB_PASSWORD: tariffs_local
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  warehouse-service:
+    <<: *app
+    build: {context: ., args: {SERVICE_MODULE: warehouse-service}}
+    ports: ['${WAREHOUSE_PORT:-6791}:6791']
+    environment:
+      SERVER_PORT: 6791
+      DB_URL: jdbc:postgresql://postgres:5432/warehouse_db
+      DB_USER: warehouse_app
+      DB_PASSWORD: warehouse_local
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+
+volumes:
+  postgres-data:
+  kafka-data:
+  redis-data:

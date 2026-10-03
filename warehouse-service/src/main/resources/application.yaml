@@ -1,10 +1,10 @@
 spring:
   application:
-    name: tariffs-service
+    name: warehouse-service
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:34567/tariffs_db}
-    username: ${DB_USER:tariffs_app}
-    password: ${DB_PASSWORD:tariffs_local}
+    url: ${DB_URL:jdbc:postgresql://localhost:34567/warehouse_db}
+    username: ${DB_USER:warehouse_app}
+    password: ${DB_PASSWORD:warehouse_local}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -16,12 +16,10 @@ spring:
     enabled: true
     baseline-on-migrate: false
     clean-disabled: true
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 server:
-  port: ${SERVER_PORT:6790}
+  port: ${SERVER_PORT:6791}
 management:
   endpoints:
     web:

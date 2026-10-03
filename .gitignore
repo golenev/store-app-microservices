@@ -2,3 +2,10 @@
 /target/
 /e2e-tests/target/
 /cart-service/target/
+/store-service/target/
+/tariffs-service/target/
+/warehouse-service/target/
+/contract-tests/target/
+/e2e-tests/.gradle/
+/e2e-tests/build/
+/runtime-*.log

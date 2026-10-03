@@ -1,0 +1,10 @@
+.git
+.idea
+**/target
+**/build
+**/.gradle
+**/*.log
+.codex
+.agents
+e2e-tests
+docs
