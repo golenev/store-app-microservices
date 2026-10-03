@@ -117,6 +117,8 @@ Docker обязателен для интеграционных проверок
 
 На Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
 
+[CI задачи 2](https://github.com/golenev/store-app-microservices/actions/runs/37148872985) прошёл для code commit `8d0cd98`: Maven reactor и штатный Docker build всех трёх сервисов, health и пересоздание приложений с сохранностью order/fixtures. Локально также проверены infrastructure-only, запуск контейнеров с JAR, собранными Maven, и повторный старт: health UP, marker сохранён, тарифов 7, магазинов 2. Локальная multi-stage сборка и загрузка optional Kafdrop столкнулись с TLS timeout реестра; это не мешало source-build smoke в CI.
+
 Только контракты, без Docker:
 
 ```shell
@@ -135,3 +137,5 @@ cd e2e-tests
 ```
 
 Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E и адаптация HTML идут отдельными задачами.
+
+Текущий `gradle-wrapper.jar` не имеет main manifest: команды wrapper выше требуют восстановления wrapper в задаче 8. Компиляция `compileKotlin compileTestKotlin` прошла на Java 21 с установленным Gradle 8.8; E2E-сценарии в задаче 2 не запускались. Backend integration и Compose smoke описаны отдельно.
