@@ -26,6 +26,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and start all services
         run: docker compose --profile apps up -d --build --wait --wait-timeout 180
+      - name: Verify tariff quote cache and CRUD
+        shell: bash
+        run: |
+          rule='{"productType":"NON_FOOD","cityId":"CI_TARIFF","currency":"RUB","lowerBound":"0.00","upperBound":null,"markupRate":"0.20"}'
+          id=$(curl --fail --silent -H 'Content-Type: application/json' -d "$rule" http://localhost:6790/tariffs/rules | jq -r '.tariffRuleId')
+          quote='http://localhost:6790/tariffs/quote?productType=NON_FOOD&purchasePrice=100.00&currency=RUB&cityId=CI_TARIFF'
+          curl --fail --silent "$quote" | jq -e '.markupRate == "0.20" and .tariffVersion == 1'
+          updated='{"productType":"NON_FOOD","cityId":"CI_TARIFF","currency":"RUB","lowerBound":"0.00","upperBound":null,"markupRate":"0.30"}'
+          curl --fail --silent -X PUT -H 'Content-Type: application/json' -d "$updated" "http://localhost:6790/tariffs/rules/$id" | jq -e '.version == 2'
+          curl --fail --silent "$quote" | jq -e '.markupRate == "0.20" and .tariffVersion == 1'
+          curl --fail --silent -X POST http://localhost:6790/tariffs/cache/reset | jq -e '.cache == "tariff-quotes"'
+          curl --fail --silent "$quote" | jq -e '.markupRate == "0.30" and .tariffVersion == 2'
+          curl --fail --silent -X DELETE "http://localhost:6790/tariffs/rules/$id"
       - name: Verify health, roles and restart persistence
         shell: bash
         run: |
@@ -36,6 +49,7 @@ jobs:
           docker compose --profile apps up -d --no-deps --force-recreate --no-build --wait --wait-timeout 180 store-service tariffs-service warehouse-service
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM orders WHERE id=987654321')" = 1
           test "$(docker compose exec -T -e PGPASSWORD=tariffs_local postgres psql -h localhost -U tariffs_app -d tariffs_db -Atc 'SELECT count(*) FROM tariffs')" = 7
+          test "$(docker compose exec -T -e PGPASSWORD=tariffs_local postgres psql -h localhost -U tariffs_app -d tariffs_db -Atc 'SELECT count(*) FROM tariff_rules')" = 14
           test "$(docker compose exec -T -e PGPASSWORD=warehouse_local postgres psql -h localhost -U warehouse_app -d warehouse_db -Atc 'SELECT count(*) FROM stores')" = 2
       - name: Save Compose diagnostics
         if: always()

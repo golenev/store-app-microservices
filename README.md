@@ -4,10 +4,10 @@
 
 ## Текущее состояние
 
-Задача 1 включена в master через PR #37: [контракты v1](contracts/README.md), JSON Schema, OpenAPI и 62 проверки. Задача 2 добавляет три запускаемых приложения, Flyway и локальную среду. Новый бизнес-поток ещё не реализован.
+Задача 1 включена в master через PR #37: [контракты v1](contracts/README.md), JSON Schema, OpenAPI и 62 проверки. Задача 2 включена через PR #38: три приложения, Flyway и Compose. Задача 3 реализует TARIFFS quote, CRUD, кеш и fallback; цепочка приёмки/списания ещё не реализована.
 
 - **STORE** (`store-service`, package `com.shop.store`) — перенесённый legacy каталог, глобальная корзина, Basic auth и старый `/order`.
-- **TARIFFS** (`tariffs-service`) — прежний список процентных наценок и Redis-кеш. Старые задержки, TTL и правила сброса сохраняются до задачи 3.
+- **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старый percentage list временно сохранён для STORE без отдельного кеша и задержки.
 - **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — HTTP runtime, health и fixtures магазинов. Поставки пока не принимает.
 
 Legacy STORE всё ещё принимает сырой Product из `send-topic`, сам запрашивает тарифы и сохраняет продукт по barcode. Здесь пока нет независимых корзин, нового накопления остатка, атомарного списания, идемпотентности и outbox. HTML сохранён и работает через прежние endpoints; адаптация — задача 7.
@@ -61,7 +61,7 @@ docker compose --profile apps up -d --build --wait
 docker compose --profile apps ps
 ```
 
-Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; STORE также ждёт TARIFFS. Первый build требует доступа к Docker Hub, Maven Central и пакетному репозиторию базового образа.
+Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; STORE также ждёт TARIFFS. Первый build требует доступа к Docker Hub и Maven Central.
 
 Дополнительный UI в любом режиме:
 
@@ -69,7 +69,7 @@ docker compose --profile apps ps
 docker compose --profile ui up -d kafdrop
 ```
 
-HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE пока не подтверждает обработку поставок.
+HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. TARIFFS `/actuator/health/readiness` проверяет готовность и PostgreSQL; отказ Redis не исключает DB-fallback из обслуживания. Compose использует этот readiness и ждёт запуска Redis, а не его healthy. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE пока не подтверждает обработку поставок.
 
 Остановка контейнеров с сохранением данных:
 
@@ -84,7 +84,7 @@ Compose использует имя проекта `shop-runtime` и отдел�
 Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса; Hibernate использует `ddl-auto: validate`. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
 
 - STORE V1 создаёт прежние `product`, `cart`, `orders` с FK и проверками количества/цены.
-- TARIFFS V1 создаёт прежнюю `tariffs`; V2 однократно добавляет семь процентных тарифов. Скрытый CommandLineRunner больше не заполняет БД.
+- TARIFFS V1/V2 сохраняют прежние `tariffs` и семь процентных fixtures. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.
 - WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB.
 
 Повторный старт валидирует checksum и не повторяет выполненные миграции. Применённые SQL-файлы не редактируют: изменения схемы оформляют следующей версией миграции.
@@ -105,7 +105,47 @@ Compose использует имя проекта `shop-runtime` и отдел�
 | DELETE `/api/cart/clear` | Очистить общую корзину |
 | POST `/order` | Сохранить клиентский snapshot без нового submit |
 
-TARIFFS по-прежнему предоставляет `GET /tariffs?all=true` и `POST /api/v1/resetCache?now=true`. Новые endpoints из OpenAPI добавляются задачами 3–6. Сброс legacy кеша не переоценивает сохранённые товары.
+TARIFFS сохраняет `GET /tariffs?all=true` и legacy CRUD процентных `tariffs` для старого STORE. Этот список читается из БД без задержки и кеша; он независим от новых `tariff_rules`. Изменение новых правил пока не меняет legacy приёмку STORE. `POST /api/v1/resetCache?now=true` — временный alias нового reset с прежним текстом ответа. Ни один reset не переоценивает уже сохранённые товары.
+
+## Тарифный API задачи 3
+
+Без авторизации, на `http://localhost:6790`:
+
+| Endpoint | Результат |
+| --- | --- |
+| GET `/tariffs/quote?productType=NON_FOOD&purchasePrice=100.00&currency=RUB&cityId=MOSCOW` | `{"markupRate":"0.20","tariffRuleId":"b3000000-0000-4000-8000-000000000001","tariffVersion":1}` для fixtures |
+| GET `/tariffs/rules` | `{ "items": [...] }`, текущая БД, до 1000 правил |
+| GET `/tariffs/rules/{tariffRuleId}` | Текущее правило или 404 NOT_FOUND |
+| POST `/tariffs/rules` | 201, серверный UUID, version=1 и Location |
+| PUT `/tariffs/rules/{tariffRuleId}` | Полная замена, version увеличивается под row lock |
+| DELETE `/tariffs/rules/{tariffRuleId}` | 204 или 404 NOT_FOUND |
+| POST `/tariffs/cache/reset` | `{ "cache":"tariff-quotes", "resetAt":"...Z" }`, либо 503 |
+
+POST/PUT принимают один формат; `upperBound` обязателен, explicit null означает бесконечность:
+
+```json
+{"productType":"NON_FOOD","cityId":"MOSCOW","currency":"RUB","lowerBound":"0.00","upperBound":"500.00","markupRate":"0.20"}
+```
+
+Деньги — JSON-строки с двумя знаками, наценка — неотрицательная **доля**, 1–6 дробных знаков. `0.20` = 20%; DB использует NUMERIC(9,6). Нижняя граница включена, верхняя исключена. Нет правила → 404 TARIFF_NOT_FOUND; несколько совпадений → 409 TARIFF_AMBIGUOUS. Пересекающиеся правила можно сохранить для диагностики; quote не выбирает произвольный первый результат. CRUD не инвалидирует quote-кеш, даже после удаления правила. Поэтому разные уже заполненные запросы могут показывать разные версии до reset — это согласованное поведение.
+
+| Тип | Диапазон | MOSCOW | SPB |
+| --- | --- | --- | --- |
+| NON_FOOD | [0, 500) | 0.20 | 0.21 |
+| NON_FOOD | [500, 1000) | 0.25 | 0.26 |
+| NON_FOOD | [1000, ∞) | 0.30 | 0.31 |
+| FOOD | [0, 100) | 0.01 | 0.02 |
+| FOOD | [100, 300) | 0.03 | 0.04 |
+| FOOD | [300, 500) | 0.05 | 0.06 |
+| FOOD | [500, ∞) | 0.10 | 0.11 |
+
+Quote требует положительную purchasePrice, только RUB и точные FOOD/NON_FOOD. cityId регистрозависим; неизвестный город не подменяется MOSCOW. Неизвестные/дублированные JSON-поля, числовые деньги вместо строк, потерянный upperBound и укороченный UUID отклоняются. Невалидный PUT не меняет правило/версию. Создания сериализуются advisory lock в БД, чтобы параллельные запросы не превысили 1000 правил.
+
+Кеш: Redis hash `tariff-quotes:v1:entries`, поля из productType/cityId/currency/нормализованной цены. `tariff-quotes:v1:epoch` хранит UUID поколения. TTL отсутствует; reset атомарно меняет поколение и удаляет только этот hash. Отложенный расчёт старого поколения не заполнит новый кеш, в том числе после потери данных Redis. Другие namespaces и legacy ключи не удаляются. Ошибки NOT_FOUND/AMBIGUOUS не кешируются, повреждённый JSON пересчитывается.
+
+Плановый сброс — `0 0 0 * * *`, `Europe/Moscow`, через тот же reset. Redis read/write timeout — 500 ms, connect timeout — 500 ms. При отказе read/write quote возвращает результат PostgreSQL; при cache miss и отказе БД — 503 DEPENDENCY_UNAVAILABLE. Заполненный quote работает без доступной БД. Manual reset при отказе Redis возвращает 503; запланированный сбой логируется. Ответ 503 не доказывает, что команда reset не была исполнена позднее. Общий health при Redis outage может быть DOWN, readiness с доступной БД остаётся UP.
+
+Это компонент TARIFFS. HALF_UP расчёт продажной цены, WAREHOUSE pricing/retry и применение цены к остатку реализуются задачами 4–5.
 
 ## Проверки
 
@@ -115,7 +155,7 @@ mvn -B -ntp test
 
 Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway и Hibernate validate; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
 
-На Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
+Историческая проверка задачи 2: на Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
 
 [CI задачи 2](https://github.com/golenev/store-app-microservices/actions/runs/37148872985) прошёл для code commit `8d0cd98`: Maven reactor и штатный Docker build всех трёх сервисов, health и пересоздание приложений с сохранностью order/fixtures. Локально также проверены infrastructure-only, запуск контейнеров с JAR, собранными Maven, и повторный старт: health UP, marker сохранён, тарифов 7, магазинов 2. Локальная multi-stage сборка и загрузка optional Kafdrop столкнулись с TLS timeout реестра; это не мешало source-build smoke в CI.
 
@@ -139,3 +179,5 @@ cd e2e-tests
 Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E и адаптация HTML идут отдельными задачами.
 
 Текущий `gradle-wrapper.jar` не имеет main manifest: команды wrapper выше требуют восстановления wrapper в задаче 8. Компиляция `compileKotlin compileTestKotlin` прошла на Java 21 с установленным Gradle 8.8; E2E-сценарии в задаче 2 не запускались. Backend integration и Compose smoke описаны отдельно.
+
+Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, 0 failures/errors/skipped, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
