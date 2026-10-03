@@ -1,0 +1,29 @@
+{
+  "eventId": "b2000000-0000-4000-8000-000000000002",
+  "eventType": "GoodsPosted",
+  "schemaVersion": 1,
+  "occurredAt": "2026-10-03T10:00:02Z",
+  "storeId": "S-1",
+  "payload": {
+    "deliveryId": "D-1",
+    "deliverySequence": 1,
+    "receivedAt": "2026-10-03T10:00:01Z",
+    "postedAt": "2026-10-03T10:00:02Z",
+    "items": [
+      {
+        "lineId": "L-1",
+        "productId": "P-1",
+        "productType": "NON_FOOD",
+        "shortName": "Мыло",
+        "description": "Учебный товар",
+        "quantity": 10,
+        "purchasePrice": "100.00",
+        "currency": "RUB",
+        "markupRate": "0.20",
+        "tariffRuleId": "b3000000-0000-4000-8000-000000000001",
+        "tariffVersion": 1,
+        "salePrice": "120.00"
+      }
+    ]
+  }
+}

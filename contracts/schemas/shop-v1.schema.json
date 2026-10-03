@@ -1,0 +1,1256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Educational shop contracts v1",
+  "description": "Target wire contracts; availability is tracked in README. Definitions describe structure, not transactional guarantees.",
+  "$defs": {
+    "DeliveryLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineId",
+        "productId",
+        "productType",
+        "shortName",
+        "description",
+        "quantity",
+        "purchasePrice",
+        "currency"
+      ],
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "purchasePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        }
+      }
+    },
+    "DeliveryPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deliveryId",
+        "items"
+      ],
+      "properties": {
+        "deliveryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/DeliveryLine"
+          }
+        }
+      }
+    },
+    "PostedLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineId",
+        "productId",
+        "productType",
+        "shortName",
+        "description",
+        "quantity",
+        "purchasePrice",
+        "currency",
+        "markupRate",
+        "tariffRuleId",
+        "tariffVersion",
+        "salePrice"
+      ],
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "purchasePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "markupRate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,2})\\.[0-9]{1,6}$"
+        },
+        "tariffRuleId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tariffVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "salePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        }
+      }
+    },
+    "PostedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deliveryId",
+        "deliverySequence",
+        "receivedAt",
+        "postedAt",
+        "items"
+      ],
+      "properties": {
+        "deliveryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "deliverySequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "postedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/PostedLine"
+          }
+        }
+      }
+    },
+    "OrderLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stockItemId",
+        "productId",
+        "shortName",
+        "quantity",
+        "unitPrice",
+        "lineTotal"
+      ],
+      "properties": {
+        "stockItemId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "unitPrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "lineTotal": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,35})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        }
+      }
+    },
+    "OrderPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submissionId",
+        "cartId",
+        "acceptedAt",
+        "items",
+        "totalAmount",
+        "currency"
+      ],
+      "properties": {
+        "submissionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "cartId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/OrderLine"
+          }
+        },
+        "totalAmount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,35})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        }
+      }
+    },
+    "DeliveryReceived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "storeId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventType": {
+          "const": "DeliveryReceived"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "payload": {
+          "$ref": "#/$defs/DeliveryPayload"
+        }
+      }
+    },
+    "GoodsPosted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "storeId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventType": {
+          "const": "GoodsPosted"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "payload": {
+          "$ref": "#/$defs/PostedPayload"
+        }
+      }
+    },
+    "OrderSubmitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "storeId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventType": {
+          "const": "OrderSubmitted"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "payload": {
+          "$ref": "#/$defs/OrderPayload"
+        }
+      }
+    },
+    "QuoteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productType",
+        "purchasePrice",
+        "currency",
+        "cityId"
+      ],
+      "properties": {
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "purchasePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "cityId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        }
+      }
+    },
+    "QuoteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "markupRate",
+        "tariffRuleId",
+        "tariffVersion"
+      ],
+      "properties": {
+        "markupRate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,2})\\.[0-9]{1,6}$"
+        },
+        "tariffRuleId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tariffVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "TariffRuleRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productType",
+        "cityId",
+        "currency",
+        "lowerBound",
+        "upperBound",
+        "markupRate"
+      ],
+      "properties": {
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "cityId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "lowerBound": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$"
+        },
+        "upperBound": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "markupRate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,2})\\.[0-9]{1,6}$"
+        }
+      }
+    },
+    "TariffRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tariffRuleId",
+        "version",
+        "productType",
+        "cityId",
+        "currency",
+        "lowerBound",
+        "upperBound",
+        "markupRate"
+      ],
+      "properties": {
+        "tariffRuleId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "cityId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "lowerBound": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$"
+        },
+        "upperBound": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "markupRate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,2})\\.[0-9]{1,6}$"
+        }
+      }
+    },
+    "TariffRulesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/TariffRule"
+          }
+        }
+      }
+    },
+    "CacheResetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cache",
+        "resetAt"
+      ],
+      "properties": {
+        "cache": {
+          "const": "tariff-quotes"
+        },
+        "resetAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        }
+      }
+    },
+    "DeliveryViewLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineId",
+        "productId",
+        "productType",
+        "shortName",
+        "description",
+        "quantity",
+        "purchasePrice",
+        "currency"
+      ],
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "purchasePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "markupRate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,2})\\.[0-9]{1,6}$"
+        },
+        "tariffRuleId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tariffVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "salePrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        }
+      }
+    },
+    "DeliveryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storeId",
+        "deliveryId",
+        "deliverySequence",
+        "state",
+        "receivedAt",
+        "attemptCount",
+        "items"
+      ],
+      "properties": {
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "deliveryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "deliverySequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "enum": [
+            "WAITING_PRICING",
+            "POSTED",
+            "REJECTED"
+          ]
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "postedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nextAttemptAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "lastError": {
+          "$ref": "#/$defs/DeliveryError"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/DeliveryViewLine"
+          }
+        },
+        "rejectedPayload": {
+          "description": "Original parsed payload for diagnostics; it may intentionally violate DeliveryPayload.",
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "POSTED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "postedAt"
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "required": [
+                    "markupRate",
+                    "tariffRuleId",
+                    "tariffVersion",
+                    "salePrice"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "WAITING_PRICING"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "nextAttemptAt"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "WAITING_PRICING",
+                  "POSTED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "REJECTED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "lastError",
+              "rejectedPayload"
+            ]
+          }
+        }
+      ]
+    },
+    "DeliveryError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "DeliveryPublishResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "storeId",
+        "deliveryId",
+        "publicationStatus",
+        "publishedAt"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "deliveryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "publicationStatus": {
+          "const": "PUBLISHED"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        }
+      }
+    },
+    "CatalogItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stockItemId",
+        "productId",
+        "productType",
+        "shortName",
+        "description",
+        "unitPrice",
+        "currency",
+        "availableQuantity"
+      ],
+      "properties": {
+        "stockItemId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "productType": {
+          "enum": [
+            "FOOD",
+            "NON_FOOD"
+          ]
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "unitPrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "availableQuantity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "CatalogResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storeId",
+        "items"
+      ],
+      "properties": {
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/CatalogItem"
+          }
+        }
+      }
+    },
+    "CartLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stockItemId",
+        "productId",
+        "shortName",
+        "quantity",
+        "unitPrice",
+        "lineTotal"
+      ],
+      "properties": {
+        "stockItemId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "shortName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "unitPrice": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,25})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        },
+        "lineTotal": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,35})\\.[0-9]{2}$",
+          "not": {
+            "const": "0.00"
+          }
+        }
+      }
+    },
+    "CartResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storeId",
+        "cartId",
+        "version",
+        "state",
+        "items",
+        "totalAmount",
+        "currency"
+      ],
+      "properties": {
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "cartId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "SUBMITTED"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/CartLine"
+          }
+        },
+        "totalAmount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,35})\\.[0-9]{2}$"
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "submissionId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "SUBMITTED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "submissionId"
+            ]
+          }
+        }
+      ]
+    },
+    "PutCartItemRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity",
+        "expectedCartVersion"
+      ],
+      "properties": {
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "expectedCartVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "SubmitRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedCartVersion"
+      ],
+      "properties": {
+        "expectedCartVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "SubmissionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storeId",
+        "submissionId",
+        "cartId",
+        "eventId",
+        "publicationStatus",
+        "acceptedAt"
+      ],
+      "properties": {
+        "storeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "submissionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "cartId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "publicationStatus": {
+          "enum": [
+            "PENDING",
+            "PUBLISHED"
+          ]
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "publicationStatus": {
+                "const": "PUBLISHED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "publishedAt"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "publicationStatus": {
+                "const": "PENDING"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "publishedAt"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ErrorDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "message"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timestamp",
+        "status",
+        "code",
+        "message",
+        "path"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 400,
+          "maximum": 599
+        },
+        "code": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "NOT_FOUND",
+            "INSUFFICIENT_STOCK",
+            "CART_VERSION_CONFLICT",
+            "CART_ALREADY_SUBMITTED",
+            "IDEMPOTENCY_KEY_REUSED",
+            "TARIFF_NOT_FOUND",
+            "TARIFF_AMBIGUOUS",
+            "DEPENDENCY_UNAVAILABLE",
+            "DELIVERY_CONTENT_CONFLICT",
+            "DELIVERY_NOT_WAITING_PRICING",
+            "INTERNAL_ERROR"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "details": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/ErrorDetail"
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/DeliveryReceived"
+    },
+    {
+      "$ref": "#/$defs/GoodsPosted"
+    },
+    {
+      "$ref": "#/$defs/OrderSubmitted"
+    }
+  ]
+}

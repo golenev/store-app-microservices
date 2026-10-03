@@ -1,0 +1,24 @@
+{
+  "eventId": "b2000000-0000-4000-8000-000000000003",
+  "eventType": "OrderSubmitted",
+  "schemaVersion": 1,
+  "occurredAt": "2026-10-03T10:00:03Z",
+  "storeId": "S-1",
+  "payload": {
+    "submissionId": "b6000000-0000-4000-8000-000000000001",
+    "cartId": "b5000000-0000-4000-8000-000000000001",
+    "acceptedAt": "2026-10-03T10:00:03Z",
+    "items": [
+      {
+        "stockItemId": "b4000000-0000-4000-8000-000000000001",
+        "productId": "P-1",
+        "shortName": "Мыло",
+        "quantity": 3,
+        "unitPrice": "120.00",
+        "lineTotal": "360.00"
+      }
+    ],
+    "totalAmount": "360.00",
+    "currency": "RUB"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "storeId": "S-1",
+  "items": [
+    {
+      "stockItemId": "b4000000-0000-4000-8000-000000000001",
+      "productId": "P-1",
+      "productType": "NON_FOOD",
+      "shortName": "Мыло",
+      "description": "Учебный товар",
+      "unitPrice": "120.00",
+      "currency": "RUB",
+      "availableQuantity": 10
+    }
+  ]
+}

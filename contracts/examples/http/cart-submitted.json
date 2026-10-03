@@ -1,0 +1,19 @@
+{
+  "storeId": "S-1",
+  "cartId": "b5000000-0000-4000-8000-000000000001",
+  "version": 2,
+  "state": "SUBMITTED",
+  "items": [
+    {
+      "stockItemId": "b4000000-0000-4000-8000-000000000001",
+      "productId": "P-1",
+      "shortName": "Мыло",
+      "quantity": 3,
+      "unitPrice": "120.00",
+      "lineTotal": "360.00"
+    }
+  ],
+  "totalAmount": "360.00",
+  "currency": "RUB",
+  "submissionId": "b6000000-0000-4000-8000-000000000001"
+}

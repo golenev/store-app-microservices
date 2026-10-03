@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. Новые сценарии ещё не реализованы и не выполнены; текущие семь зелёных unit-тестов старого cart-service не являются покрытием этого файла. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
+Статус: спецификация целевого поведения. Новые бизнес-сценарии/E2E ещё не реализованы и не выполнены. В задаче 1 реализована проверка структурных контрактов (см. ниже); она и семь зелёных unit-тестов старого cart-service не являются выполнением этих E2E. Каждый PR обновляет статус соответствующих сценариев и добавляет ссылку на реальный тест.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -28,6 +28,8 @@
 ## Сценарии
 
 Для всех записей ниже первоначальный статус: **запланирован**. Номера задач соответствуют implementation-plan.md.
+
+Точные JSON/HTTP-форматы — в [контрактах v1](contracts/README.md). Для PUT/DELETE состава клиент передаёт expectedCartVersion; POSTED и PUBLISHED требуют своих timestamps. Отображаемое имя/описание inventory меняется вместе с ценой только более новым deliverySequence. SUBMITTED-корзина показывает принятый snapshot.
 
 | ID | Исходные данные и действие | Ожидаемый результат | Задачи |
 | --- | --- | --- | --- |
@@ -79,5 +81,18 @@
 9. Принятый OrderSubmitted содержит неизменяемый snapshot цен и состава.
 
 ## Обновление покрытия
+
+### Задача 1: только структурные контракты
+
+Команда: `mvn -pl contract-tests test` (Java 21). Проверено 3 октября 2026 года: 62 теста, 0 ошибок, 0 падений, 0 пропусков; Spring и инфраструктура не запускались.
+
+| Проверяемая часть | Тестовый файл/метод | Связанные CASES и границы проверки |
+| --- | --- | --- |
+| Примеры событий и HTTP | `contract-tests/src/test/java/com/shop/contracts/HttpContractTest.java`, `publishedExamplesMatchCanonicalDefinitions` | Форматы CASES-01/05/16/25; не обработка/доставка/транзакции |
+| Decimal strings и DTO round trip | `contract-tests/src/test/java/com/shop/contracts/EventContractTest.java`, `supplierDtoPreservesDecimalStringAndProductMetadata`, `preservesPriceBeyondFloatingPointIntegerPrecision`, `eventEnvelopeRoundTripPreservesWireContract` | Формат CASES-01/12/28; не расчёт тарифа или цены STORE |
+| Повреждённый JSON/версия/тип/UUID/UTC | `EventContractTest`, `rejectsMalformedOrAmbiguousJson`, `rejectsUnknownSchemaVersion`, `rejectsWrongEventType`, `rejectsMalformedEventIdentifier`, `rejectsInvalidOrNonUtcTimestamp` | Структурная часть CASES-05; не сохраняемая Kafka-диагностика |
+| Snapshot shape, версии и states | `HttpContractTest`, `rejectsClientSuppliedSubmitTotal`, `rejectsSubmitWithoutExpectedVersion`, `publishedSubmissionRequiresTimestamp`, `pendingSubmissionCannotClaimPublishedTimestamp`, `submittedCartRequiresSubmissionIdentifier` | Формат CASES-16/18/22/28; не atomic commit/дедупликация |
+| Отклонённая поставка | `HttpContractTest`, `rejectedDeliveryCanExposeInvalidOriginalQuantity`, `rejectedDeliveryRequiresOriginalPayload` | Представление CASES-05/32; не бизнес-валидация уникальности продуктов |
+| OpenAPI и внешние schema refs | `HttpContractTest`, `openApiDocumentParsesWithoutDiagnostics`, `openApiReferencesResolveToCanonicalDefinitions`, `submitDocumentsRequiredKeyAndAcceptedResponse` | Спецификация целевого API; ни один новый endpoint не считается доступным |
 
 После реализации каждого сценария добавлять отдельную запись покрытия: ID → абсолютный/репозиторный путь тестового файла, имя метода, уровень проверки, команда запуска и результат последнего проверенного запуска. Несколько уровней для одного сценария допустимы; module integration и сквозной E2E обозначать явно. Не ставить «пройден» по наличию теста без запуска.

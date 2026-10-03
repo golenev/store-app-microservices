@@ -1,0 +1,90 @@
+[
+  {
+    "path": "examples/events/delivery-received.json",
+    "definition": "DeliveryReceived"
+  },
+  {
+    "path": "examples/events/goods-posted.json",
+    "definition": "GoodsPosted"
+  },
+  {
+    "path": "examples/events/order-submitted.json",
+    "definition": "OrderSubmitted"
+  },
+  {
+    "path": "examples/http/quote-request.json",
+    "definition": "QuoteRequest"
+  },
+  {
+    "path": "examples/http/quote-response.json",
+    "definition": "QuoteResponse"
+  },
+  {
+    "path": "examples/http/tariff-rule-request.json",
+    "definition": "TariffRuleRequest"
+  },
+  {
+    "path": "examples/http/tariff-rule.json",
+    "definition": "TariffRule"
+  },
+  {
+    "path": "examples/http/tariff-rules.json",
+    "definition": "TariffRulesResponse"
+  },
+  {
+    "path": "examples/http/cache-reset.json",
+    "definition": "CacheResetResponse"
+  },
+  {
+    "path": "examples/http/delivery-waiting.json",
+    "definition": "DeliveryResponse"
+  },
+  {
+    "path": "examples/http/delivery-posted.json",
+    "definition": "DeliveryResponse"
+  },
+  {
+    "path": "examples/http/delivery-rejected.json",
+    "definition": "DeliveryResponse"
+  },
+  {
+    "path": "examples/http/delivery-published.json",
+    "definition": "DeliveryPublishResponse"
+  },
+  {
+    "path": "examples/http/catalog.json",
+    "definition": "CatalogResponse"
+  },
+  {
+    "path": "examples/http/cart-open.json",
+    "definition": "CartResponse"
+  },
+  {
+    "path": "examples/http/cart-empty.json",
+    "definition": "CartResponse"
+  },
+  {
+    "path": "examples/http/cart-submitted.json",
+    "definition": "CartResponse"
+  },
+  {
+    "path": "examples/http/put-cart-item.json",
+    "definition": "PutCartItemRequest"
+  },
+  {
+    "path": "examples/http/submit-request.json",
+    "definition": "SubmitRequest"
+  },
+  {
+    "path": "examples/http/submission-pending.json",
+    "definition": "SubmissionResponse"
+  },
+  {
+    "path": "examples/http/submission-published.json",
+    "definition": "SubmissionResponse"
+  },
+  {
+    "path": "examples/http/error.json",
+    "definition": "ErrorResponse"
+  }
+]
