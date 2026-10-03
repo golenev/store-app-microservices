@@ -4,11 +4,11 @@
 
 ## Текущее состояние
 
-Задача 1 включена в master через PR #37: [контракты v1](contracts/README.md), JSON Schema, OpenAPI и 62 проверки. Задача 2 включена через PR #38: три приложения, Flyway и Compose. Задача 3 реализует TARIFFS quote, CRUD, кеш и fallback; цепочка приёмки/списания ещё не реализована.
+Задачи 1–3 включены в master через PR #37–39: [контракты v1](contracts/README.md), runtime и TARIFFS quote/CRUD/cache. Задача 4 реализует приёмку WAREHOUSE, автоматический pricing и GoodsPosted outbox. Новый STORE пока не применяет GoodsPosted и не списывает остаток.
 
 - **STORE** (`store-service`, package `com.shop.store`) — перенесённый legacy каталог, глобальная корзина, Basic auth и старый `/order`.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старый percentage list временно сохранён для STORE без отдельного кеша и задержки.
-- **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — HTTP runtime, health и fixtures магазинов. Поставки пока не принимает.
+- **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — принимает DeliveryReceived через Kafka, сохраняет состояние/попытки pricing, получает quote, рассчитывает HALF_UP цену и публикует GoodsPosted из outbox. Есть HTTP-диагностика и технический эмулятор поставщика.
 
 Legacy STORE всё ещё принимает сырой Product из `send-topic`, сам запрашивает тарифы и сохраняет продукт по barcode. Здесь пока нет независимых корзин, нового накопления остатка, атомарного списания, идемпотентности и outbox. HTML сохранён и работает через прежние endpoints; адаптация — задача 7.
 
@@ -69,7 +69,7 @@ docker compose --profile apps ps
 docker compose --profile ui up -d kafdrop
 ```
 
-HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. TARIFFS `/actuator/health/readiness` проверяет готовность и PostgreSQL; отказ Redis не исключает DB-fallback из обслуживания. Compose использует этот readiness и ждёт запуска Redis, а не его healthy. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE пока не подтверждает обработку поставок.
+HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. TARIFFS `/actuator/health/readiness` проверяет готовность и PostgreSQL; отказ Redis не исключает DB-fallback из обслуживания. Compose использует этот readiness и ждёт запуска Redis, а не его healthy. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE не подтверждает завершение конкретной поставки: для этого нужен delivery status, а POSTED ещё не означает приход в STORE.
 
 Остановка контейнеров с сохранением данных:
 
@@ -81,11 +81,11 @@ Compose использует имя проекта `shop-runtime` и отдел�
 
 ## Миграции и fixtures
 
-Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса; Hibernate использует `ddl-auto: validate`. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
+Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. STORE/TARIFFS используют Hibernate `ddl-auto: validate`; WAREHOUSE работает через JDBC без ORM. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
 
 - STORE V1 создаёт прежние `product`, `cart`, `orders` с FK и проверками количества/цены.
 - TARIFFS V1/V2 сохраняют прежние `tariffs` и семь процентных fixtures. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.
-- WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB.
+- WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB; V3 — приёмку, items, inbox/диагностику, sequence и outbox.
 
 Повторный старт валидирует checksum и не повторяет выполненные миграции. Применённые SQL-файлы не редактируют: изменения схемы оформляют следующей версией миграции.
 
@@ -145,7 +145,38 @@ Quote требует положительную purchasePrice, только RUB 
 
 Плановый сброс — `0 0 0 * * *`, `Europe/Moscow`, через тот же reset. Redis read/write timeout — 500 ms, connect timeout — 500 ms. При отказе read/write quote возвращает результат PostgreSQL; при cache miss и отказе БД — 503 DEPENDENCY_UNAVAILABLE. Заполненный quote работает без доступной БД. Manual reset при отказе Redis возвращает 503; запланированный сбой логируется. Ответ 503 не доказывает, что команда reset не была исполнена позднее. Общий health при Redis outage может быть DOWN, readiness с доступной БД остаётся UP.
 
-Это компонент TARIFFS. HALF_UP расчёт продажной цены, WAREHOUSE pricing/retry и применение цены к остатку реализуются задачами 4–5.
+Это компонент TARIFFS. WAREHOUSE задачи 4 использует quote для HALF_UP расчёта; применение GoodsPosted к остатку STORE относится к задаче 5.
+
+## Приёмка WAREHOUSE задачи 4
+
+В миграции V3 добавлены `deliveries`, `delivery_items`, `received_events`, `delivery_diagnostics`, `warehouse_outbox` и счётчик последовательности в `stores`. V1/V2 и S-1/MOSCOW, S-2/SPB сохранены. Сервис сам объявляет `logistics.deliveries` и `warehouse.goods-posted`. Kafka key равен storeId. Лимит обоих topics/producer/fetch — 16 MiB, чтобы допустимые 1000 строк с описаниями не упирались в стандартный 1 MB.
+
+| Вызов на порту 6791 | Результат |
+| --- | --- |
+| POST `/technical/deliveries` с целым DeliveryReceived | 202 после Kafka acknowledgement; это отправка поставщика, ещё не POSTED |
+| GET `/stores/{storeId}/deliveries/{deliveryId}` | WAITING_PRICING, POSTED или REJECTED; неизвестная поставка/чужой store — 404 |
+| POST `/stores/{storeId}/deliveries/{deliveryId}/retry-pricing` | 202 ускоряет следующую попытку WAITING_PRICING; POSTED/REJECTED — 409 |
+
+Пример для чистого учебного окружения; повтор того же документа безопасен:
+
+```shell
+curl --fail -H "Content-Type: application/json" --data-binary @contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries
+curl --fail http://localhost:6791/stores/S-1/deliveries/D-1
+```
+
+В PowerShell используйте `curl.exe`. Первый GET может вернуть 404 до приёмки Kafka, затем WAITING_PRICING и POSTED. HTML пока работает через legacy STORE; новое техническое API подключается к нему в задаче 7.
+
+Приёмка сохраняется одной короткой транзакцией. Для учебной версии PostgreSQL advisory lock сериализует ingress, защищая eventId и `(storeId, deliveryId)` даже при одновременных повторах. Новая поставка один раз увеличивает store-scoped deliverySequence и сохраняет receivedAt. Сравнение сортирует строки по lineId и JSON-ключи; eventId/occurredAt транспортной оболочки не входят в бизнес-fingerprint. Изменение имени, описания, количества, цены, типа или идентификаторов значимо. Новый eventId прежнего содержимого допустим; конфликт сохраняется в диагностике и не изменяет результат.
+
+Некорректный разобранный payload с валидными идентификаторами становится REJECTED: original payload доступен в rejectedPayload, items пустой, автоматических попыток нет. Битый JSON, неизвестная версия, неидентифицируемая оболочка, неизвестный магазин и неверный Kafka key сохраняются в `delivery_diagnostics` с topic/partition/offset; tombstone сохраняет nullable raw_message. Ошибка записи распространяется в consumer: RECORD acknowledgement только после commit, error handler повторяет storage failures без конечного discard/recovery.
+
+Pricing worker раз в 500 ms выбирает одну наступившую WAITING_PRICING через `FOR UPDATE SKIP LOCKED`. Сохраняет attemptCount и UUID lease на 30 секунд, затем отпускает транзакцию. HTTP TARIFFS выполняется вне БД-транзакции: connect timeout 1 s, read timeout 2 s. Перед каждой строкой lease продлевается; завершение/ошибка проверяют token, поэтому старый worker после reclaim не пишет результат. После рестарта незавершённая попытка возобновляется по истечении lease; receivedAt/sequence неизменны. Retry endpoint не снимает активный lease.
+
+Отсутствие/неоднозначность правила, отказ или некорректный ответ TARIFFS сохраняют lastError и backoff 1/2/4/8/16/32/60 секунд, далее 60 секунд. Worker автоматически продолжает после исправления зависимости. Продажная цена вычисляется BigDecimal как purchasePrice × (1 + markupRate), HALF_UP до двух знаков. Переполнение денежного формата остаётся WAITING_PRICING с VALIDATION_ERROR до исправления тарифа; результат не обрезается. Успех всех строк одной транзакцией сохраняет цены, POSTED/postedAt и единственный сериализованный GoodsPosted outbox. Ошибка любой строки или записи outbox не оставляет частичных цен.
+
+Один активный экземпляр WAREHOUSE рассчитан на учебный запуск. Pricing и sender работают отдельными scheduler threads. Sender забирает PENDING с persisted lease и отправляет сохранённую строку JSON с прежним eventId/key; после Kafka ack отмечает PUBLISHED. При отказе сохраняет попытку и bounded backoff. Между broker ack и записью PUBLISHED возможна физическая повторная отправка того же события; exactly-once transport не обещается. POSTED означает готовый результат/outbox, а не принятие STORE. SQL-stored lease восстанавливает окна commit→publish и ack→PUBLISHED после рестарта.
+
+Настройки: `warehouse.lease-ms`, `warehouse.pricing-poll-ms`, `warehouse.sender-poll-ms`, `warehouse.workers.enabled`, `warehouse.listener.enabled`. TARIFFS URL — `TARIFFS_BASE_URL`. В тестах scheduled workers можно отключить для управляемых ticks; аварии воспроизводятся SQL triggers/spy только в тестах, HTTP crash-control endpoints отсутствуют.
 
 ## Проверки
 
@@ -153,7 +184,7 @@ Quote требует положительную purchasePrice, только RUB 
 mvn -B -ntp test
 ```
 
-Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway и Hibernate validate; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
+Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway, а для ORM-модулей Hibernate validate; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
 
 Историческая проверка задачи 2: на Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
 
@@ -181,3 +212,5 @@ cd e2e-tests
 Текущий `gradle-wrapper.jar` не имеет main manifest: команды wrapper выше требуют восстановления wrapper в задаче 8. Компиляция `compileKotlin compileTestKotlin` прошла на Java 21 с установленным Gradle 8.8; E2E-сценарии в задаче 2 не запускались. Backend integration и Compose smoke описаны отдельно.
 
 Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, 0 failures/errors/skipped, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
+
+Проверка задачи 4 (4 октября 2026): `mvn -B -ntp test` — **202 теста**, 0 failures/errors/skipped. WAREHOUSE: 62 `DeliveryIntegrationTest`, 2 `WarehouseRecoveryTest`, 2 runtime. После перехода WAREHOUSE на JDBC и исправления асинхронного ожидания lastError отдельный модульный прогон — **66/66**. Проверены реальные Kafka/PostgreSQL, HTTP WireMock, строгий вход, повторы/конкуренция, HALF_UP/overflow, автоматический retry и рестарт, rollback, storage failure без offset commit, Kafka outage и replay после потерянной отметки ack. Подробная привязка к CASES — в [покрытии](CASES.md). CI Compose smoke дополнен реальным TARIFFS pricing и проверкой одного POSTED/outbox после рестарта; удалённый результат указывается в PR после запуска.
