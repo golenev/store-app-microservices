@@ -4,13 +4,13 @@
 
 ## Текущее состояние
 
-Задачи 1–5 включены в master через PR #37–41: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE и STORE inventory/корзины. Задача 6 реализует атомарный submit, идемпотентность, snapshot и OrderSubmitted outbox. Адаптация HTML — задача 7, Kotlin E2E — задача 8.
+Задачи 1–6 включены в master через PR #37–42: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины и атомарный submit/outbox. Задача 7 адаптирует сохранённые HTML-страницы и добавляет собственные браузерные проверки. Перенос Kotlin E2E — задача 8.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
 - **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — принимает DeliveryReceived через Kafka, сохраняет состояние/попытки pricing, получает quote, рассчитывает HALF_UP цену и публикует GoodsPosted из outbox. Есть HTTP-диагностика и технический эмулятор поставщика.
 
-Сырой Product listener, общая корзина, Basic auth и старый `/order` удалены. HTML-файлы сохранены, но пока вызывают удалённые endpoints и не обеспечивают рабочий пользовательский поток; адаптация — задача 7. Backend-поток доступен через REST/Kafka.
+Сырой Product listener, общая корзина, Basic auth и старый `/order` удалены. Сохранённые HTML-файлы работают через новый scoped API: поставка, каталог, независимая корзина, оформление и статус передачи заявки. Backend-поток также доступен через REST/Kafka.
 
 [План из восьми задач](docs/implementation-plan.md), [CASES](CASES.md), [правила реализации](AGENTS.md), [первоначальное ревью](docs/architecture-review.md). Каждая задача получает отдельную ветку и PR.
 
@@ -78,6 +78,32 @@ docker compose --profile apps --profile ui down
 ```
 
 Compose использует имя проекта `shop-runtime` и отдельные volumes `postgres-data`, `kafka-data`, `redis-data`. Старые volumes прежней конфигурации не удаляются и не подключаются. Если старые контейнеры занимают порты, сначала остановите своё прежнее окружение или задайте `POSTGRES_PORT`, `KAFKA_PORT`, `REDIS_PORT`, `STORE_PORT`, `TARIFFS_PORT`, `WAREHOUSE_PORT`, `KAFDROP_PORT`. Для IDEA при смене портов также меняйте соответствующие URL; `KAFKA_HOST` задаёт адрес external listener.
+
+## HTML задачи 7
+
+Откройте `http://localhost:6789/index.html`. Сохранены страницы `/products.html` (каталог/корзина), `/send-to-kafka.html` (поставщик) и `/login.html` (ссылка на каталог без формы входа). Авторизация не требуется. Выберите S-1 (Москва) или S-2 (Санкт-Петербург), отправьте поставку и дождитесь POSTED, затем обновите каталог.
+
+В каталоге количество задаёт **итоговое количество позиции в своей корзине**, а не добавку. Корзины не резервируют товар; цены открытой корзины актуализируются при чтении/обновлении и окончательно фиксируются при оформлении. При нехватке или конфликте версии отображается обновлённый серверный состав. Принятая корзина сохраняет snapshot; кнопка «Новая корзина» начинает следующую покупку. Браузер показывает денежные строки и суммы STORE без пересчёта через floating point.
+
+Перед submit вкладка записывает cartId, Idempotency-Key и исходный expectedCartVersion в `sessionStorage`, отдельно для каждого магазина. При сетевом сбое, тайм-ауте или 5xx изменения блокируются до выяснения результата; кнопка повтора и reload отправляют прежний запрос. Уже закрытая на сервере корзина не меняет сохранённую исходную версию запроса. После 202 видны принятие, PENDING и затем PUBLISHED (подтверждение Kafka, не оплата). Дополнительного `/cart/clear` нет. Только определённый 4xx разрешает новую попытку после проверки состава.
+
+Форма поставщика аналогично сохраняет **весь** DeliveryReceived перед публикацией. Потеря ответа и reload повторяют eventId/deliveryId/occurredAt/payload, не создавая второй приход. PUBLISHED поставки подтверждает Kafka; POSTED подтверждает расчёт WAREHOUSE и ещё не гарантирует, что STORE уже потребил событие. WAITING_PRICING восстанавливается автоматически. Для следующей поставки нажмите «Новая поставка»; при неизвестном результате эта кнопка заблокирована.
+
+Хранилище относится к вкладке и переживает reload/переходы между страницами. Закрытие вкладки, очистка данных браузера или смена origin удаляют эту возможность восстановления; это учебный клиент без постоянного аккаунта. Дублирование вкладки браузером может копировать sessionStorage и исходную корзину: для независимой покупки используйте «Новую корзину» либо отдельный browser context. При недоступном хранилище отправка останавливается. Названия/описания вставляются через textContent, а не innerHTML.
+
+STORE `GET /ui/config` возвращает `warehouseBaseUrl` из `WAREHOUSE_PUBLIC_URL` (по умолчанию `http://localhost:6791`). Это **доступный браузеру** URL, а не внутреннее имя `warehouse-service`. WAREHOUSE разрешает CORS только точным `SHOP_UI_ORIGINS` (по умолчанию `http://localhost:6789,http://127.0.0.1:6789`), без credentials: POST `/technical/deliveries` и GET scoped delivery status. Диагностические POST не разрешены. Compose автоматически учитывает STORE_PORT/WAREHOUSE_PORT; при запуске из IDEA с другими портами задайте оба значения явно. Для HTTPS UI используйте HTTPS warehouse URL/прокси, иначе браузер блокирует mixed content.
+
+Браузерные проверки требуют Node.js 22+, Chromium и запущенные три сервиса с Kafka/PostgreSQL/Redis:
+
+```shell
+cd ui-tests
+npm ci
+npx playwright install chromium
+npm run test:unit
+npm test
+```
+
+`UI_BASE_URL` задаёт адрес STORE, по умолчанию `http://localhost:6789`; warehouse URL берётся из серверной конфигурации. Сценарии создают уникальные productId/deliveryId/cartId, работают последовательно, не сбрасывают тарифный кеш и не удаляют базы. Проверки сетевых окон перехватывают только ответы/запросы тестового браузера; штатный API выполняет реальные транзакции. Скриншоты сохраняются в `ui-tests/test-results` и CI artifacts. Это собственное UI-покрытие задачи 7, а не готовый Kotlin E2E задачи 8.
 
 ## Миграции и fixtures
 
@@ -205,7 +231,7 @@ curl --fail -H "Content-Type: application/json" --data-binary @contracts/example
 curl --fail http://localhost:6791/stores/S-1/deliveries/D-1
 ```
 
-В PowerShell используйте `curl.exe`. Первый GET может вернуть 404 до приёмки Kafka, затем WAITING_PRICING и POSTED. После POSTED отдельно дождитесь товара в STORE `/stores/S-1/catalog`: доставка между сервисами асинхронна. Техническое API подключается к HTML в задаче 7.
+В PowerShell используйте `curl.exe`. Первый GET может вернуть 404 до приёмки Kafka, затем WAITING_PRICING и POSTED. После POSTED отдельно дождитесь товара в STORE `/stores/S-1/catalog`: доставка между сервисами асинхронна. Форма `/send-to-kafka.html` публикует тот же контракт и отдельно показывает статус приёмки.
 
 Приёмка сохраняется одной короткой транзакцией. Для учебной версии PostgreSQL advisory lock сериализует ingress, защищая eventId и `(storeId, deliveryId)` даже при одновременных повторах. Новая поставка один раз увеличивает store-scoped deliverySequence и сохраняет receivedAt. Сравнение сортирует строки по lineId и JSON-ключи; eventId/occurredAt транспортной оболочки не входят в бизнес-fingerprint. Изменение имени, описания, количества, цены, типа или идентификаторов значимо. Новый eventId прежнего содержимого допустим; конфликт сохраняется в диагностике и не изменяет результат.
 
@@ -237,7 +263,7 @@ Docker обязателен для интеграционных проверок
 mvn -pl contract-tests test
 ```
 
-CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Полный Kotlin/browser E2E остаётся задачей 8.
+CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки задачи 7 выполняются на этих же реальных сервисах; полный Kotlin E2E остаётся задачей 8.
 
 Kotlin E2E пока использует удалённый legacy API и не совместим с текущей версией. Перенос — задача 8; следующие команды станут проверкой новой архитектуры после переноса и восстановления wrapper:
 
@@ -247,7 +273,7 @@ cd e2e-tests
 ./gradlew allureReport
 ```
 
-Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E и адаптация HTML идут отдельными задачами.
+Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E остаётся задачей 8; HTML проверяется отдельным набором `ui-tests`.
 
 Текущий `gradle-wrapper.jar` не имеет main manifest: команды wrapper выше требуют восстановления wrapper в задаче 8. Компиляция `compileKotlin compileTestKotlin` прошла на Java 21 с установленным Gradle 8.8; E2E-сценарии в задаче 2 не запускались. Backend integration и Compose smoke описаны отдельно.
 
@@ -258,3 +284,5 @@ cd e2e-tests
 Проверка задачи 5 (4 октября 2026): `mvn -B -ntp test` — **268 тестов**, 0 failures/errors/skipped: 62 contract, 77 STORE (74 inventory/cart + 3 runtime), 63 TARIFFS, 66 WAREHOUSE. STORE использует реальные PostgreSQL/Kafka и HTTP: дубли/конфликты, порядок цен, независимость и version races корзин, согласованное конкурентное чтение, rollback, сохранение диагностики до Kafka offset commit, 1000 SKU и денежные границы. TARIFFS отдельно прошёл `mvn -B -ntp -pl tariffs-service clean test` — 63/63, включая отсутствие legacy endpoints. Удалены устаревшие STORE тесты прежней модели; исторические результаты выше не обозначают доступность старого API. CI Compose smoke проверяет новую цепочку до корзин; результат удалённого запуска указывается в PR.
 
 Проверка задачи 6 (4 октября 2026): `mvn -B -ntp test` — **309/309**, 0 failures/errors/skipped: contracts 62, STORE 118, TARIFFS 63, WAREHOUSE 66. Отдельный STORE прогон — **118/118**; добавлены 39 HTTP/SQL/Kafka submission-сценариев и 2 автоматических recovery/restart-сценария. Проверены настоящий конфликт UNIQUE с отдельным replay transaction, конкурентные покупки/PUT/приходы, rollback каждой стадии acceptance, точный immutable snapshot, Kafka outage и повтор после утраты PUBLISHED, lease fencing и >1 MiB OrderSubmitted из 1000 строк. Consumer-offset тест теперь ждёт появления committed offset без NPE. Compose CI расширен до submit/PUBLISHED/повтора ключа и сохранности расхода после пересоздания приложений; удалённый результат указывается в PR.
+
+Проверка задачи 7 (4 октября 2026): Maven reactor **324/324**, 0 failures/errors/skipped (contracts 62, STORE 124, TARIFFS 63, WAREHOUSE 75). `npm run test:unit` — **2/2**, `npm test` — **9/9** на реальных сервисах в отдельной Docker/Java-среде. Проверены независимые contexts, отсутствие резерва, нехватка/version conflict, переоценка и immutable snapshot, потеря запроса/ответа и 503 после commit с прежним key/body, supplier replay, XSS-текст, точные большие суммы, store scope и mobile layout. Полный прогон после исправления мобильного тестового локатора прошёл; CI source-build/browser результат указывается в PR.

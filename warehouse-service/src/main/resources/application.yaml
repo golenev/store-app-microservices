@@ -46,6 +46,8 @@ warehouse:
   sender-poll-ms: 500
 server:
   port: ${SERVER_PORT:6791}
+shop:
+  ui-origins: ${SHOP_UI_ORIGINS:http://localhost:6789,http://127.0.0.1:6789}
 management:
   endpoints:
     web:

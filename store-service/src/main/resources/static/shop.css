@@ -1,0 +1,26 @@
+:root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1d1d1f; background: #f5f5f7; }
+* { box-sizing: border-box; }
+body { margin: 0 auto; padding: 24px; max-width: 1440px; }
+nav, .toolbar, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+nav { margin-bottom: 24px; } a { color: #005fbf; }
+h1 { font-size: 30px; margin-bottom: 8px; } h2 { font-size: 22px; } h3 { margin-top: 0; }
+p { line-height: 1.5; } .hint { color: #565660; }
+button, .button { background: #0071e3; color: white; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; cursor: pointer; }
+button.secondary { background: #e7e7ee; color: #24242c; }
+button:disabled { background: #dddde4; color: #666672; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #a35d00; outline-offset: 3px; }
+input, select, textarea { font: inherit; border: 1px solid #a7a7b2; border-radius: 6px; padding: 9px; max-width: 100%; }
+label { display: grid; gap: 6px; } .toolbar label { display: flex; align-items: center; gap: 8px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 24px; margin-top: 24px; }
+#product-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; align-items: start; }
+.panel, .product-item { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 3px 10px #0000000d; }
+.product-item, .cart-item, #operation, #delivery-result { overflow-wrap: anywhere; }
+.product-item form { display: grid; gap: 10px; } .stock { color: #565660; }
+.cart-item { border-bottom: 1px solid #e7e7ed; padding: 12px 0; } .cart-counter { display: flex; gap: 12px; align-items: center; }
+.cart-counter button { min-width: 40px; padding: 6px 12px; }
+.cart-total { font-size: 20px; font-weight: 600; } #cart { align-self: start; position: sticky; top: 20px; }
+.message { border-radius: 8px; padding: 12px 16px; background: #e9f2ff; white-space: pre-line; }
+.message:empty { display: none; } .message.error { color: #842513; background: #fff0eb; }
+.form-grid { display: grid; gap: 16px; max-width: 680px; } .form-grid textarea { min-height: 90px; resize: vertical; }
+.wide { max-width: 760px; margin-top: 20px; } [hidden] { display: none !important; }
+@media (max-width: 760px) { body { padding: 16px; } .layout { grid-template-columns: minmax(0, 1fr); } #cart { position: static; } h1 { font-size: 26px; } }

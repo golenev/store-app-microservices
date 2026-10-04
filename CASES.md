@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. Задачи 1–5 проверили контракты, runtime, TARIFFS, WAREHOUSE и STORE inventory/корзины. Задача 6 реализует атомарный submit, scoped идемпотентность, неизменяемый snapshot и OrderSubmitted outbox с recovery. Покрытые части перечислены ниже. HTML и старый Kotlin E2E пока несовместимы с новым API; browser-сценарии CASES-29/31 требуют задач 7–8.
+Статус: спецификация целевого поведения. Задачи 1–5 проверили контракты, runtime, TARIFFS, WAREHOUSE и STORE inventory/корзины. Задача 6 реализует атомарный submit, scoped идемпотентность, неизменяемый snapshot и OrderSubmitted outbox с recovery. Покрытые части перечислены ниже. Задача 7 адаптирует HTML и проверяет browser-сценарии на реальном API. Старый Kotlin E2E пока несовместим с новым API; его перенос остаётся задачей 8.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -202,7 +202,7 @@ CI Compose smoke дополнен настоящей цепочкой техни
 | CASES-23/30 | `keysAndSubmissionLookupsAreStoreScoped` | Одинаковый ключ двух магазинов создаёт две операции. Чужая submission/cart не доступна в scope другого магазина; баланс и snapshot не смешиваются. |
 | CASES-24 | `storageFailureRollsBackEveryAcceptanceWrite` | SQL triggers на expense INSERT, outbox INSERT и cart closure UPDATE падают внутри настоящей транзакции. Inventory, submission, expense, outbox, state/version полностью откатываются; после устранения сбоя тот же ключ принимается один раз. |
 | CASES-25 | `kafkaOutagePreservesAcceptedExpenseAndRecovers`; StoreRecoveryTest: `scheduledSenderAutomaticallyRecoversBrokerOutage` | Pause настоящей Kafka сохраняет принятый расход и PENDING, lastError/attempt/backoff. После unpause публикация восстанавливается; scheduled вариант не вызывает ручной send/retry. Один expense, товар не возвращается и повторно не списывается. |
-| CASES-26/29: backend recovery | StoreRecoveryTest: `restartRecoversCommittedAndExpiredLeasedOutbox` | Два последовательных Spring startup с прежней PostgreSQL: невыбранный и уже leased PENDING восстанавливаются автоматически. Прежний key/version возвращает исходную операцию, JSON/snapshot/acceptedAt не меняются. Потеря browser-ответа и reload ещё требуют HTML задач 7–8. |
+| CASES-26/29: backend recovery | StoreRecoveryTest: `restartRecoversCommittedAndExpiredLeasedOutbox` | Два последовательных Spring startup с прежней PostgreSQL: невыбранный и уже leased PENDING восстанавливаются автоматически. Прежний key/version возвращает исходную операцию, JSON/snapshot/acceptedAt не меняются. Browser-потеря ответа/reload отдельно проверяется набором задачи 7 ниже. |
 | CASES-27 | `lostPublishedMarkReplaysSameEventWithoutNewDeduction`, `persistedLeaseFencesConcurrentAndStaleSenders` | После реального Kafka ack UPDATE PUBLISHED падает по SQL trigger. Reclaim даёт два одинаковых физических event JSON с прежним eventId и один расход. Конкурентный claim имеет одного владельца; старый token не меняет новую lease или publication state. |
 | CASES-28 | `submittedSnapshotSurvivesFuturePriceAndNameChanges`, `replenishmentAndSubmitPreserveBalanceAndConsistentPrice` | Новая цена до submit входит в snapshot; следующие цена/имя не меняют принятую корзину/OrderSubmitted. Конкурентные приход и submit заканчиваются точным балансом и цельной старой либо новой ценой, без потерянного quantity update. |
 | Повтор отвергнутого запроса / валидация | `rejectedKeyCanBeRetriedAfterReplenishment`, `invalidSubmitJsonCannotPurchase`, `invalidKeysCannotPurchase` | Не принятый ключ не занимает uniqueness; после пополнения исходные cart/version/key проходят. Пропущенные/лишние/дублированные поля, неверный тип/version и недопустимые/пропущенные keys не создают purchase writes. |
@@ -210,4 +210,24 @@ CI Compose smoke дополнен настоящей цепочкой техни
 
 В consumer-offset проверке задачи 5 устранена гонка тестового ожидания: durable diagnostic и committed offset становятся наблюдаемыми в разное время. Тест ждёт наличие OffsetAndMetadata перед проверкой значения, без произвольного sleep.
 
-Compose smoke задачи 6 добавляет submit на 3 единицы, ожидание PUBLISHED и повтор принятого ключа. После пересоздания приложений проверяются остаток 7, SUBMITTED snapshot/version, publication status и единственный expense/outbox. Результат remote source-build запуска указывается в PR. Полный Kotlin/browser E2E и CASES-29/31 остаются задачами 7–8; исполнение/оплата не входят в проект.
+Compose smoke задачи 6 добавляет submit на 3 единицы, ожидание PUBLISHED и повтор принятого ключа. После пересоздания приложений проверяются остаток 7, SUBMITTED snapshot/version, publication status и единственный expense/outbox. Результат remote source-build запуска указывается в PR. Browser-покрытие CASES-29/31 добавлено задачей 7 ниже; полный Kotlin E2E остаётся задачей 8. Исполнение/оплата не входят в проект.
+
+## Покрытие HTML задачи 7
+
+`ui-tests/shop.test.js` использует Playwright и настоящие STORE/WAREHOUSE/TARIFFS/Kafka/PostgreSQL/Redis. У каждого сценария свои productId/deliveryId и browser contexts с независимым sessionStorage. Тесты идут последовательно, сброс тарифного кеша не используется. Маршрутизация тестового браузера управляет только сетевыми окнами; backend продолжает выполнять настоящие транзакции.
+
+| CASES / инвариант | Функция теста | Проверяемый результат |
+| --- | --- | --- |
+| CASES-01/14/15/16/17/21 | `independentCarts` | Поставка через HTML до STORE, две корзины с полным остатком без резерва, первая покупка проходит, вторая показывает INSUFFICIENT_STOCK и сохраняет состав. |
+| CASES-28 | `priceSnapshot` | Пополнение меняет цену открытой корзины; новая поставка после оформления не меняет принятые 480.00. |
+| CASES-18/29/31 | `lostReply` | Реальный 202 после commit теряется, закрытая cart/version не меняет сохранённый запрос. Reload повторяет прежний key/body; остаток уменьшается один раз, виден PUBLISHED. |
+| CASES-18/29/31 | `ambiguous503` | Прокси возвращает 503 после настоящего commit. Повтор использует прежний ключ и прежний расход. |
+| CASES-18/29/31 | `lostRequest` | Запрос теряется до STORE. До reload остаток прежний; повтор исходного key/body принимает заявку один раз. |
+| CASES-22 | `versionConflict` | Сторонний PUT меняет version/quantity; stale submit показывает конфликт и перечитывает состав. Следующая попытка покупает актуальные 2 единицы. |
+| Безопасный вывод / деньги v1 | `safeRendering` | Имя с img/onerror и описание со script отображаются буквально; DOM не содержит внедрённых тегов. Цена выше безопасного Number сохраняет точный серверный total 23418718062326581.80. |
+| CASES-02: сетевой повтор поставщика | `supplierRetry` | После Kafka ack ответ теряется; reload повторяет весь envelope, поставка/приход не удваиваются. Это последовательный browser retry; backend-конкуренция покрыта предыдущими задачами. |
+| CASES-23/30/31 | `storesAndPages` | S-2 открывает свою пустую корзину, возврат S-1 восстанавливает прежний состав; мобильная ширина 390 без overflow. Сохранённые страницы не вызывают global cart/order/auth endpoints и не отправляют Authorization. |
+
+`ui-tests/common.test.js`: `exactMoney` и `invalidMoney` проверяют нормализацию десятичных строк и отказ для нуля, exponent, отрицательного/неполного значения и лишней точности. `UiSettingsTest` проверяет публичный GET конфигурации и отклонение unsafe URL. `WarehouseUiCorsTest` проверяет реальные MVC preflight: разрешённые exact origins и JSON POST/GET, запрет постороннего origin/retry-pricing, отсутствие credentials и отказ для некорректной конфигурации.
+
+Локальная проверка задачи 7: Maven reactor **324/324**, unit JS **2/2**. Итоговый браузерный прогон после пересборки HTML — **9/9**, без failures/skipped. CI собирает приложения из исходников и запускает эти же HTML-сценарии после Compose smoke/restart; скриншоты сохраняются artifacts. Полное сквозное Kotlin-покрытие CASES-01–34 ещё требует задачи 8.

@@ -79,6 +79,7 @@ services:
       DB_USER: store_app
       DB_PASSWORD: store_local
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      WAREHOUSE_PUBLIC_URL: ${WAREHOUSE_PUBLIC_URL:-http://localhost:${WAREHOUSE_PORT:-6791}}
     depends_on:
       postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
@@ -110,6 +111,7 @@ services:
       DB_PASSWORD: warehouse_local
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       TARIFFS_BASE_URL: http://tariffs-service:6790
+      SHOP_UI_ORIGINS: ${SHOP_UI_ORIGINS:-http://localhost:${STORE_PORT:-6789},http://127.0.0.1:${STORE_PORT:-6789}}
     depends_on:
       postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}

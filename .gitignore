@@ -9,3 +9,5 @@
 /e2e-tests/.gradle/
 /e2e-tests/build/
 /runtime-*.log
+/ui-tests/node_modules/
+/ui-tests/test-results/
