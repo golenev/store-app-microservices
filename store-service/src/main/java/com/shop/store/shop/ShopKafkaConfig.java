@@ -18,11 +18,12 @@ public class ShopKafkaConfig {
     /** Supplies millisecond UTC instants compatible with SQL precision and the error/receipt wire contract. */
     @Bean
     public static Clock shopClock() { return Clock.tickMillis(ZoneOffset.UTC); }
-    /** Declares the shared upstream topic with WAREHOUSE's collection-safe message size for IDEA/Compose execution. */
+    /** Declares upstream and outgoing topics with collection-safe message size for IDEA/Compose execution. */
     @Bean
     public KafkaAdmin.NewTopics goodsTopics() {
         return new KafkaAdmin.NewTopics(TopicBuilder.name("warehouse.goods-posted").partitions(1).replicas(1)
-                .config("max.message.bytes","16777216").build());
+                .config("max.message.bytes","16777216").build(),
+                TopicBuilder.name("store.order-submitted").partitions(1).replicas(1).config("max.message.bytes","16777216").build());
     }
     /** Retries storage failures indefinitely; poison input is durably handled before successful listener return. */
     @Bean

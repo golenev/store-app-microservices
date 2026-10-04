@@ -70,6 +70,24 @@ public class ShopCodec {
         JsonNode node=read(raw); fields(node,Set.of("quantity","expectedCartVersion"));
         return new PutItem((int)integer(node.get("quantity"),1,Integer.MAX_VALUE),integer(node.get("expectedCartVersion"),0,MAX_VERSION));
     }
+    /** Parses only the expected composition version; callers cannot provide purchase prices, totals or an alternative cart. */
+    public SubmitInput submit(String raw) {
+        JsonNode node=read(raw); fields(node,Set.of("expectedCartVersion"));
+        return new SubmitInput(integer(node.get("expectedCartVersion"),0,MAX_VERSION));
+    }
+    /** Validates a case-sensitive store-scoped operation key, which must be reused after an uncertain HTTP outcome. */
+    public String idempotencyKey(String value) {
+        require(value!=null && value.matches("[A-Za-z0-9._:-]{1,128}"),"Invalid Idempotency-Key"); return value;
+    }
+    /** Hashes a canonical request tuple; cart composition/prices are server-owned and deliberately absent from the request. */
+    public String submissionFingerprint(String store,UUID cart,long version) {
+        return hash(json(List.of(store,cart.toString(),version)));
+    }
+    /** Reads a server-persisted immutable submitted-cart snapshot, failing safely if storage is corrupt. */
+    public Cart cartSnapshot(String raw) {
+        try { return mapper.readValue(raw,Cart.class); }
+        catch(Exception failure) { throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart snapshot unavailable"); }
+    }
     /** Validates a canonical query version without overflow or floating point; missing values are client errors. */
     public long version(String value) {
         require(value!=null && value.matches("(0|[1-9][0-9]{0,15})"),"Invalid expectedCartVersion");
@@ -122,7 +140,11 @@ public class ShopCodec {
     }
     /** Hashes the normalized record, whose declared field order and sorted items are stable across transport representations. */
     private String fingerprint(PostedPayload payload) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json(payload).getBytes(StandardCharsets.UTF_8))); }
+        return hash(json(payload));
+    }
+    /** Computes deterministic UTF-8 SHA-256 without exposing request keys in stored diagnostic messages. */
+    private String hash(String value) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
     /** Builds safe named validation errors suitable for both API and persisted diagnostics. */

@@ -24,6 +24,15 @@ spring:
         max.partition.fetch.bytes: 16777216
     listener:
       ack-mode: record
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        max.request.size: 16777216
+        max.block.ms: 3000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 7000
 server:
   port: ${SERVER_PORT:6789}
 management:

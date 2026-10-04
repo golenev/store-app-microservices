@@ -72,6 +72,22 @@ jobs:
           done
           curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -e '.items[0].availableQuantity == 10'
           printf 'SMOKE_CART=%s\n' "$first" >> "$GITHUB_ENV"
+      - name: Verify atomic STORE submission and OrderSubmitted outbox
+        shell: bash
+        run: |
+          stock=$(curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -r '.items[0].stockItemId')
+          curl --fail --silent -X PUT -H 'Content-Type: application/json' -d '{"quantity":3,"expectedCartVersion":1}' "http://localhost:6789/stores/S-1/carts/$SMOKE_CART/items/$stock" | jq -e '.version == 2 and .totalAmount == "360.00"'
+          accepted=$(curl --fail --silent -X POST -H 'Content-Type: application/json' -H 'Idempotency-Key: compose-submit' -d '{"expectedCartVersion":2}' "http://localhost:6789/stores/S-1/carts/$SMOKE_CART/submit")
+          submission=$(printf '%s' "$accepted" | jq -r '.submissionId')
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent "http://localhost:6789/stores/S-1/submissions/$submission" | jq -e '.publicationStatus == "PUBLISHED" and .publishedAt != null'; then break; fi
+            sleep 1
+          done
+          curl --fail --silent "http://localhost:6789/stores/S-1/submissions/$submission" | jq -e '.publicationStatus == "PUBLISHED"'
+          repeated=$(curl --fail --silent -X POST -H 'Content-Type: application/json' -H 'Idempotency-Key: compose-submit' -d '{"expectedCartVersion":2}' "http://localhost:6789/stores/S-1/carts/$SMOKE_CART/submit" | jq -r '.submissionId')
+          test "$repeated" = "$submission"
+          curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -e '.items[0].availableQuantity == 7'
+          printf 'SMOKE_SUBMISSION=%s\n' "$submission" >> "$GITHUB_ENV"
       - name: Verify health, roles and restart persistence
         shell: bash
         run: |
@@ -87,9 +103,12 @@ jobs:
           curl --fail --silent http://localhost:6791/stores/S-1/deliveries/D-1 | jq -e '.state == "POSTED" and .deliverySequence == 1 and .items[0].salePrice == "120.00"'
           test "$(docker compose exec -T -e PGPASSWORD=warehouse_local postgres psql -h localhost -U warehouse_app -d warehouse_db -Atc "SELECT count(*) FROM warehouse_outbox WHERE store_id='S-1' AND delivery_id='D-1' AND publication_status='PUBLISHED'")" = 1
           curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -e '.items | length == 1'
-          curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -e '.items[0].availableQuantity == 10 and .items[0].unitPrice == "120.00"'
-          curl --fail --silent "http://localhost:6789/stores/S-1/carts/$SMOKE_CART" | jq -e '.version == 1 and .items[0].quantity == 10 and .totalAmount == "1200.00"'
+          curl --fail --silent http://localhost:6789/stores/S-1/catalog | jq -e '.items[0].availableQuantity == 7 and .items[0].unitPrice == "120.00"'
+          curl --fail --silent "http://localhost:6789/stores/S-1/carts/$SMOKE_CART" | jq -e '.state == "SUBMITTED" and .version == 3 and .items[0].quantity == 3 and .totalAmount == "360.00"'
+          curl --fail --silent "http://localhost:6789/stores/S-1/submissions/$SMOKE_SUBMISSION" | jq -e '.publicationStatus == "PUBLISHED"'
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_movements')" = 1
+          test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_expenses WHERE quantity=3')" = 1
+          test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc "SELECT count(*) FROM store_outbox WHERE publication_status='PUBLISHED'")" = 1
       - name: Save Compose diagnostics
         if: always()
         run: docker compose --profile apps logs --no-color > compose-smoke.log

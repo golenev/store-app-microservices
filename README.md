@@ -4,13 +4,13 @@
 
 ## Текущее состояние
 
-Задачи 1–4 включены в master через PR #37–40: [контракты v1](contracts/README.md), runtime, TARIFFS и WAREHOUSE. Задача 5 реализует приход GoodsPosted, каталог и независимые versioned корзины STORE. Оформление заявки, списание и OrderSubmitted outbox — задача 6.
+Задачи 1–5 включены в master через PR #37–41: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE и STORE inventory/корзины. Задача 6 реализует атомарный submit, идемпотентность, snapshot и OrderSubmitted outbox. Адаптация HTML — задача 7, Kotlin E2E — задача 8.
 
-- **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов и независимых корзин. Принимает только GoodsPosted, не вызывает TARIFFS; API без авторизации.
+- **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
 - **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — принимает DeliveryReceived через Kafka, сохраняет состояние/попытки pricing, получает quote, рассчитывает HALF_UP цену и публикует GoodsPosted из outbox. Есть HTTP-диагностика и технический эмулятор поставщика.
 
-Сырой Product listener, общая корзина, Basic auth и старый `/order` удалены. HTML-файлы сохранены, но пока вызывают удалённые endpoints и не обеспечивают рабочий пользовательский поток; адаптация — задача 7. Submit и outgoing outbox STORE пока отсутствуют.
+Сырой Product listener, общая корзина, Basic auth и старый `/order` удалены. HTML-файлы сохранены, но пока вызывают удалённые endpoints и не обеспечивают рабочий пользовательский поток; адаптация — задача 7. Backend-поток доступен через REST/Kafka.
 
 [План из восьми задач](docs/implementation-plan.md), [CASES](CASES.md), [правила реализации](AGENTS.md), [первоначальное ревью](docs/architecture-review.md). Каждая задача получает отдельную ветку и PR.
 
@@ -83,7 +83,7 @@ Compose использует имя проекта `shop-runtime` и отдел�
 
 Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. Все три сервиса работают через JDBC без ORM. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
 
-- STORE V1 сохраняет прежние `product`, `cart`, `orders`, которые больше не обслуживаются API. V2 создаёт `store_scopes` (S-1/S-2), `stock_receipts`, `inventory`, `processed_events`, `stock_movements`, `incoming_goods_diagnostics`, `carts`, `cart_items`. Исторические записи не переносятся в inventory.
+- STORE V1 сохраняет прежние `product`, `cart`, `orders`, которые больше не обслуживаются API. V2 создаёт `store_scopes` (S-1/S-2), `stock_receipts`, `inventory`, `processed_events`, `stock_movements`, `incoming_goods_diagnostics`, `carts`, `cart_items`. V3 добавляет `submissions`, `stock_expenses`, `store_outbox`; исторические записи не переносятся в новую модель.
 - TARIFFS V1/V2 сохраняют прежние `tariffs` и семь исторических процентных fixtures без legacy API. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.
 - WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB; V3 — приёмку, items, inbox/диагностику, sequence и outbox.
 
@@ -113,7 +113,7 @@ curl --fail -X PUT -H "Content-Type: application/json" -d '{"quantity":3,"expect
 
 Подставьте cartId из POST и stockItemId из каталога. В PowerShell используйте `curl.exe`; правила quoting JSON зависят от версии shell. Не передавайте цены/суммы от клиента. PUT заменяет количество, не прибавляет к нему. Успешный PUT, даже с прежним количеством, и DELETE увеличивают version на 1. Устаревшая version → 409 CART_VERSION_CONFLICT; отсутствующая строка DELETE → 404 без изменения version. Количество больше текущего остатка → 409 INSUFFICIENT_STOCK. Чужой магазин/cart/stock → 404.
 
-Изменение корзины блокирует её строку, проверяет version и для PUT блокирует inventory. Остаток не меняется: при availableQuantity=5 две корзины могут независимо содержать по 5. Новая поставка может изменить цену OPEN-корзины, но не version её состава. Атомарное списание и повторная проверка остатка при submit появятся в задаче 6.
+Изменение корзины блокирует её строку, проверяет version и для PUT блокирует inventory. Остаток не меняется: при availableQuantity=5 две корзины могут независимо содержать по 5. Новая поставка может изменить цену OPEN-корзины, но не version её состава. Submit проверяет остатки повторно и фиксирует принятые цены.
 
 Приход фиксирует receipt, inventory, движения и eventId одной транзакцией. STORE защищает eventId и `(storeId, deliveryId)` независимо: новый eventId того же нормализованного содержимого не создаёт второй приход. Изменённое содержимое и повторный deliverySequence другой поставки диагностируются без изменения остатка. Сначала берётся event advisory lock, затем строка магазина, затем затронутый inventory в порядке stockItemId. Приходы одного магазина сериализованы; это сознательная граница учебной реализации.
 
@@ -121,7 +121,32 @@ curl --fail -X PUT -H "Content-Type: application/json" -d '{"quantity":3,"expect
 
 Каталог/корзина ограничены 1000 позициями, quantity — положительный int, version — безопасный JSON integer. Цена допускает 26 цифр целой части, сумма — 36. Изменение корзины с переполнением суммы откатывается с 400. Если последующая переоценка делает уже существующую OPEN-корзину непредставимой в формате v1, GET возвращает 503; удаление/уменьшение состава может восстановить допустимую сумму. Суммы не обрезаются и не преобразуются в double.
 
-Старые STORE endpoints, raw Product listener и TARIFFS `/tariffs?all=true`/процентный CRUD/`/api/v1/resetCache` удалены. Новая цепочка использует WAREHOUSE и fractional quote. HTML сохранён для адаптации в задаче 7 и сейчас несовместим с новым API. Submit, submission status и STORE sender пока недоступны.
+Старые STORE endpoints, raw Product listener и TARIFFS `/tariffs?all=true`/процентный CRUD/`/api/v1/resetCache` удалены. Новая цепочка использует WAREHOUSE и fractional quote. HTML сохранён для адаптации в задаче 7 и сейчас несовместим с новым API.
+
+## Оформление заявки STORE задачи 6
+
+| Endpoint на порту 6789 | Результат |
+| --- | --- |
+| POST `/stores/{storeId}/carts/{cartId}/submit` | JSON `{"expectedCartVersion":1}` и обязательный Idempotency-Key; 202 после commit, submissionId/eventId, acceptedAt и PENDING/PUBLISHED |
+| GET `/stores/{storeId}/submissions/{submissionId}` | Текущий статус публикации; PUBLISHED содержит publishedAt; чужой scope/неизвестный UUID → 404 |
+| GET принятой корзины | SUBMITTED, version после закрытия, submissionId и неизменяемый принятый состав/цены/сумма |
+
+```shell
+curl --fail -X POST -H "Content-Type: application/json" -H "Idempotency-Key: operation-001" -d '{"expectedCartVersion":1}' http://localhost:6789/stores/S-1/carts/CART_UUID/submit
+curl --fail http://localhost:6789/stores/S-1/submissions/SUBMISSION_UUID
+```
+
+Тело не принимает цену, сумму или состав. Ключ регистрозависим, 1–128 символов `[A-Za-z0-9._:-]`, уникален в магазине; UUID подходит. Fingerprint фиксирует storeId/cartId/expectedCartVersion. Повтор принятого запроса возвращает прежний submission с актуальным publicationStatus **до проверки закрытой корзины и её новой версии**. Повтор сохраняет прежние ключ и expectedCartVersion, включая восстановление после потерянного HTTP-ответа. Изменённый запрос под прежним ключом → 409 IDEMPOTENCY_KEY_REUSED. Новый ключ закрытой корзины → 409 CART_ALREADY_SUBMITTED. Не принятый запрос ключ не занимает; после пополнения можно повторить его.
+
+Acceptance выполняется отдельной короткой транзакцией: блокировка корзины, проверка version, блокировка всех её inventory в порядке stockItemId, повторная проверка количества и расчёт BigDecimal по текущим ценам. Пустая/переполненная корзина → 400; stale version → 409 CART_VERSION_CONFLICT; нехватка любой строки → 409 INSUFFICIENT_STOCK без частичного расхода. Гонка за последнюю единицу допускает одну покупку. При version=9007199254740991 дальнейший submit запрещён, чтобы закрытие не создало небезопасный JSON integer.
+
+Submission UNIQUE(storeId, idempotencyKey)/UNIQUE(cartId), списание всех SKU, `stock_expenses`, неизменяемые cart snapshot/OrderSubmitted outbox и SUBMITTED/version+1 фиксируются вместе. Неудачная запись откатывает всё. Конкурентный UNIQUE обрабатывается после завершения rollback: отдельная транзакция читает принятого победителя и сверяет fingerprint. Открытая корзина не резервирует и не фиксирует цену; принятый snapshot не меняется от следующей поставки.
+
+202 и Location означают принятую операцию, а не оплату/исполнение. Ответ 503 с неопределённым исходом commit не доказывает отсутствие списания: повторите прежний ключ и version. Если submissionId уже известен, GET восстанавливает статус.
+
+Sender выбирает один наступивший PENDING через `FOR UPDATE SKIP LOCKED`, сохраняет UUID lease/attemptCount и отправляет сохранённый JSON в `store.order-submitted` с key=storeId вне SQL-транзакции. Kafka ack ожидается до 5 s; max.block 3 s, request timeout 3 s, delivery timeout 7 s. После ack текущий token отмечает PUBLISHED/publishedAt. Ошибка сохраняет PENDING/lastError и backoff 1/2/4/8/16/32/60 s, далее 60 s. Истёкшая lease восстанавливается после рестарта. Потерянная отметка после ack допускает физический повтор с прежним eventId; внешний получатель должен дедуплицировать eventId/submissionId. Retry sender не касается inventory и не возвращает товар по таймауту.
+
+Настройки: `store.sender.enabled` (по умолчанию true), `store.sender-poll-ms` (500), `store.lease-ms` (30000, минимум 10000). Ручного purchase retry/sender-control API нет. Отключение scheduled sender в тестах позволяет воспроизводить crash windows; автоматический retry и restart проверяются отдельными реальными контекстами. В этой учебной версии один активный STORE обслуживает локальный запуск; leases защищают случайные пересечения sender. Topic/producer/fetch используют лимит 16 MiB для допустимых больших сообщений.
 
 ## Тарифный API задачи 3
 
@@ -212,7 +237,7 @@ Docker обязателен для интеграционных проверок
 mvn -pl contract-tests test
 ```
 
-CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины и проверяет отсутствие резерва. После пересоздания приложений сверяет каталог, корзину, единственный приход/outbox и fixtures; сохраняет логи. Полный Kotlin E2E, включая submit и HTML, остаётся задачей 8.
+CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Полный Kotlin/browser E2E остаётся задачей 8.
 
 Kotlin E2E пока использует удалённый legacy API и не совместим с текущей версией. Перенос — задача 8; следующие команды станут проверкой новой архитектуры после переноса и восстановления wrapper:
 
@@ -231,3 +256,5 @@ cd e2e-tests
 Проверка задачи 4 (4 октября 2026): `mvn -B -ntp test` — **202 теста**, 0 failures/errors/skipped. WAREHOUSE: 62 `DeliveryIntegrationTest`, 2 `WarehouseRecoveryTest`, 2 runtime. После перехода WAREHOUSE на JDBC и исправления асинхронного ожидания lastError отдельный модульный прогон — **66/66**. Проверены реальные Kafka/PostgreSQL, HTTP WireMock, строгий вход, повторы/конкуренция, HALF_UP/overflow, автоматический retry и рестарт, rollback, storage failure без offset commit, Kafka outage и replay после потерянной отметки ack. Подробная привязка к CASES — в [покрытии](CASES.md). CI Compose smoke дополнен реальным TARIFFS pricing и проверкой одного POSTED/outbox после рестарта; удалённый результат указывается в PR после запуска.
 
 Проверка задачи 5 (4 октября 2026): `mvn -B -ntp test` — **268 тестов**, 0 failures/errors/skipped: 62 contract, 77 STORE (74 inventory/cart + 3 runtime), 63 TARIFFS, 66 WAREHOUSE. STORE использует реальные PostgreSQL/Kafka и HTTP: дубли/конфликты, порядок цен, независимость и version races корзин, согласованное конкурентное чтение, rollback, сохранение диагностики до Kafka offset commit, 1000 SKU и денежные границы. TARIFFS отдельно прошёл `mvn -B -ntp -pl tariffs-service clean test` — 63/63, включая отсутствие legacy endpoints. Удалены устаревшие STORE тесты прежней модели; исторические результаты выше не обозначают доступность старого API. CI Compose smoke проверяет новую цепочку до корзин; результат удалённого запуска указывается в PR.
+
+Проверка задачи 6 (4 октября 2026): `mvn -B -ntp test` — **309/309**, 0 failures/errors/skipped: contracts 62, STORE 118, TARIFFS 63, WAREHOUSE 66. Отдельный STORE прогон — **118/118**; добавлены 39 HTTP/SQL/Kafka submission-сценариев и 2 автоматических recovery/restart-сценария. Проверены настоящий конфликт UNIQUE с отдельным replay transaction, конкурентные покупки/PUT/приходы, rollback каждой стадии acceptance, точный immutable snapshot, Kafka outage и повтор после утраты PUBLISHED, lease fencing и >1 MiB OrderSubmitted из 1000 строк. Consumer-offset тест теперь ждёт появления committed offset без NPE. Compose CI расширен до submit/PUBLISHED/повтора ключа и сохранности расхода после пересоздания приложений; удалённый результат указывается в PR.

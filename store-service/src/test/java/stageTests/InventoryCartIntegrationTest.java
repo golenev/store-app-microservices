@@ -388,7 +388,7 @@ class InventoryCartIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT raw_message FROM incoming_goods_diagnostics WHERE topic='test' AND kafka_offset=?",String.class,coordinate)).isEqualTo(raw);
     }
 
-    /** A real consumer storage failure prevents offset advancement until its poison-message diagnostic has been committed. */
+    /** Storage failure prevents Kafka offset advancement; after durable diagnosis, bounded polling waits for a present committed offset. */
     @Test
     void consumerOffsetWaitsForDiagnosticCommit() throws Exception {
         failingTrigger("incoming_goods_diagnostics","fail_diagnostic","INSERT");
@@ -402,7 +402,9 @@ class InventoryCartIntegrationTest {
             await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM incoming_goods_diagnostics WHERE topic=? AND partition_id=? AND kafka_offset=?",
                         Integer.class,sent.topic(),sent.partition(),sent.offset())).isEqualTo(1);
-                assertThat(admin.listConsumerGroupOffsets("store-goods-v1").partitionsToOffsetAndMetadata().get(3,TimeUnit.SECONDS).get(partition).offset()).isGreaterThan(sent.offset());
+                var committed=admin.listConsumerGroupOffsets("store-goods-v1").partitionsToOffsetAndMetadata().get(3,TimeUnit.SECONDS).get(partition);
+                assertThat(committed).isNotNull();
+                assertThat(committed.offset()).isGreaterThan(sent.offset());
             });
         }
     }

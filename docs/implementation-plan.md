@@ -2,7 +2,7 @@
 
 Дата согласования: 3 октября 2026 года.
 
-Статус: задачи 1–4 включены в master через PR #37–40. Задача 5 реализована в `codex/store-inventory-carts`: приход GoodsPosted, inventory, независимые versioned OPEN-корзины, удаление legacy API STORE/TARIFFS и прежней авторизации. Задачи 6–8 ещё не реализованы. Следующая ветка создаётся после merge задачи 5.
+Статус: задачи 1–5 включены в master через PR #37–41. Задача 6 реализована в `codex/store-order-submission`: атомарное списание/submission/snapshot/outbox, scoped идемпотентность, GET статуса и автоматический sender/recovery. Задачи 7–8 ещё не реализованы. Следующая ветка создаётся после merge задачи 6.
 
 ## 1. Зафиксированные решения
 
@@ -166,6 +166,8 @@ Remote default branch сейчас: master. Рабочая ветка при п�
 ### Задача 6. Атомарный submit, идемпотентность и STORE outbox
 
 Ветка: `codex/store-order-submission`. Зависит от задачи 5.
+
+Реализовано: Flyway V3 с submissions UNIQUE(storeId, key)/UNIQUE(cartId), stock_expenses и persisted STORE outbox. Acceptance блокирует cart и UUID-упорядоченный inventory, атомарно проверяет/списывает/сохраняет snapshot/закрывает cart; UNIQUE recovery выполняется в новой транзакции после rollback. GET возвращает PENDING/PUBLISHED и закрытый immutable snapshot. Sender хранит lease/attempt/backoff и автоматически восстанавливается после outage/restart, не меняя остаток. Проверка 4 октября 2026: reactor 309/309, STORE 118/118; Compose CI доведён до принятой заявки и проверки одного расхода/outbox после restart. HTML/Kotlin E2E пока остаются задачами 7–8.
 
 Результат:
 
