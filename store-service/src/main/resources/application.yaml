@@ -35,6 +35,8 @@ spring:
         delivery.timeout.ms: 7000
 server:
   port: ${SERVER_PORT:6789}
+shop:
+  warehouse-public-url: ${WAREHOUSE_PUBLIC_URL:http://localhost:6791}
 management:
   endpoints:
     web:

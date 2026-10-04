@@ -21,7 +21,7 @@ jobs:
 
   compose-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Build and start all services
@@ -109,6 +109,22 @@ jobs:
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_movements')" = 1
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_expenses WHERE quantity=3')" = 1
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc "SELECT count(*) FROM store_outbox WHERE publication_status='PUBLISHED'")" = 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui-tests/package-lock.json
+      - name: Install HTML test dependencies
+        working-directory: ui-tests
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Verify HTML with real services
+        working-directory: ui-tests
+        run: npm run test:unit && npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: html-browser-screenshots
+          path: ui-tests/test-results/
       - name: Save Compose diagnostics
         if: always()
         run: docker compose --profile apps logs --no-color > compose-smoke.log

@@ -1,32 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 10px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/shop.css">
+<title>Учебный магазин</title>
 </head>
 <body>
-<script>
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-        window.location.href = '/login.html';
-    }
-</script>
-<h1>Welcome to the Application</h1>
-<button onclick="location.href='/send-to-kafka.html'">Send to Kafka</button>
-<button onclick="location.href='/products.html'">Посмотреть товары в наличии</button>
-
+<nav aria-label="Навигация">
+<a href="/index.html">Главная</a>
+<a href="/products.html">Каталог и корзина</a>
+<a href="/send-to-kafka.html">Поставщик</a>
+</nav>
+<main class="panel wide">
+<h1>Учебный магазин</h1>
+<p>Начните с поставки, затем откройте каталог и оформите заявку.</p>
+<p>Выберите магазин. Каждая вкладка хранит свою корзину. Товар списывается при оформлении; добавление в корзину ничего не резервирует.</p>
+<div class="actions">
+<a class="button" href="/send-to-kafka.html">Добавить поставку</a>
+<a href="/products.html">Открыть каталог</a>
+</div>
+</main>
 </body>
 </html>

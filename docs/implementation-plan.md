@@ -2,7 +2,7 @@
 
 Дата согласования: 3 октября 2026 года.
 
-Статус: задачи 1–5 включены в master через PR #37–41. Задача 6 реализована в `codex/store-order-submission`: атомарное списание/submission/snapshot/outbox, scoped идемпотентность, GET статуса и автоматический sender/recovery. Задачи 7–8 ещё не реализованы. Следующая ветка создаётся после merge задачи 6.
+Статус: задачи 1–6 включены в master через PR #37–42. Задача 7 реализуется в `codex/shop-html-api`: сохранённый HTML на scoped API, supplier/status, persisted retry и браузерные проверки. Задача 8 (Kotlin E2E/CI) ещё не реализована; следующая ветка создаётся после merge задачи 7.
 
 ## 1. Зафиксированные решения
 
@@ -186,6 +186,8 @@ Remote default branch сейчас: master. Рабочая ветка при п�
 ### Задача 7. HTML под новый API
 
 Ветка: `codex/shop-html-api`. Зависит от задачи 6.
+
+Реализовано: сохранённые страницы на scoped API, supplier/status через публичную конфигурацию и exact-origin CORS, tab/store-scoped cart и сохранённые key/version/envelope до сетевой отправки. UI показывает серверные денежные строки, ошибки и PENDING/PUBLISHED, не очищает cart отдельно и безопасно выводит текст. Проверка: reactor 324/324, JS unit 2/2, browser 9/9 на реальных сервисах. Compose CI запускает собственный HTML набор; перенос Kotlin E2E остаётся задачей 8.
 
 Результат:
 
