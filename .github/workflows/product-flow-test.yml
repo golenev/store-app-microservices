@@ -41,7 +41,9 @@ jobs:
           cache: gradle
       - name: Verify wrapper checksum
         run: echo '7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172  e2e-tests/gradle/wrapper/gradle-wrapper.jar' | sha256sum --check
-      - name: Run isolated Kotlin E2E with source-built services
+      - name: Verify installed Chrome for Selenide
+        run: google-chrome --version
+      - name: Run isolated backend and Selenide E2E with source-built services
         run: python3 scripts/run-e2e.py
       - uses: actions/upload-artifact@v4
         if: always()
@@ -52,7 +54,7 @@ jobs:
             e2e-tests/build/test-results/
             e2e-tests/build/allure-results/
             target/e2e/
-            runtime-task8-control.log
+            runtime-e2e-control.log
 
   compose-smoke:
     runs-on: ubuntu-latest
@@ -149,17 +151,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ui-tests/package-lock.json
-      - name: Install HTML test dependencies
+      - name: Run unchanged JavaScript unit tests
         working-directory: ui-tests
-        run: npm ci && npx playwright install --with-deps chromium
-      - name: Verify HTML with real services
-        working-directory: ui-tests
-        run: npm run test:unit && npm test
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: html-browser-screenshots
-          path: ui-tests/test-results/
+        run: npm ci && npm run test:unit
       - name: Save Compose diagnostics
         if: always()
         run: docker compose --profile apps logs --no-color > compose-smoke.log
