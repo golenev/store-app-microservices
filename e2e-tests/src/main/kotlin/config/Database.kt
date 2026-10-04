@@ -1,31 +1,27 @@
 package config
 
-import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.jdbc.datasource.DriverManagerDataSource
-import io.qameta.allure.Allure
+import java.sql.DriverManager
 
+/** Bound SQL observation and fault fixtures for the launcher's dedicated databases; there is no mutable JDBC singleton. */
 object Database {
-    private val template = JdbcTemplate(
-        DriverManagerDataSource(
-            System.getenv("STORE_DB_URL") ?: "jdbc:postgresql://localhost:34567/store_db",
-            System.getenv("STORE_DB_USER") ?: "store_app",
-            System.getenv("STORE_DB_PASSWORD") ?: "store_local"
-        )
-    )
+    /** Resolves a service role on the explicitly isolated PostgreSQL port; callers choose STORE/WAREHOUSE/TARIFFS ownership. */
+    private fun url(service: String): String = "jdbc:postgresql://localhost:${System.getenv("E2E_POSTGRES_PORT") ?: "35467"}/${service}_db"
 
-    /** Returns the legacy STORE JDBC client configured by STORE_DB_* variables. */
-    fun template(): JdbcTemplate = template
+    /** Executes bound fixture/gate SQL in autocommit; caller owns restoration and may not write inventory as E2E setup. */
+    fun update(service: String, sql: String, vararg args: Any?): Int =
+        DriverManager.getConnection(url(service), "${service}_app", "${service}_local").use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
+                statement.executeUpdate()
+            }
+        }
 
-    /** Mutates the database with bound arguments and attaches SQL to Allure. */
-    fun update(sql: String, vararg args: Any): Int {
-        Allure.addAttachment("SQL query", sql)
-        return template.update(sql, *args)
-    }
-
-    /** Reads one typed value; missing or multiple rows propagate JDBC errors. */
-    fun <T> queryForObject(sql: String, requiredType: Class<T>, vararg args: Any): T {
-        Allure.addAttachment("SQL query", sql)
-        return template.queryForObject(sql, requiredType, *args)
-    }
+    /** Returns one scalar observation with bound identifiers; absence is null and SQL failures propagate immediately. */
+    fun scalar(service: String, sql: String, vararg args: Any?): String? =
+        DriverManager.getConnection(url(service), "${service}_app", "${service}_local").use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
+                statement.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+            }
+        }
 }
-

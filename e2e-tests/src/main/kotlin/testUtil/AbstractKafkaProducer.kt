@@ -1,50 +1,15 @@
 package testUtil
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.kafka.clients.producer.KafkaProducer
-import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
-import org.slf4j.LoggerFactory
-import io.qameta.allure.Allure
-import java.util.UUID
+import java.util.concurrent.TimeUnit
 
+/** Explicit-key producer for both valid events and malformed ingress checks; any serialization/broker failure fails the test. */
 abstract class AbstractKafkaProducer(private val config: KafkaProps) {
-    private val mapper = ObjectMapper()
-    private val logger = LoggerFactory.getLogger(AbstractKafkaProducer::class.java)
-
-    fun <T> sendMessage(topic: String, message: T) {
-        val json = try {
-            if (message is String) message else mapper.writeValueAsString(message)
-        } catch (e: Exception) {
-            logger.error("Не удалось сериализовать сообщение для топика {}: {}", topic, e.message, e)
-            return
+    /** Publishes the exact supplied text/key (or tombstone) and returns only after acknowledgement within 10 seconds. */
+    fun sendMessage(topic: String, key: String, message: String?) {
+        KafkaProducer<String, String>(config.toProperties()).use { producer ->
+            producer.send(ProducerRecord(topic, key, message)).get(10, TimeUnit.SECONDS)
         }
-        val key = UUID.randomUUID().toString()
-        Allure.addAttachment("Kafka message to $topic", "application/json", json)
-        logger.info("Подготовка к отправке сообщения в топик '{}' с ключом {}", topic, key)
-        send(topic, key, json)
-    }
-
-    private fun send(topic: String, key: String, value: String) {
-        logger.info("Подключаемся к Kafka для отправки в топик '{}'", topic)
-        KafkaProducer<String, String>(config.toProperties()).use { producer: Producer<String, String> ->
-            logger.info("Подключение к Kafka выполнено, создаём запись для топика '{}'", topic)
-            val record = ProducerRecord(topic, key, value)
-            logger.debug("Запись: key={} value={}", key, value)
-            producer.send(record) { metadata, exception ->
-                if (exception != null) {
-                    logger.error("Не удалось отправить сообщение в топик '{}': {}", topic, exception.message, exception)
-                } else {
-                    logger.info(
-                        "Сообщение доставлено в топик '{}' раздел {} смещение {}",
-                        topic, metadata?.partition(), metadata?.offset()
-                    )
-                }
-            }
-            producer.flush()
-            logger.info("Буфер продюсера очищен для топика '{}'", topic)
-        }
-        logger.info("Продюсер Kafka закрыт для топика '{}'", topic)
     }
 }
-

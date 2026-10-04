@@ -1,0 +1,10 @@
+# Apply only to a dedicated shop-e2e-* project; normal Compose never activates persisted fault gates.
+services:
+  store-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: e2e
+    command: [--store.lease-ms=10000]
+  warehouse-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: e2e
+    command: [--warehouse.lease-ms=10000]

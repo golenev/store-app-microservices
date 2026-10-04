@@ -11,3 +11,5 @@
 /runtime-*.log
 /ui-tests/node_modules/
 /ui-tests/test-results/
+
+/scripts/__pycache__/

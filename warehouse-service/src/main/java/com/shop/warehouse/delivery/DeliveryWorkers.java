@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import static com.shop.warehouse.delivery.DeliveryModels.*;
@@ -17,6 +18,9 @@ public class DeliveryWorkers {
     private final DeliveryStore store;
     private final TariffClient tariffs;
     private final KafkaTemplate<String, String> kafka;
+    /** Optional SQL gates exist only in the explicit e2e profile and remain absent from ordinary runtime. */
+    @Autowired(required=false)
+    private WarehouseE2eGate e2eGate;
 
     /** Receives short-transaction storage and clients; constructor performs no external requests. */
     public DeliveryWorkers(DeliveryStore store, TariffClient tariffs, KafkaTemplate<String, String> kafka) {
@@ -37,6 +41,7 @@ public class DeliveryWorkers {
         Optional<PricingWork> pending = store.claimPricing();
         if (pending.isEmpty()) return;
         PricingWork work = pending.get();
+        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.deliveryId(),"BEFORE_PRICING")) return;
         try {
             List<Line> results = new ArrayList<>();
             for (Line line : work.items()) {
@@ -61,9 +66,11 @@ public class DeliveryWorkers {
         Optional<OutboxWork> pending = store.claimOutbox();
         if (pending.isEmpty()) return;
         OutboxWork work = pending.get();
+        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.eventId().toString(),"BEFORE_PUBLISH")) return;
         try { kafka.send("warehouse.goods-posted", work.storeId(), work.payload()).get(5, TimeUnit.SECONDS); }
         catch (InterruptedException failure) { Thread.currentThread().interrupt(); store.failedSend(work); return; }
         catch (Exception failure) { store.failedSend(work); return; }
+        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.eventId().toString(),"AFTER_ACK")) return;
         store.published(work);
     }
 }

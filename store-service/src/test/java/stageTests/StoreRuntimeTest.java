@@ -33,6 +33,7 @@ class StoreRuntimeTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired Flyway flyway;
     @Autowired TestRestTemplate http;
+    @Autowired org.springframework.context.ApplicationContext context;
 
     /** Points STORE to its restricted role on the actual three-database bootstrap container. */
     @DynamicPropertySource
@@ -77,5 +78,13 @@ class StoreRuntimeTest {
         var response = http.getForEntity("/actuator/health", String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).contains("\"status\":\"UP\"");
+    }
+
+    /** Ordinary test runtime never creates the e2e fault bean/table and exposes no public fault-control endpoint. */
+    @Test
+    void e2eControlsAreAbsentOutsideExplicitProfile() {
+        assertThat(context.getBeansOfType(com.shop.store.shop.StoreE2eGate.class)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT to_regclass('e2e_gates')::text", String.class)).isNull();
+        assertThat(http.postForEntity("/technical/e2e/gates", "{}", String.class).getStatusCode().value()).isEqualTo(404);
     }
 }

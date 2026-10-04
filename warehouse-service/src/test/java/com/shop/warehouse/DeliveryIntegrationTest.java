@@ -267,7 +267,7 @@ class DeliveryIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM delivery_diagnostics WHERE kafka_offset=?",Integer.class,coordinate)).isZero();
     }
 
-    /** Actual consumer offset remains uncommitted while diagnostic writes fail, then advances after storage recovery. */
+    /** Actual offset remains uncommitted while diagnostics fail; after recovery, wait independently for durable rows and asynchronous offset visibility. */
     @Test
     void kafkaOffsetWaitsForDurableDiagnostic() throws Exception {
         failingTrigger("delivery_diagnostics","fail_diagnostic");
@@ -284,8 +284,10 @@ class DeliveryIntegrationTest {
             await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM delivery_diagnostics WHERE topic=? AND partition_id=? AND kafka_offset=?",
                         Integer.class,sent.topic(),sent.partition(),sent.offset())).isEqualTo(1);
-                assertThat(admin.listConsumerGroupOffsets("warehouse-deliveries-v1").partitionsToOffsetAndMetadata()
-                        .get(3,TimeUnit.SECONDS).get(partition).offset()).isGreaterThan(sent.offset());
+                var committed=admin.listConsumerGroupOffsets("warehouse-deliveries-v1").partitionsToOffsetAndMetadata()
+                        .get(3,TimeUnit.SECONDS).get(partition);
+                assertThat(committed).isNotNull();
+                assertThat(committed.offset()).isGreaterThan(sent.offset());
             });
         }
     }
