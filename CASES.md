@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: задачи 1–8 включены в master. Текущий рефакторинг E2E сохраняет требования и переносит их проверки на правила tech-book 1.1. Уровни проверки разделены: module integration проверяет локальные транзакции/границы, Kotlin — реальные межсервисные потоки и отказы, Kotlin + Selenide — HTML и восстановление браузерных запросов. Исторические записи этапов ниже описывают состояние на момент соответствующего PR; актуальное покрытие находится в разделе задачи 8.
+Статус: задачи 1–8 включены в master. Текущий рефакторинг E2E сохраняет требования и переносит их проверки на правила tech-book 1.1. Уровни проверки разделены: Интеграционные проверки модулей проверяют локальные транзакции/границы, Kotlin — реальные межсервисные потоки и отказы, Kotlin + Selenide — HTML и восстановление браузерных запросов. Исторические записи этапов ниже описывают состояние на момент соответствующего PR; актуальное покрытие находится в разделе задачи 8.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -95,7 +95,7 @@
 | Отклонённая поставка | `HttpContractTest`, `rejectedDeliveryCanExposeInvalidOriginalQuantity`, `rejectedDeliveryRequiresOriginalPayload` | Представление CASES-05/32; не бизнес-валидация уникальности продуктов |
 | OpenAPI и внешние schema refs | `HttpContractTest`, `openApiDocumentParsesWithoutDiagnostics`, `openApiReferencesResolveToCanonicalDefinitions`, `submitDocumentsRequiredKeyAndAcceptedResponse` | Спецификация целевого API; ни один новый endpoint не считается доступным |
 
-После реализации каждого сценария добавлять отдельную запись покрытия: ID → абсолютный/репозиторный путь тестового файла, имя метода, уровень проверки, команда запуска и результат последнего проверенного запуска. Несколько уровней для одного сценария допустимы; module integration и сквозной E2E обозначать явно. Не ставить «пройден» по наличию теста без запуска.
+После реализации каждого сценария добавлять отдельную запись покрытия: ID → абсолютный/репозиторный путь тестового файла, имя метода, уровень проверки, команда запуска и результат последнего проверенного запуска. Несколько уровней для одного сценария допустимы; интеграционные проверки модулей и сквозной E2E обозначать явно. Не ставить «пройден» по наличию теста без запуска.
 
 ## Проверки runtime задачи 2
 
@@ -105,7 +105,7 @@
 
 Это подготовка окружения, а не выполнение CASES-01–34. WAREHOUSE пока не обрабатывает поставки; legacy STORE не списывает остаток при оформлении.
 
-Команда: `mvn -B -ntp test` на Java 21 с работающим Docker. Проверенный запуск 3 октября 2026: 78 тестов, 0 failures/errors/skipped. Из них 62 контрактных, 7 legacy unit и 9 module integration/runtime.
+Команда: `mvn -B -ntp test` на Java 21 с работающим Docker. Проверенный запуск 3 октября 2026: 78 тестов, без ошибок и пропусков. Из них 62 контрактных, 7 legacy unit и 9 интеграционные проверки модулей/runtime.
 
 | Проверка | Файл и метод | Уровень / инвариант |
 | --- | --- | --- |
@@ -124,9 +124,9 @@ Infrastructure-only запуск: `docker compose up -d --wait`; все три �
 
 Исторический результат задачи 3. Отмеченные здесь будущими WAREHOUSE pricing/HALF_UP проверены в следующем разделе; применение цены к STORE остаётся будущим.
 
-Уровень: module integration. Файл: `tariffs-service/src/test/java/com/tariffs/TariffApiTest.java`. Каждый HTTP-запрос проходит через полный Spring runtime; PostgreSQL 16 и Redis 7 запускаются Testcontainers. Отказы воспроизводятся паузой настоящего контейнера. Правила тестовых городов изолированы; проверки глобального reset выполняются последовательно.
+Уровень: интеграционные проверки модулей. Файл: `tariffs-service/src/test/java/com/tariffs/TariffApiTest.java`. Каждый HTTP-запрос проходит через полный Spring runtime; PostgreSQL 16 и Redis 7 запускаются Testcontainers. Отказы воспроизводятся паузой настоящего контейнера. Правила тестовых городов изолированы; проверки глобального reset выполняются последовательно.
 
-Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 3 октября 2026: **138 тестов, 0 failures/errors/skipped** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 2. После настройки readiness повторно выполнено `mvn -B -ntp -pl tariffs-service test`: **63 теста, 0 failures/errors/skipped**. Сборка всех модулей `mvn -B -ntp -DskipTests package` также прошла; локально использован offline Maven settings для уже загруженных зависимостей.
+Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 3 октября 2026: **138 тестов, без ошибок и пропусков** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 2. После настройки readiness повторно выполнено `mvn -B -ntp -pl tariffs-service test`: **63 теста, без ошибок и пропусков**. Сборка всех модулей `mvn -B -ntp -DskipTests package` также прошла; локально использован offline Maven settings для уже загруженных зависимостей.
 
 | CASES / проверка | Методы TariffApiTest | Проверенный результат и границы |
 | --- | --- | --- |
@@ -142,9 +142,9 @@ CI Compose smoke дополнен HTTP-сценарием: создать пра
 
 ## Проверки приёмки WAREHOUSE задачи 4
 
-Уровень: module integration с настоящими PostgreSQL 16/Kafka 7.6 и HTTP WireMock вместо TARIFFS. `DeliveryIntegrationTest` запускает полный HTTP/consumer runtime; worker ticks в этом классе вызываются управляемо. `WarehouseRecoveryTest` создаёт и закрывает независимые Spring application contexts с сохранённой контейнерной БД, затем проверяет настоящий scheduler. Это рестарт приложения, а не имитация состояния одним Mockito вызовом.
+Уровень: интеграционные проверки модулей с настоящими PostgreSQL 16/Kafka 7.6 и HTTP WireMock вместо TARIFFS. `DeliveryIntegrationTest` запускает полный HTTP/consumer runtime; worker ticks в этом классе вызываются управляемо. `WarehouseRecoveryTest` создаёт и закрывает независимые Spring application contexts с сохранённой контейнерной БД, затем проверяет настоящий scheduler. Это рестарт приложения, а не имитация состояния одним Mockito вызовом.
 
-Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 4 октября 2026: **202 теста, 0 failures/errors/skipped** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 66. После замены неиспользуемого ORM WAREHOUSE на JDBC и исправления ожидания lastError выполнено `mvn -B -ntp -pl warehouse-service test`: **66 тестов, 0 failures/errors/skipped**. Контейнеры одноразовые, пользовательские volumes не удаляются.
+Команда: `mvn -B -ntp test` (Java 21, Docker). Проверенный локальный запуск 4 октября 2026: **202 теста, без ошибок и пропусков** — контракты 62, STORE 11, TARIFFS 63, WAREHOUSE 66. После замены неиспользуемого ORM WAREHOUSE на JDBC и исправления ожидания lastError выполнено `mvn -B -ntp -pl warehouse-service test`: **66 тестов, без ошибок и пропусков**. Контейнеры одноразовые, пользовательские volumes не удаляются.
 
 Файлы: `warehouse-service/src/test/java/com/shop/warehouse/DeliveryIntegrationTest.java`, `WarehouseRecoveryTest.java` и `WarehouseRuntimeTest.java` в том же каталоге.
 
@@ -168,11 +168,11 @@ CI Compose smoke дополнен настоящей цепочкой техни
 
 ## Проверки STORE задачи 5
 
-Проверено 4 октября 2026 года: `mvn -B -ntp test` — **268 тестов, 0 failures/errors/skipped**. STORE: 74 `store-service/src/test/java/stageTests/InventoryCartIntegrationTest.java` и 3 `StoreRuntimeTest`. Фокусированный запуск: `mvn -B -ntp -pl store-service test`. Реальные PostgreSQL 16/Kafka, HTTP random port; уникальные магазины и UUID для каждого сценария. Прямой вызов receiver применяется для отдельных транзакционных инвариантов, реальный Kafka consumer — для доставки, большого сообщения и проверки offset. Сбои SQL воспроизводятся только внутри тестового контейнера.
+Проверено 4 октября 2026 года: `mvn -B -ntp test` — **268 тестов, без ошибок и пропусков**. STORE: 74 `store-service/src/test/java/stageTests/InventoryCartIntegrationTest.java` и 3 `StoreRuntimeTest`. Фокусированный запуск: `mvn -B -ntp -pl store-service test`. Реальные PostgreSQL 16/Kafka, HTTP random port; уникальные магазины и UUID для каждого сценария. Прямой вызов receiver применяется для отдельных транзакционных инвариантов, реальный Kafka consumer — для доставки, большого сообщения и проверки offset. Сбои SQL воспроизводятся только внутри тестового контейнера.
 
 | CASES / инвариант | Методы InventoryCartIntegrationTest | Проверенный результат и граница |
 | --- | --- | --- |
-| CASES-01: STORE | `kafkaReceiptAndPublicCartApiWorkTogether` | GoodsPosted проходит настоящую Kafka, появляется одна позиция по 120.00; HTTP создаёт корзину и меняет её состав без расхода. WAREHOUSE/TARIFFS не запускаются в этом module integration. |
+| CASES-01: STORE | `kafkaReceiptAndPublicCartApiWorkTogether` | GoodsPosted проходит настоящую Kafka, появляется одна позиция по 120.00; HTTP создаёт корзину и меняет её состав без расхода. WAREHOUSE/TARIFFS не запускаются в этом интеграционные проверки модулей. |
 | CASES-03/27: приход | `duplicateBusinessPayloadWithNewEventNeverAddsStockTwice` | Прежний eventId и новый eventId идентичной поставки дают один приход. Порядок строк, scale наценки и текстовая точность одного Instant не создают новые бизнес-данные. |
 | CASES-04: STORE | `changedContentCannotOverwriteReceipt`, `eventIdCannotChangeStoreOwnership`, `sequenceCannotBelongToTwoDeliveries`, `inconsistentTypeRejectsWholeNewDelivery` | Значимые изменения прежней поставки/eventId сохраняют диагностику; stock/movements неизменны. Конфликт типа или sequence отвергает всю новую поставку. |
 | CASES-05/32: STORE ingress | `invalidGoodsAreDiagnosedWithoutStock`, `consumerOffsetWaitsForDiagnosticCommit` | 28 отрицательных вариантов, включая tombstone, malformed/duplicate/unknown JSON, неверный key, финансовую формулу и дубли продукта/строки. Consumer повторяет ошибку записи диагностики; offset продвигается только после durable commit. WAREHOUSE REJECTED проверяется отдельно в задаче 4. |
@@ -191,7 +191,7 @@ CI Compose smoke дополнен настоящей цепочкой техни
 
 ## Проверки STORE задачи 6
 
-Проверено 4 октября 2026 года: `mvn -B -ntp -pl store-service test` — **118/118, 0 failures/errors/skipped**: 74 inventory/cart, 39 submission, 2 recovery и 3 runtime. Полный `mvn -B -ntp test` — **309/309** без ошибок/падений/пропусков. Новые файлы: `store-service/src/test/java/stageTests/SubmissionIntegrationTest.java`, `StoreRecoveryTest.java`. HTTP/PostgreSQL/Kafka настоящие, идентификаторы магазинов/корзин/поставок/операций независимы. Sender отключается только для управляемых module checks; отдельные recovery-тесты запускают настоящий scheduled sender.
+Проверено 4 октября 2026 года: `mvn -B -ntp -pl store-service test` — **118/118, без ошибок и пропусков**: 74 inventory/cart, 39 submission, 2 recovery и 3 runtime. Полный `mvn -B -ntp test` — **309/309** без ошибок/падений/пропусков. Новые файлы: `store-service/src/test/java/stageTests/SubmissionIntegrationTest.java`, `StoreRecoveryTest.java`. HTTP/PostgreSQL/Kafka настоящие, идентификаторы магазинов/корзин/поставок/операций независимы. Sender отключается только для управляемых module checks; отдельные recovery-тесты запускают настоящий scheduled sender.
 
 | CASES / инвариант | Тесты | Проверенный результат и граница |
 | --- | --- | --- |
@@ -214,7 +214,7 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 
 ## Покрытие HTML задачи 7
 
-`e2e-tests/src/test/kotlin/stageTests/HtmlE2ETest.kt` использует Kotlin + Selenide и настоящие STORE/WAREHOUSE/TARIFFS/Kafka/PostgreSQL/Redis. У каждого сценария свои productId/deliveryId и browser contexts с независимым sessionStorage. Тесты идут последовательно в собственном Compose project; исходные кеш/fixtures восстанавливаются, созданная дельта очищается. Маршрутизация тестового браузера управляет только сетевыми окнами; backend продолжает выполнять настоящие транзакции.
+`e2e-tests/src/test/kotlin/org/golenev/tests/e2e_tests/HtmlE2ETest.kt` использует Kotlin + Selenide и настоящие STORE/WAREHOUSE/TARIFFS/Kafka/PostgreSQL/Redis. У каждого сценария свои productId/deliveryId и browser contexts с независимым sessionStorage. Тесты идут последовательно в собственном Compose project; исходные кеш/fixtures восстанавливаются, созданная дельта очищается. Маршрутизация тестового браузера управляет только сетевыми окнами; backend продолжает выполнять настоящие транзакции.
 
 | CASES / инвариант | Функция теста | Проверяемый результат |
 | --- | --- | --- |
@@ -234,7 +234,7 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 
 ## Итоговая матрица задачи 8
 
-Запуск backend E2E: `python scripts/run-e2e.py` из корня; для собранных Maven JAR — `python scripts/run-e2e.py --runtime-jars`. Все четыре Kotlin-класса находятся в `e2e-tests/src/test/kotlin/stageTests/`. `Shop.kt` создаёт уникальные scopes и ждёт фактические состояния/consumer offsets; негативный duplicate check не проходит до обработки Kafka. `audit` сверяет inventory = приходы − расходы и связь submission/outbox.
+Запуск backend E2E: `python scripts/run-e2e.py` из корня; для собранных Maven JAR — `python scripts/run-e2e.py --runtime-jars`. Все четыре Kotlin-класса находятся в `e2e-tests/src/test/kotlin/org/golenev/tests/backend/`. `Shop.kt` создаёт уникальные scopes и ждёт фактические состояния/consumer offsets; негативный duplicate check не проходит до обработки Kafka. `audit` сверяет inventory = приходы − расходы и связь submission/outbox.
 
 | CASES | Класс и метод | Уровень и проверяемая граница |
 | --- | --- | --- |
@@ -277,14 +277,16 @@ E2E fault controls — SQL-таблица `e2e_gates`, созданная ком
 
 CI: Maven reactor → отдельный Kotlin E2E job; браузерные Selenide E2E выполняются в том же изолированном job. Независимый Compose smoke собирает штатные приложения и запускает неизменённые JS unit-тесты. Артефакты Kotlin job содержат JUnit XML/HTML, Allure raw results, Compose/environment diagnostics. Исторические module-проверки выше дополняют эту матрицу, а не считаются отдельными сквозными запусками. Результаты последнего подтверждённого запуска приводятся в README и PR.
 
-Подтверждённая локальная проверка задачи 8: **326 Maven + 44 Kotlin E2E**, 0 failures/errors/skipped. Runtime-profile assertions отдельно подтверждены обычным стартом обоих сервисов. Полный E2E выполнен с Maven-built JAR; source-build/HTML проверяются отдельными CI jobs.
+Подтверждённая локальная проверка задачи 8: **326 Maven + 44 Kotlin E2E**, без ошибок и пропусков. Runtime-profile assertions отдельно подтверждены обычным стартом обоих сервисов. Полный E2E выполнен с Maven-built JAR; source-build/HTML проверяются отдельными CI jobs.
 
 ## Рефакторинг E2E по tech-book 1.1
 
 Требования CASES-01–34 сохранены. Исполняемые бизнес-шаги и вложенные операции берутся из Allure, а не из ручной копии автотеста. Приведённые таблицы сопоставляют требования и гарантии с методами; они не заменяют сгенерированный сценарий.
 
-Backend: прежние 44 запуска и Allure ID сохранены. HTML: 12 самостоятельных проверок в `HtmlE2ETest`; денежная точность, безопасный текст, переключение магазина, сохранённые страницы и мобильная вёрстка разделены. Общий lifecycle реализован функциями с постфиксом `Template`, как согласовано пользователем. Kafka-проверки сохраняют транспортную кратность и границы отрицательного наблюдения. Ошибки чтения/парсинга не маскируются таймаутом отсутствия.
+Серверные сценарии: прежние 44 запуска и Allure ID сохранены. HTML: 12 самостоятельных проверок в `HtmlE2ETest`; денежная точность, безопасный текст, переключение магазина, сохранённые страницы и мобильная вёрстка разделены. Общий жизненный цикл реализован функциями с постфиксом `Template`, как согласовано пользователем. Kafka-проверки сохраняют транспортную кратность и границы отрицательного наблюдения. Ошибки чтения/парсинга не маскируются таймаутом отсутствия.
 
-Команда полного запуска: `python scripts/run-e2e.py`; локально с собранными JAR — `python scripts/run-e2e.py --runtime-jars`. Каждый запуск пишет свежие Allure/evidence в `target/e2e/<project>/`. Module integration и `ui-tests/common.test.js` не изменены. Результат рефакторинга фиксируется после полного проверенного прогона в README и PR.
+Команда полного запуска: `python scripts/run-e2e.py`; локально с собранными JAR — `python scripts/run-e2e.py --runtime-jars`. Каждый запуск пишет свежие результаты Allure и диагностику в `target/e2e/<project>/`. Интеграционные проверки модулей и `ui-tests/common.test.js` не изменены. Результат рефакторинга фиксируется после полного проверенного прогона в README и PR.
 
-Подтверждённый прогон рефакторинга: **56/56** Kotlin E2E, без failures/errors/skipped, проект `shop-e2e-d954c7fdd90e`; все 12 HTML и прежние 44 backend-проверки прошли вместе. Неизменённые JS unit — **2/2**. Allure results содержат вложенные шаги и существующие файлы evidence; из них собран HTML-отчёт. Source-build CI и его результат фиксируются в PR.
+Подтверждённый прогон после замечаний: **56/56** обновлённых E2E, без ошибок и пропусков, проект `shop-e2e-4eeba6f5b321`; прошли все 12 HTML и прежние 44 серверные проверки. Компиляция E2E-модуля успешна. Остальные тесты локально не запускались. Артефакты содержат исходные запросы/ответы Rest Assured и читаемые UI-вложения перенесённого listener.
+
+При переходе на Exposed и Rest Assured сохраняются исходные инварианты и 56 запусков. Данные читаются из той же базы соответствующего сервиса; SQL-сбой не повторяется автоматически внутри Exposed. Ключ и тело REST-повтора сохраняются без изменения. UI использует страницы и читаемый listener по образцу `golenev-xlsx-report-system`; два покупателя работают в разных WebDriver с независимым sessionStorage. Очистка удаляет только данные сценария.
