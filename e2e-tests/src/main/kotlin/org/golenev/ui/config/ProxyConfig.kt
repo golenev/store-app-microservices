@@ -3,6 +3,7 @@ package org.golenev.ui.config
 import com.codeborne.selenide.proxy.SelenideProxyServer
 import io.netty.handler.codec.http.DefaultFullHttpResponse
 import io.netty.handler.codec.http.HttpResponseStatus
+import io.netty.handler.codec.http.HttpUtil
 import io.netty.handler.codec.http.HttpVersion
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -15,16 +16,21 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Отклоняет первый POST по [endpoint] ответом 503 до передачи в сервис; последующие запросы пропускает.
  * Фильтр устанавливается на открытом прокси Selenide и возвращает уникальное имя для удаления в AfterEach.
  * Атомарный признак обеспечивает один отказ даже при нескольких запросах из браузера.
- * Для одновременного перехвата тела устанавливать этот фильтр внутри действия interceptRequestBody:
- * фильтр тела должен наблюдать запрос раньше фильтра отказа. Повтор приложения проходит через
- * тот же зарегистрированный фильтр без нового отказа. В середине сценария фильтр не удаляется.
+ * Пустой ответ содержит Content-Length: 0, поэтому клиент сразу завершает чтение тела,
+ * не дожидаясь закрытия соединения или собственного сетевого тайм-аута.
+ * BrowserUp добавляет фильтры запросов в начало цепочки: последний зарегистрированный выполняется первым.
+ * Поэтому фильтр отказа устанавливают до interceptSubmissionKeys и interceptRequestBody,
+ * чтобы наблюдатели увидели исходный запрос перед его отклонением. Повтор приложения проходит
+ * через тот же зарегистрированный фильтр без нового отказа. В середине сценария фильтр не удаляется.
  */
 fun rejectNextRequest(proxyServer: SelenideProxyServer, endpoint: String): String {
     val filterName = UUID.randomUUID().toString()
     val reject = AtomicBoolean(true)
     proxyServer.addRequestFilter(filterName) { request, _, info ->
         if (info.url.endsWith(endpoint) && request.method().name() == "POST" && reject.compareAndSet(true, false)) {
-            DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.SERVICE_UNAVAILABLE)
+            DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.SERVICE_UNAVAILABLE).also {
+                HttpUtil.setContentLength(it, 0)
+            }
         } else null
     }
     return filterName
@@ -112,47 +118,58 @@ fun interceptSubmissionKeys(
     }
 }
 
-/** Устанавливает фильтр встроенного прокси Selenide, выполняет действие и возвращает тело первого POST по endpoint за 15 секунд. */
+/**
+ * Наблюдает первый POST по [endpoint] во время [run] и возвращает его тело.
+ * Действие выполняется со своими ограничениями Selenide; после него ожидание ещё не
+ * перехваченного тела ограничено 15 секундами. Временный фильтр снимается в finally
+ * при успехе, ошибке действия и тайм-ауте, поэтому следующий вызов не наследует наблюдателя.
+ */
 fun interceptRequestBody(
     proxyServer: SelenideProxyServer,
     endpoint: String,
     run: () -> Unit,
 ): String = runBlocking {
-    withTimeout(15_000) {
-        val deferredBody = CompletableDeferred<String>()
-        proxyServer.addRequestFilter(
-            UUID.randomUUID().toString()
-        ) { _, httpMessageContents, httpMessageInfo ->
-            val isEndpointMatch = httpMessageInfo.url.contains(endpoint)
-            val isPostMethod = httpMessageInfo.originalRequest.method().name().equals("post", ignoreCase = true)
-            if (isEndpointMatch && isPostMethod && deferredBody.isActive) {
-                deferredBody.complete(httpMessageContents.textContents)
-            }
-            null // не модифицируем запрос
+    val deferredBody = CompletableDeferred<String>()
+    val filterName = UUID.randomUUID().toString()
+    proxyServer.addRequestFilter(filterName) { _, httpMessageContents, httpMessageInfo ->
+        val isEndpointMatch = httpMessageInfo.url.contains(endpoint)
+        val isPostMethod = httpMessageInfo.originalRequest.method().name().equals("post", ignoreCase = true)
+        if (isEndpointMatch && isPostMethod && deferredBody.isActive) {
+            deferredBody.complete(httpMessageContents.textContents)
         }
+        null // Не изменяем запрос.
+    }
+    try {
         run()
-        deferredBody.await()
+        withTimeout(15_000) { deferredBody.await() }
+    } finally {
+        proxyServer.removeRequestFilter(filterName)
     }
 }
 
-/** Устанавливает фильтр встроенного прокси Selenide, выполняет действие и возвращает тело первого ответа по endpoint за 15 секунд. */
+/**
+ * Наблюдает первый ответ по [endpoint] во время [run] и возвращает его тело.
+ * Лимит 15 секунд относится только к ожиданию тела после действия, а не к его UI-проверкам.
+ * Временный фильтр снимается в finally при любом исходе, включая ошибку действия и тайм-аут.
+ */
 fun interceptResponseBody(
     proxyServer: SelenideProxyServer,
     endpoint: String,
     run: () -> Unit,
 ): String = runBlocking {
-    withTimeout(15_000) {
-        val deferredBody = CompletableDeferred<String>()
-        proxyServer.addResponseFilter(
-            UUID.randomUUID().toString()
-        ) { _, httpMessageContents, httpMessageInfo ->
-            val isEndpointMatch = httpMessageInfo.url.contains(endpoint)
-            if (isEndpointMatch && deferredBody.isActive) {
-                deferredBody.complete(httpMessageContents.textContents)
-            }
+    val deferredBody = CompletableDeferred<String>()
+    val filterName = UUID.randomUUID().toString()
+    proxyServer.addResponseFilter(filterName) { _, httpMessageContents, httpMessageInfo ->
+        val isEndpointMatch = httpMessageInfo.url.contains(endpoint)
+        if (isEndpointMatch && deferredBody.isActive) {
+            deferredBody.complete(httpMessageContents.textContents)
         }
+    }
+    try {
         run()
-        deferredBody.await()
+        withTimeout(15_000) { deferredBody.await() }
+    } finally {
+        proxyServer.removeResponseFilter(filterName)
     }
 }
 
