@@ -1,6 +1,37 @@
 package org.golenev.commondto
 
 /** Корзина с версией. До принятия заявки submissionId отсутствует, после принятия — заполнен. */
-data class Cart(val storeId: String, val cartId: String, val version: Long, val state: CartState,
-                val items: List<CartLine>, val totalAmount: String, val currency: String,
-                val submissionId: String? = null)
+data class Cart(
+    /**
+     * Идентификатор магазина, к которому относятся данные.
+     */
+    val storeId: String,
+    /**
+     * Идентификатор корзины внутри магазина.
+     */
+    val cartId: String,
+    /**
+     * Версия корзины для проверки, что клиент изменяет актуальное состояние.
+     */
+    val version: Long,
+    /**
+     * Состояние корзины: открыта для изменений или уже оформлена.
+     */
+    val state: CartState,
+    /**
+     * Текущие позиции корзины с количеством и рассчитанной стоимостью.
+     */
+    val items: List<CartLine>,
+    /**
+     * Итоговая стоимость всех позиций в виде точной десятичной строки.
+     */
+    val totalAmount: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String,
+    /**
+     * Идентификатор принятой операции оформления; null, пока корзина не оформлена.
+     */
+    val submissionId: String? = null
+)

@@ -57,8 +57,8 @@ object UiEventSubjectParser {
         return ParsedUiEvent(
             eventType = UiEventType.CHECK,
             operation = operation,
-            successCondition = becauseResult.condition.ifBlank { null },
-            because = becauseResult.because,
+            successCondition = becauseResult.first.ifBlank { null },
+            because = becauseResult.second,
         )
     }
 
@@ -87,7 +87,7 @@ object UiEventSubjectParser {
      * @param condition строковое условие проверки, возможно содержащее пояснение `because`.
      * @return результат с очищенным условием и найденным пояснением.
      */
-    private fun extractBecause(condition: String): BecauseResult {
+    private fun extractBecause(condition: String): Pair<String, String?> {
         val marker = "(because "
         var depth = 0
         var start = -1
@@ -105,30 +105,27 @@ object UiEventSubjectParser {
             }
             index++
         }
-        if (start < 0) return BecauseResult(condition.trim(), null)
+        if (start < 0) return condition.trim() to null
 
         var end = -1
         depth = 0
-        for (i in start until condition.length) {
+        (start until condition.length).forEach { i ->
+            if (end >= 0) return@forEach
             when (condition[i]) {
                 '(' -> depth++
                 ')' -> {
                     depth--
                     if (depth == 0) {
                         end = i
-                        break
                     }
                 }
             }
         }
-        if (end < 0) return BecauseResult(condition.trim(), null)
+        if (end < 0) return condition.trim() to null
 
         val because = condition.substring(start + marker.length, end).trim().ifBlank { null }
         val cleaned = (condition.substring(0, start) + condition.substring(end + 1)).trim()
-        return BecauseResult(cleaned, because)
+        return cleaned to because
     }
-
-
-
 
 }

@@ -1,5 +1,37 @@
 package org.golenev.commondto
 
 /** Позиция поставки по контракту v1. Деньги передаются десятичной строкой; продажную цену рассчитывает сервис, а не поставщик. */
-data class DeliveryLine(val lineId: String, val productId: String, val productType: String, val shortName: String,
-                        val description: String, val quantity: Int, val purchasePrice: String, val currency: String = "RUB")
+data class DeliveryLine(
+    /**
+     * Идентификатор позиции внутри поставки.
+     */
+    val lineId: String,
+    /**
+     * Идентификатор товара, связывающий поставку, остаток и корзину.
+     */
+    val productId: String,
+    /**
+     * Тип товара, используемый при выборе тарифного правила.
+     */
+    val productType: String,
+    /**
+     * Краткое название товара для отображения пользователю.
+     */
+    val shortName: String,
+    /**
+     * Описание товара, переданное поставщиком.
+     */
+    val description: String,
+    /**
+     * Количество единиц товара в позиции.
+     */
+    val quantity: Int,
+    /**
+     * Закупочная цена одной единицы товара в виде точной десятичной строки.
+     */
+    val purchasePrice: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String = "RUB"
+)

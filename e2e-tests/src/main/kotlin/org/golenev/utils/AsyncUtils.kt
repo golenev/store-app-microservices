@@ -1,25 +1,24 @@
 package org.golenev.utils
 
-import java.time.Duration
-import java.util.concurrent.locks.LockSupport
+import io.kotest.assertions.nondeterministic.eventually
+import io.kotest.assertions.nondeterministic.eventuallyConfig
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.seconds
 
-/** Ожидает явно заданное состояние по монотонному времени. Ошибки запуска и чтения передаются отдельно от истечения срока ожидания. */
-fun <T> awaitState(description: String, timeout: Duration = Duration.ofSeconds(40), read: () -> T, ready: (T) -> Boolean): T {
-    require(!timeout.isNegative && !timeout.isZero) { "Positive timeout required: $description" }
-    val started = System.nanoTime()
-    var observed = read()
-    while (!ready(observed)) {
-        if (System.nanoTime() - started >= timeout.toNanos()) {
-            throw AssertionError("Timed out after $timeout: $description; last observed=$observed")
-        }
-        if (Thread.currentThread().isInterrupted) throw InterruptedException("Interrupted: $description")
-        LockSupport.parkNanos(Duration.ofMillis(100).toNanos())
-        observed = read()
-    }
-    return observed
+/** Ограниченное ожидание состояния по образцу calculation-service-tests: до 45 секунд с интервалом 2 секунды. */
+private val positiveConfig = eventuallyConfig {
+    duration = 45.seconds
+    interval = 2.seconds
 }
 
-/** Возвращает обязательный результат или завершает проверку с указанием объекта, вместо неинформативного NullPointerException. */
-fun <T : Any> required(value: T?, subject: String): T {
-    return value ?: throw AssertionError("Required result is absent: $subject")
+/**
+ * Повторяет [assertion] до успешного результата: максимум 45 секунд с интервалом 2 секунды.
+ * Внутри блока тест явно читает состояние и проверяет его матчерами Kotest.
+ * Возвращает значение успешной попытки. По окончании срока Kotest передаёт ошибку ожидания
+ * с диагностикой проверок; правила повторения ошибок определяет eventually.
+ * Блок выполняется синхронно для вызывающего теста через runBlocking и может запускаться
+ * несколько раз, поэтому не должен создавать поставки или повторять оформление заказа.
+ */
+fun <T> awaitPoll(assertion: () -> T): T = runBlocking {
+    eventually(positiveConfig) { assertion() }
 }

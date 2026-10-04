@@ -1,18 +1,21 @@
 package org.golenev.restapi.endpoints
 
+import io.restassured.response.Response
+import org.golenev.commondto.DeliveryReceived
 import org.golenev.config.Environment
 import org.golenev.restapi.config.RequestExecutor
-import org.golenev.restapi.config.Reply
-import org.golenev.commondto.DeliveryReceived
 
-/** REST-операции сервиса WAREHOUSE в изолированном окружении; каждый запрос имеет собственную спецификацию. */
+/** REST-операции сервиса WAREHOUSE на заданном адресе; каждый запрос имеет собственную спецификацию и явно ожидаемый статус. */
 class WarehouseServiceDao : RequestExecutor(Environment.WAREHOUSE_URL) {
     /** Публикует неизменяемую поставку настоящему брокеру; HTTP-подтверждение ещё не означает оприходование в STORE. */
-    fun sendDelivery(body: DeliveryReceived): Reply = request("/technical/deliveries", "POST", body)
+    @io.qameta.allure.Step("Отправляем событие поставки в WAREHOUSE")
+    fun sendDelivery(body: DeliveryReceived, expectedStatus: Int = 202): Response = postRequest("/technical/deliveries", baseRequest().body(body), expectedStatus)
 
-    /** Читает состояние конкретной приёмки; только 404 означает отсутствие сохранённой поставки. */
-    fun getDelivery(storeId: String, deliveryId: String): Reply = request("/stores/$storeId/deliveries/$deliveryId")
+    /** Читает состояние конкретной приёмки; ожидаемый статус задаёт сценарий. */
+    @io.qameta.allure.Step("Читаем приёмку поставки {deliveryId} магазина {storeId}")
+    fun getDelivery(storeId: String, deliveryId: String, expectedStatus: Int = 200): Response = getRequest("/stores/$storeId/deliveries/$deliveryId", baseRequest(), expectedStatus)
 
     /** Запрашивает диагностический повтор существующей приёмки; новую поставку не создаёт. */
-    fun retryDelivery(storeId: String, deliveryId: String): Reply = request("/stores/$storeId/deliveries/$deliveryId/retry-pricing", "POST")
+    @io.qameta.allure.Step("Повторяем расчёт поставки {deliveryId}")
+    fun retryDelivery(storeId: String, deliveryId: String, expectedStatus: Int = 202): Response = postRequest("/stores/$storeId/deliveries/$deliveryId/retry-pricing", baseRequest(), expectedStatus)
 }

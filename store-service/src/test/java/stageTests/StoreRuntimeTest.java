@@ -16,9 +16,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import static org.assertj.core.api.Assertions.*;
 
-/** Verifies the real bootstrap SQL, database ownership and Flyway lifecycle without a Kafka consumer. */
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/** Проверяет создание баз, ограниченные роли и жизненный цикл Flyway на настоящей PostgreSQL. */
 @Testcontainers
 @ActiveProfiles("test")
 @SpringBootTest(classes = StoreServiceApplication.class,
@@ -33,9 +35,8 @@ class StoreRuntimeTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired Flyway flyway;
     @Autowired TestRestTemplate http;
-    @Autowired org.springframework.context.ApplicationContext context;
 
-    /** Points STORE to its restricted role on the actual three-database bootstrap container. */
+    /** Подключает STORE под ограниченной ролью к контейнеру с тремя базами, созданными штатным bootstrap SQL. */
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> postgres.getJdbcUrl().replace("bootstrap_db", "store_db"));
@@ -43,7 +44,7 @@ class StoreRuntimeTest {
         registry.add("spring.datasource.password", () -> "store_local");
     }
 
-    /** V1–V3 preserve historical data and create scoped inventory/submissions once; repeated migration keeps data and fixtures. */
+    /** Проверяет сохранность исторических данных и fixtures при повторном запуске миграций V1–V3. */
     @Test
     void migrationIsRepeatableWithoutDestroyingData() {
         assertThat(jdbc.queryForObject("select current_user", String.class)).isEqualTo("store_app");
@@ -54,7 +55,7 @@ class StoreRuntimeTest {
         assertThat(jdbc.queryForList("SELECT store_id FROM store_scopes ORDER BY store_id", String.class)).containsExactly("S-1", "S-2");
     }
 
-    /** Each role connects only to its own database; other service and maintenance databases reject it. */
+    /** Проверяет доступ каждой роли только к своей БД и отказ подключения к чужим и служебным базам. */
     @Test
     void applicationRolesCannotConnectToOtherServiceDatabases() throws SQLException {
         for (String service : new String[]{"store", "tariffs", "warehouse"}) {
@@ -72,7 +73,7 @@ class StoreRuntimeTest {
         }
     }
 
-    /** A started STORE reports public HTTP health without requiring the transitional Basic credentials. */
+    /** Проверяет публичный ответ health и подключение STORE к БД без авторизации. */
     @Test
     void healthIsPublicAndDatabaseIsUp() {
         var response = http.getForEntity("/actuator/health", String.class);
@@ -80,11 +81,5 @@ class StoreRuntimeTest {
         assertThat(response.getBody()).contains("\"status\":\"UP\"");
     }
 
-    /** Ordinary test runtime never creates the e2e fault bean/table and exposes no public fault-control endpoint. */
-    @Test
-    void e2eControlsAreAbsentOutsideExplicitProfile() {
-        assertThat(context.getBeansOfType(com.shop.store.shop.StoreE2eGate.class)).isEmpty();
-        assertThat(jdbc.queryForObject("SELECT to_regclass('e2e_gates')::text", String.class)).isNull();
-        assertThat(http.postForEntity("/technical/e2e/gates", "{}", String.class).getStatusCode().value()).isEqualTo(404);
-    }
+
 }

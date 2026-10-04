@@ -1,5 +1,25 @@
 package org.golenev.commondto
 
 /** Неизменяемый результат расчёта поставки, публикуемый WAREHOUSE. */
-data class GoodsPayload(val deliveryId: String, val deliverySequence: Long, val receivedAt: String,
-                        val postedAt: String, val items: List<PricedLine>)
+data class GoodsPayload(
+    /**
+     * Бизнес-идентификатор поставки; сохраняется при её повторной отправке.
+     */
+    val deliveryId: String,
+    /**
+     * Неизменяемый порядковый номер первой приёмки поставки в магазине; определяет порядок обновления цены остатка.
+     */
+    val deliverySequence: Long,
+    /**
+     * Время первой приёмки поставки сервисом WAREHOUSE.
+     */
+    val receivedAt: String,
+    /**
+     * Время успешного оприходования поставки сервисом WAREHOUSE.
+     */
+    val postedAt: String,
+    /**
+     * Оприходованные позиции поставки с рассчитанной продажной ценой и использованным тарифом.
+     */
+    val items: List<PricedLine>
+)

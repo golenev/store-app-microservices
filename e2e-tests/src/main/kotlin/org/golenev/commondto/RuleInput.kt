@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Корректные данные создания или изменения правила. Null у верхней границы означает отсутствие ограничения сверху. */
-data class RuleInput(val productType: String, val cityId: String, val currency: String,
-                     val lowerBound: String, val upperBound: String?, val markupRate: String)
+data class RuleInput(
+    /**
+     * Тип товара, используемый при выборе тарифного правила.
+     */
+    val productType: String,
+    /**
+     * Идентификатор города, для которого действует тарифное правило.
+     */
+    val cityId: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String,
+    /**
+     * Включительная нижняя граница закупочной цены для применения правила; передаётся десятичной строкой.
+     */
+    val lowerBound: String,
+    /**
+     * Исключительная верхняя граница закупочной цены; null означает отсутствие ограничения сверху.
+     */
+    val upperBound: String?,
+    /**
+     * Коэффициент наценки в виде десятичной строки: 0.20 означает наценку 20 процентов.
+     */
+    val markupRate: String
+)

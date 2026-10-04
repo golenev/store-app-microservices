@@ -1,4 +1,17 @@
 package org.golenev.commondto
 
 /** Коэффициент наценки и точная версия правила, использованная при расчёте. */
-data class Quote(val markupRate: String, val tariffRuleId: String, val tariffVersion: Long)
+data class Quote(
+    /**
+     * Коэффициент наценки в виде десятичной строки: 0.20 означает наценку 20 процентов.
+     */
+    val markupRate: String,
+    /**
+     * Идентификатор тарифного правила, выбранного для расчёта наценки.
+     */
+    val tariffRuleId: String,
+    /**
+     * Версия тарифного правила, использованная при расчёте.
+     */
+    val tariffVersion: Long
+)

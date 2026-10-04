@@ -234,59 +234,59 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 
 ## Итоговая матрица задачи 8
 
-Запуск backend E2E: `python scripts/run-e2e.py` из корня; для собранных Maven JAR — `python scripts/run-e2e.py --runtime-jars`. Все четыре Kotlin-класса находятся в `e2e-tests/src/test/kotlin/org/golenev/tests/backend/`. `Shop.kt` создаёт уникальные scopes и ждёт фактические состояния/consumer offsets; негативный duplicate check не проходит до обработки Kafka. `audit` сверяет inventory = приходы − расходы и связь submission/outbox.
+Запуск backend E2E: штатный Docker Compose, затем Gradle из `e2e-tests`; команды и переменные приведены в README. Ожидания используют Kotest eventually и зафиксированное состояние сервиса. SQL DAO возвращают nullable; тесты явно проверяют результаты.
 
 | CASES | Класс и метод | Уровень и проверяемая граница |
 | --- | --- | --- |
 | 01 | ProductFlowE2ETest: `realSupplyPreservesReceivingMetadata` | Kotlin: HTTP supplier → Kafka → pricing → GoodsPosted → STORE; IDs, metadata, sequence, quote и денежные строки. |
-| 02 | ProductFlowE2ETest: `concurrentSupplierDuplicateCreatesOneReceipt` | Kotlin: одновременная отправка одного envelope, один receipt/outbox/приход. |
+| 02 | DeliveryIntegrationTest | Интеграционная проверка конкурентного повтора; соответствующий многопоточный E2E удалён. |
 | 03 | ProductFlowE2ETest: `goodsDuplicateWithNewEventIdNeverAddsCredit` | Kotlin: транспортный и бизнес-повтор без увеличения остатка. |
 | 04 | ProductFlowE2ETest: `changedSupplierContentCannotOverwriteReceipt`, `changedGoodsCannotOverwriteInventory` | Kotlin: конфликт сохранён в диагностике, исходный результат не изменён. |
 | 05 | ProductFlowE2ETest: `malformedDeliveryHasDurableDiagnostic`, `unknownVersionHasNoReceipt`, `invalidQuantityIsRejected`; DeliveryIntegrationTest: `kafkaOffsetWaitsForDurableDiagnostic` | Kotlin: настоящий ingress и durable diagnostic/REJECTED; module: failure записи блокирует commit offset, после восстановления оба состояния наблюдаемы отдельно. |
-| 06 | KafkaTariffTest: `pricingRecoversTariffsOutageAutomatically` | Kotlin: остановка TARIFFS, persisted lastError/attempt, автоматическое восстановление. |
-| 07 | KafkaTariffTest: `restartRecoversWaitingPricingWithoutChangingIdentity` | Kotlin: restart WAREHOUSE с активной persisted lease, прежние sequence/receivedAt, один приход. |
-| 08 | ProductFlowE2ETest: `replenishmentRepricesStockAndFreezesAcceptedSnapshot` | Kotlin: общий quantity одной позиции, цена последней поставки. |
-| 09 | ProductFlowE2ETest: `delayedOlderPricingCannotRevertPrice` | Kotlin: более новая поставка завершена первой; позднее завершение старой добавляет quantity, не откатывает цену. |
+| 06 | DeliveryIntegrationTest, WarehouseRecoveryTest | Интеграционные проверки восстановления расчёта; сквозной сценарий отключения TARIFFS удалён. |
+| 07 | WarehouseRecoveryTest: `restartAutomaticallyRecoversPricingLeaseAndPendingOutbox` | Интеграционная проверка восстановления; E2E не перезапускает контейнеры. |
+| 08 | DeliveryIntegrationTest, WarehouseRecoveryTest | Интеграционные проверки окон сохранения и восстановления; управляемые задержки E2E удалены. |
+| 09 | InventoryCartIntegrationTest: `delayedOlderDeliveryPreservesLatestSequencePrice` | Интеграционная проверка порядка цен; E2E с задержкой расчёта удалён. |
 | 10 | TariffApiE2ETest: `cacheSnapshotRequiresResetAndNewSupply` | Kotlin: CRUD не меняет заполненный quote, reset меняет следующие quotes; inventory не переоценивается до поставки. |
 | 11 | TariffApiE2ETest: `cacheSnapshotRequiresResetAndNewSupply`; TariffApiTest: `scheduledResetUsesMoscowMidnightAndTheSameNamespace`, `resetDoesNotFlushOtherRedisNamespaces` | Kotlin: manual reset; module: cron/timezone и сохранность чужих namespaces, без ожидания реальных суток. |
 | 12 | TariffApiE2ETest: `tariffBoundarySelectsOneRule`, `absentRuleIsAnError`, `ambiguousRulesAreAnError`, `fractionalPricingRoundsHalfUp` | Kotlin: шесть граничных цен, 404/409, HALF_UP до 0.51. Остальные типы/города и overflow — TariffApiTest/DeliveryIntegrationTest. |
-| 13 | TariffApiE2ETest: `redisOutageAllowsDatabasePricingFallback`; TariffApiTest: `databaseOutageOnCacheMissReturns503`, `cachedQuoteSurvivesDatabaseOutage` | Kotlin: реальный Redis outage и приход STORE через DB fallback; module: cache miss + DB outage / заполненный кеш без БД. Общий PostgreSQL трёх сервисов в E2E не выключается ради изоляции TARIFFS. |
+| 13 | TariffApiTest: `redisOutageFallsBackToDatabaseAndResetReturns503` | Интеграционная проверка деградации кеша; E2E не отключает Redis. |
 | 14 | OrderE2ETest: `independentCartsNeverReserve` | Kotlin: две полные корзины без резерва, превышение своего количества отклоняется. |
-| 15 | OrderE2ETest: `competingCartEditsHaveOneVersionWinner` | Kotlin: barrier, одна актуальная version, нет потерянного изменения. |
-| 16 | OrderE2ETest: `acceptancePersistsExactSnapshotAndEvent` | Kotlin: 202, quantity 7, snapshot 360.00, закрытие cart и точный Kafka event. |
+| 15 | InventoryCartIntegrationTest | Интеграционная проверка конкурентного изменения корзины; соответствующий E2E удалён. |
+| 16 | OrderE2ETest: `acceptancePersistsExactSnapshotAndEvent` | Kotlin: 202, quantity 7, snapshot 360.00, закрытие cart и точное сохранённое событие outbox; физическое сообщение Kafka проверяется интеграционными тестами модулей. |
 | 17 | OrderE2ETest: `insufficientOneLineNeverPartiallyDeducts` | Kotlin: чужая покупка одной строки, отсутствие частичного расхода остальных. |
-| 18 | OrderE2ETest: `acceptedRequestReplaysOriginalVersion`, `simultaneousSameKeyCreatesOneExpense` | Kotlin: последовательный и одновременный replay исходных key/version, одна операция/expense. |
+| 18 | OrderE2ETest: `acceptedRequestReplaysOriginalVersion` | Kotlin: последовательный повтор исходных ключа и версии сохраняет одну операцию. Конкурентный E2E удалён. |
 | 19 | OrderE2ETest: `acceptedKeyCannotChangeRequest` | Kotlin: другой cart/version с принятым ключом получает конфликт без нового расхода. |
 | 20 | OrderE2ETest: `closedCartRejectsNewExpenseAndMutation` | Kotlin: закрытая cart отвергает mutation и новый submit key. |
-| 21 | OrderE2ETest: `lastUnitHasOneWinner` | Kotlin: два submit одновременно, один 202, один INSUFFICIENT_STOCK, quantity 0. |
+| 21 | SubmissionIntegrationTest | Интеграционная проверка конкурентной покупки последней единицы; соответствующий E2E удалён. |
 | 22 | OrderE2ETest: `staleVersionCannotPurchase` | Kotlin: stale version не изменяет inventory/outbox/cart. |
 | 23 | OrderE2ETest: `storeScopesSeparateKeysAndResources` | Kotlin: чужие cart/stock/submission не доступны в другом scope. |
-| 24 | OrderE2ETest: `commitFailureRollsBackWholeAcceptance`; SubmissionIntegrationTest: `storageFailureRollsBackEveryAcceptanceWrite` | Kotlin: SQL failure после inventory UPDATE возвращает 503 и полностью откатывает acceptance; module дополнительно проверяет failure outbox/закрытия cart. |
-| 25 | KafkaTariffTest: `warehouseOutboxRecoversBrokerOutage`, `acceptedExpenseRecoversBrokerOutage` | Kotlin: две независимые pause/unpause Kafka, persisted lastError/PENDING, автоматическая отправка без пересчёта/нового расхода. |
-| 26 | KafkaTariffTest: `warehouseRestartAfterCommitBeforePublication`, `storeRestartAfterCommitBeforePublication` | Kotlin: каждый сервис остановлен после commit до send, восстановлен с прежней БД и payload. |
-| 27 | KafkaTariffTest: `warehouseAckLossReplaysExactGoods`, `storeAckLossReplaysExactOrder` | Kotlin: gate после реального Kafka ack, restart, две одинаковые физические записи и одно логическое движение. |
+| 24 | SubmissionIntegrationTest: `storageFailureRollsBackEveryAcceptanceWrite` | Интеграционная проверка полного отката; сквозной SQL-сбой и его DDL удалены. |
+| 25 | StoreRecoveryTest, DeliveryIntegrationTest | Интеграционные проверки восстановления отправки после отказа Kafka; E2E не приостанавливает брокер. |
+| 26 | StoreRecoveryTest, WarehouseRecoveryTest | Интеграционные проверки восстановления сохранённой работы; E2E не перезапускает контейнеры. |
+| 27 | SubmissionIntegrationTest, DeliveryIntegrationTest | Интеграционные проверки повторной отправки; управляемые задержки после подтверждения Kafka удалены. |
 | 28 | ProductFlowE2ETest: `replenishmentRepricesStockAndFreezesAcceptedSnapshot` | Kotlin: новая цена до submit, неизменяемый snapshot после следующего пополнения. |
-| 29 | HtmlE2ETest: `lostReply`, `ambiguous503`, `lostRequest` | Browser: reload после потери HTTP в разных окнах, сохранённый key/body и один расход. |
+| 29 | HtmlE2ETest: `lostResponse`, `ambiguous503`, `lostRequest` | Browser: повреждённый JSON и 503 через встроенный прокси Selenide до/после принятия, сохранённые key/body и один расход. TCP-обрыв не проверяется. |
 | 30 | OrderE2ETest: `storeScopesSeparateKeysAndResources` | Kotlin: одинаковая строка ключа двух магазинов создаёт две независимые операции. |
-| 31 | HtmlE2ETest: `independentCarts`, `storesAndPages` | Browser: contexts/sessionStorage, scoped API, актуальная нехватка и store switching. |
+| 31 | HtmlE2ETest: `storesAndPages`; OrderE2ETest: `independentCartsNeverReserve` | Переключение магазина сохраняет корзины; последовательное наполнение двух корзин не резервирует товар. |
 | 32 | ProductFlowE2ETest: `duplicateProductLinesAreRejected` | Kotlin: два одинаковых productId → REJECTED, без прихода. |
 | 33 | TariffApiE2ETest: `newRuleAutomaticallyUnblocksWaitingDelivery` | Kotlin: отсутствующее правило добавлено, автоматический pricing и один приход без retry API. |
-| 34 | ProductFlowE2ETest: `manualRetryCannotDuplicateActivePricing` | Kotlin: manual retry во время активной pricing lease, после release один POSTED/outbox/приход. |
+| 34 | DeliveryIntegrationTest: `manualRetryAndReclaimedWorkerCannotPostTwice` | Интеграционная проверка конкурирующих попыток; E2E с задержкой расчёта удалён. |
 
-E2E fault controls — SQL-таблица `e2e_gates`, созданная компонентом только при явном профиле `e2e`. Идентификаторы точки ограничены магазином/поставкой/событием. Gates сохраняются после перезапуска; worker возвращает управление и ждёт reclaim persisted lease. Управляющего HTTP API нет. StoreRuntimeTest/WarehouseRuntimeTest `e2eControlsAreAbsentOutsideExplicitProfile` проверяют отсутствие компонента/таблицы и 404 для control URL в обычном профиле.
+Отдельный профиль e2e, таблицы управляемых задержек, команды остановки Docker и соответствующие 12 сквозных сценариев удалены по ревью. Восстановление сервисов по-прежнему проверяют интеграционные тесты модулей; матрица выше явно отмечает этот уровень.
 
-CI: Maven reactor → отдельный Kotlin E2E job; браузерные Selenide E2E выполняются в том же изолированном job. Независимый Compose smoke собирает штатные приложения и запускает неизменённые JS unit-тесты. Артефакты Kotlin job содержат JUnit XML/HTML, Allure raw results, Compose/environment diagnostics. Исторические module-проверки выше дополняют эту матрицу, а не считаются отдельными сквозными запусками. Результаты последнего подтверждённого запуска приводятся в README и PR.
+CI: Maven reactor → Kotlin E2E на штатном Compose. Отчёты сохраняются как JUnit XML/HTML, Allure raw results и логи Compose. Текущий набор не выполнялся: сначала требуется экспресс-ревью пользователя.
 
-Подтверждённая локальная проверка задачи 8: **326 Maven + 44 Kotlin E2E**, без ошибок и пропусков. Runtime-profile assertions отдельно подтверждены обычным стартом обоих сервисов. Полный E2E выполнен с Maven-built JAR; source-build/HTML проверяются отдельными CI jobs.
+Историческая проверка предыдущей версии: Подтверждённая локальная проверка задачи 8: **326 Maven + 44 Kotlin E2E**, без ошибок и пропусков. Runtime-profile assertions отдельно подтверждены обычным стартом обоих сервисов. Полный E2E выполнен с Maven-built JAR; source-build/HTML проверяются отдельными CI jobs.
 
-## Рефакторинг E2E по tech-book 1.1
+## Исправления E2E по ревью
 
-Требования CASES-01–34 сохранены. Исполняемые бизнес-шаги и вложенные операции берутся из Allure, а не из ручной копии автотеста. Приведённые таблицы сопоставляют требования и гарантии с методами; они не заменяют сгенерированный сценарий.
+Текущий набор: 28 серверных запусков и 11 самостоятельных HTML-проверок. Каждый тест создаёт свои поставки, товары и корзины. Данные после теста сохраняются; независимость обеспечивают уникальные идентификаторы и отсутствие резерва в корзинах. ScenarioTemplate и ScenarioResources удалены.
 
-Серверные сценарии: прежние 44 запуска и Allure ID сохранены. HTML: 12 самостоятельных проверок в `HtmlE2ETest`; денежная точность, безопасный текст, переключение магазина, сохранённые страницы и мобильная вёрстка разделены. Общий жизненный цикл реализован функциями с постфиксом `Template`, как согласовано пользователем. Kafka-проверки сохраняют транспортную кратность и границы отрицательного наблюдения. Ошибки чтения/парсинга не маскируются таймаутом отсутствия.
+REST работает через Rest Assured Response и сервисные DAO; чтение и подготовка БД — через конкретный Exposed DSL. ObservationDao и самодельные проверяющие обёртки удалены. Nullable проверяется явно матчерами Kotest в тестах. Ожидания используют awaitPoll: конфигурация, runBlocking и eventually находятся внутри утилиты.
 
-Команда полного запуска: `python scripts/run-e2e.py`; локально с собранными JAR — `python scripts/run-e2e.py --runtime-jars`. Каждый запуск пишет свежие результаты Allure и диагностику в `target/e2e/<project>/`. Интеграционные проверки модулей и `ui-tests/common.test.js` не изменены. Результат рефакторинга фиксируется после полного проверенного прогона в README и PR.
+UI использует один драйвер, DriverConfig, страницы, встроенный прокси и читаемый listener по образцу golenev-xlsx-report-system. Бизнес-шаги Allure показывают предусловия, изменения состояния и итоговые проверки; транспортные операции и страницы имеют вложенные @Step. Перехват ключа и тела запроса сохраняет проверку браузерных повторов без новых списаний.
 
-Подтверждённый прогон после замечаний: **56/56** обновлённых E2E, без ошибок и пропусков, проект `shop-e2e-4eeba6f5b321`; прошли все 12 HTML и прежние 44 серверные проверки. Компиляция E2E-модуля успешна. Остальные тесты локально не запускались. Артефакты содержат исходные запросы/ответы Rest Assured и читаемые UI-вложения перенесённого listener.
+Тесты этой версии ожидают экспресс-ревью. Предыдущие результаты 56/56 не подтверждают текущие 39 запусков.
 
-При переходе на Exposed и Rest Assured сохраняются исходные инварианты и 56 запусков. Данные читаются из той же базы соответствующего сервиса; SQL-сбой не повторяется автоматически внутри Exposed. Ключ и тело REST-повтора сохраняются без изменения. UI использует страницы и читаемый listener по образцу `golenev-xlsx-report-system`; два покупателя работают в разных WebDriver с независимым sessionStorage. Очистка удаляет только данные сценария.
+Конкурентные E2E и race удалены по ревью. HTTP-транспорт соответствует референсу без ветвлений и технических шагов; ожидаемый статус передаётся из негативных сценариев в DAO. Одноразовые фильтры отказа и подмены статуса удаляются после теста. Бизнес-шаги разделены по состояниям поставки и корзины.

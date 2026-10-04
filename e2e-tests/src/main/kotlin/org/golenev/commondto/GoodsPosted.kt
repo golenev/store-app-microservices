@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Оболочка GoodsPosted. Идентификатор сообщения отличается от бизнес-идентификатора поставки. */
-data class GoodsPosted(val eventId: String, val eventType: String, val schemaVersion: Int,
-                       val occurredAt: String, val storeId: String, val payload: GoodsPayload)
+data class GoodsPosted(
+    /**
+     * Идентификатор события для распознавания повторной доставки сообщения.
+     */
+    val eventId: String,
+    /**
+     * Тип события, определяющий контракт его содержимого.
+     */
+    val eventType: String,
+    /**
+     * Версия схемы события, по которой получатель разбирает сообщение.
+     */
+    val schemaVersion: Int,
+    /**
+     * Время возникновения события.
+     */
+    val occurredAt: String,
+    /**
+     * Идентификатор магазина, к которому относятся данные.
+     */
+    val storeId: String,
+    /**
+     * Результат оприходования поставки, по которому STORE увеличивает остаток.
+     */
+    val payload: GoodsPayload
+)

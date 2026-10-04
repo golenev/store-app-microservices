@@ -1,16 +1,20 @@
 package com.shop.warehouse.delivery;
 
-import org.slf4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Autowired;
-import java.util.*;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+
 import static com.shop.warehouse.delivery.DeliveryModels.*;
 
-/** One scheduled worker per application, with persisted lease fences for restart and accidental overlapping attempts. */
+/** Обрабатывает расчёт и отправку по расписанию. Сохранённый срок захвата и токен защищают от пересекающихся попыток и обеспечивают восстановление. */
 @Component
 @ConditionalOnProperty(name="warehouse.workers.enabled", havingValue="true", matchIfMissing=true)
 public class DeliveryWorkers {
@@ -18,30 +22,26 @@ public class DeliveryWorkers {
     private final DeliveryStore store;
     private final TariffClient tariffs;
     private final KafkaTemplate<String, String> kafka;
-    /** Optional SQL gates exist only in the explicit e2e profile and remain absent from ordinary runtime. */
-    @Autowired(required=false)
-    private WarehouseE2eGate e2eGate;
 
-    /** Receives short-transaction storage and clients; constructor performs no external requests. */
+    /** Получает хранилище, клиент тарифов и Kafka producer. Конструктор не выполняет внешних запросов. */
     public DeliveryWorkers(DeliveryStore store, TariffClient tariffs, KafkaTemplate<String, String> kafka) {
         this.store = store;
         this.tariffs = tariffs;
         this.kafka = kafka;
     }
 
-    /** Automatically processes due pricing; persisted leases recover failures without a user-triggered retry. */
+    /** Запускает наступившие попытки расчёта. Сохранённый захват позволяет восстановиться без ручного повтора. */
     @Scheduled(fixedDelayString="${warehouse.pricing-poll-ms:500}")
     public void pricingTick() {
         try { priceOne(); }
         catch (Exception failure) { log.error("Pricing worker failed; persisted lease will recover", failure); }
     }
 
-    /** Claims one delivery, renews ownership per line and posts all results together; stale workers discard computed values. */
+    /** Захватывает одну поставку и продлевает владение перед каждой строкой. Результаты фиксируются одной транзакцией; потерявшая владение попытка прекращает обработку. */
     public void priceOne() {
         Optional<PricingWork> pending = store.claimPricing();
         if (pending.isEmpty()) return;
         PricingWork work = pending.get();
-        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.deliveryId(),"BEFORE_PRICING")) return;
         try {
             List<Line> results = new ArrayList<>();
             for (Line line : work.items()) {
@@ -54,23 +54,21 @@ public class DeliveryWorkers {
         }
     }
 
-    /** Sends one committed immutable event; failures retain PENDING and schedule a bounded persisted retry. */
+    /** Запускает отправку сохранённого события по расписанию. Сбой сохраняет ожидание и следующую попытку в БД. */
     @Scheduled(fixedDelayString="${warehouse.sender-poll-ms:500}")
     public void senderTick() {
         try { sendOne(); }
         catch (Exception failure) { log.error("Outbox worker failed; persisted lease will recover", failure); }
     }
 
-    /** Waits at most five seconds for broker acknowledgement; subsequent DB failure deliberately allows replay of the same payload. */
+    /** Отправляет одно сохранённое событие и ждёт подтверждение брокера не более пяти секунд. Ошибка последующей записи в БД допускает повтор того же содержимого. */
     public void sendOne() {
         Optional<OutboxWork> pending = store.claimOutbox();
         if (pending.isEmpty()) return;
         OutboxWork work = pending.get();
-        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.eventId().toString(),"BEFORE_PUBLISH")) return;
         try { kafka.send("warehouse.goods-posted", work.storeId(), work.payload()).get(5, TimeUnit.SECONDS); }
         catch (InterruptedException failure) { Thread.currentThread().interrupt(); store.failedSend(work); return; }
         catch (Exception failure) { store.failedSend(work); return; }
-        if(e2eGate!=null && !e2eGate.permits(work.storeId(),work.eventId().toString(),"AFTER_ACK")) return;
         store.published(work);
     }
 }

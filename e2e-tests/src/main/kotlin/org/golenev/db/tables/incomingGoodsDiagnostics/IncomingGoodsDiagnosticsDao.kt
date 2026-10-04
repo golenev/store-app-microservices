@@ -14,4 +14,5 @@ object IncomingGoodsDiagnosticsDao {
     fun countByEventId(eventId: String): Long {
         return dbStoreExec { IncomingGoodsDiagnosticsTable.selectAll().where { IncomingGoodsDiagnosticsTable.rawMessage like "%$eventId%" }.count() }
     }
+
 }

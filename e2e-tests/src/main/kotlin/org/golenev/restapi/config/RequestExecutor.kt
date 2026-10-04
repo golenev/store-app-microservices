@@ -1,19 +1,39 @@
 package org.golenev.restapi.config
 
-import io.qameta.allure.Allure
-import org.golenev.utils.JsonUtils
+import io.restassured.RestAssured
+import io.restassured.http.Method
+import io.restassured.response.Response
+import io.restassured.specification.RequestSpecification
 
-/** Общая механика REST-запроса; маршруты конкретного сервиса принадлежат его DAO. */
+/** Отправляет конкретные HTTP-методы по референсу; тело, заголовки и ожидаемый статус задаёт сервисный DAO. */
 open class RequestExecutor(baseUri: String) : BaseSpecification(baseUri) {
-    /** Отправляет явно выбранный метод и неизменяемое тело; сырой текст позволяет проверять некорректный JSON. Статус вызывающий сценарий проверяет через expect. */
-    fun request(path: String, method: String = "GET", body: Any? = null, key: String? = null): Reply {
-        return Allure.step("$method $path", Allure.ThrowableRunnable<Reply> {
-            val specification = baseRequest()
-            if (body != null) specification.contentType("application/json").body(
-                if (body is String) body else JsonUtils.objectMapper.writeValueAsString(body))
-            if (key != null) specification.header("Idempotency-Key", key)
-            val response = specification.request(method, path)
-            Reply(response.statusCode, response.asString(), response.headers.groupBy({ it.name }, { it.value }))
-        })
-    }
+
+    /** Универсальный метод для отправки запросов, устраняющий дублирование кода. */
+    protected fun executeRequest(
+        method: Method,
+        url: String,
+        requestSpecification: RequestSpecification,
+        expectedStatus: Int = 200
+    ): Response = prepareForRequest(requestSpecification)
+        .request(method, baseUri + url)
+        .also { response -> prepareForResponse(expectedStatus).validate(response) }
+
+    /** Отправляет GET с переданной спецификацией, проверяет статус и возвращает исходный ответ. */
+    protected fun getRequest(url: String, spec: RequestSpecification, expectedStatus: Int = 200): Response =
+        executeRequest(Method.GET, url, spec, expectedStatus)
+
+    /** Отправляет POST с телом и заголовками DAO; статус проверяется до возврата ответа сценарию. */
+    protected fun postRequest(url: String, spec: RequestSpecification, expectedStatus: Int = 200): Response =
+        executeRequest(Method.POST, url, spec, expectedStatus)
+
+    /** Отправляет PUT с явно подготовленными данными изменения и проверяет ожидаемый статус. */
+    protected fun putRequest(url: String, spec: RequestSpecification, expectedStatus: Int = 200): Response =
+        executeRequest(Method.PUT, url, spec, expectedStatus)
+
+    /** Отправляет DELETE для ресурса и проверяет ожидаемый статус удаления или отказа. */
+    protected fun deleteRequest(url: String, spec: RequestSpecification, expectedStatus: Int = 200): Response =
+        executeRequest(Method.DELETE, url, spec, expectedStatus)
+
+    /** Возвращает свежую спецификацию, которую DAO дополняет параметрами запроса. */
+    protected fun baseRequest(): RequestSpecification = RestAssured.given()
 }

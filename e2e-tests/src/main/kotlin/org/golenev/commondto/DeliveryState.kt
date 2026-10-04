@@ -1,4 +1,17 @@
 package org.golenev.commondto
 
 /** Сохранённые состояния приёмки, доступные через диагностический API v1. */
-enum class DeliveryState { WAITING_PRICING, POSTED, REJECTED }
+enum class DeliveryState {
+    /**
+     * Поставка принята и ожидает успешного расчёта продажных цен.
+     */
+    WAITING_PRICING,
+    /**
+     * Поставка успешно оприходована после расчёта цен.
+     */
+    POSTED,
+    /**
+     * Поставка отклонена из-за некорректных исходных данных.
+     */
+    REJECTED
+}

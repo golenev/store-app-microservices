@@ -4,7 +4,7 @@
 
 ## Текущее состояние
 
-Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Kotlin E2E проверяют новую архитектуру в отдельном CI stage с управляемыми отказами. Текущий рефакторинг E2E применяет tech-book 1.1 и переносит браузерное покрытие на Kotlin + Selenide.
+Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Kotlin E2E проверяют новую архитектуру в отдельном CI stage на штатном Docker Compose. Текущий рефакторинг E2E применяет tech-book 1.1 и переносит браузерное покрытие на Kotlin + Selenide.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
@@ -28,13 +28,13 @@
 | TARIFFS | 6790 | tariffs_db | tariffs_app / tariffs_local |
 | WAREHOUSE | 6791 | warehouse_db | warehouse_app / warehouse_local |
 
-PostgreSQL доступна на `localhost:34567`, Kafka — `localhost:9092`, Redis — `localhost:6379`. Внутри Compose используются `postgres:5432`, `kafka:29092`, `redis:6379` и `http://tariffs-service:6790`. Kafka работает в KRaft без ZooKeeper. Единственный UI — Kafdrop, включается отдельно на порту 9000.
+PostgreSQL доступна на `localhost:34567`, Kafka — `localhost:9092`, Redis — `localhost:6379`. Внутри Compose используются `postgres:5432`, `kafka:29092`, `redis:6379` и `http://tariffs-service:6790`. Kafka работает в KRaft без ZooKeeper. Kafdrop запускается вместе с сервисами на порту 9000.
 
 ### Инфраструктура в Docker, приложения из IDEA
 
 ```shell
 docker compose config --quiet
-docker compose up -d --wait
+docker compose up -d --wait postgres kafka redis
 ```
 
 В IDEA импортируйте корневой `pom.xml`, выберите JDK 21 и запускайте:
@@ -56,17 +56,17 @@ mvn -pl store-service spring-boot:run
 ### Полностью в Docker
 
 ```shell
-docker compose --profile apps config --quiet
-docker compose --profile apps up -d --build --wait
-docker compose --profile apps ps
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
 ```
 
-Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; WAREHOUSE также ждёт TARIFFS. STORE зависит только от PostgreSQL и Kafka. Первый build требует доступа к Docker Hub и Maven Central.
+Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут готовность PostgreSQL и Kafka; TARIFFS запускается после старта Redis. WAREHOUSE автоматически повторяет расчёт при временной недоступности TARIFFS. Первый build требует доступа к Docker Hub и Maven Central.
 
-Дополнительный UI в любом режиме:
+Все три приложения, PostgreSQL, Kafka, Redis и Kafdrop поднимаются командой выше. При запуске приложений из IDEA Kafdrop можно поднять отдельно:
 
 ```shell
-docker compose --profile ui up -d kafdrop
+docker compose up -d kafdrop
 ```
 
 HTTP health без авторизации: `http://localhost:6789/actuator/health`, `http://localhost:6790/actuator/health`, `http://localhost:6791/actuator/health`. Общий health проверяет БД, у TARIFFS также Redis. TARIFFS `/actuator/health/readiness` проверяет готовность и PostgreSQL; отказ Redis не исключает DB-fallback из обслуживания. Compose использует этот readiness и ждёт запуска Redis, а не его healthy. Kafka проверяется отдельным broker healthcheck. Health WAREHOUSE не подтверждает завершение конкретной поставки: для этого нужен delivery status, а POSTED ещё не означает приход в STORE.
@@ -74,7 +74,7 @@ HTTP health без авторизации: `http://localhost:6789/actuator/healt
 Остановка контейнеров с сохранением данных:
 
 ```shell
-docker compose --profile apps --profile ui down
+docker compose down
 ```
 
 Compose использует имя проекта `shop-runtime` и отдельные volumes `postgres-data`, `kafka-data`, `redis-data`. Старые volumes прежней конфигурации не удаляются и не подключаются. Если старые контейнеры занимают порты, сначала остановите своё прежнее окружение или задайте `POSTGRES_PORT`, `KAFKA_PORT`, `REDIS_PORT`, `STORE_PORT`, `TARIFFS_PORT`, `WAREHOUSE_PORT`, `KAFDROP_PORT`. Для IDEA при смене портов также меняйте соответствующие URL; `KAFKA_HOST` задаёт адрес external listener.
@@ -93,7 +93,7 @@ Compose использует имя проекта `shop-runtime` и отдел�
 
 STORE `GET /ui/config` возвращает `warehouseBaseUrl` из `WAREHOUSE_PUBLIC_URL` (по умолчанию `http://localhost:6791`). Это **доступный браузеру** URL, а не внутреннее имя `warehouse-service`. WAREHOUSE разрешает CORS только точным `SHOP_UI_ORIGINS` (по умолчанию `http://localhost:6789,http://127.0.0.1:6789`), без credentials: POST `/technical/deliveries` и GET scoped delivery status. Диагностические POST не разрешены. Compose автоматически учитывает STORE_PORT/WAREHOUSE_PORT; при запуске из IDEA с другими портами задайте оба значения явно. Для HTTPS UI используйте HTTPS warehouse URL/прокси, иначе браузер блокирует mixed content.
 
-Браузерные E2E находятся в `e2e-tests/src/test/kotlin/org/golenev/tests/e2e_tests/HtmlE2ETest.kt`: Kotlin + Selenide 7.12.1 + JUnit 5 + Allure. Они запускаются вместе с backend E2E через `python scripts/run-e2e.py`. Нужны JDK 21, установленный Chrome, Python 3 и Docker; отдельный пользовательский браузер не используется. Selenide создаёт собственные профили и драйверы.
+Браузерные E2E находятся в `e2e-tests/src/test/kotlin/org/golenev/tests/e2e_tests/HtmlE2ETest.kt`: Kotlin + Selenide 7.12.1 + JUnit 5 + Allure. Они запускаются вместе с backend E2E через Gradle на отдельном Compose-окружении, как описано ниже. Нужны JDK 21, установленный Chrome и Docker; отдельный пользовательский браузер не используется. Selenide создаёт собственные профили и драйверы.
 
 В `ui-tests` сохранены прежние JavaScript unit-тесты нормализации денег. Их исходники не изменены; Node.js 22+ нужен только для них:
 
@@ -263,40 +263,31 @@ mvn -pl contract-tests test
 
 CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки выполняются на этих же реальных сервисах. Отдельный job `e2e` после Maven запускает Kotlin-набор в собственном Compose project, собирая приложения из исходников.
 
-### Kotlin E2E и управляемые отказы
+### Kotlin E2E
 
-Нужны Python 3, JDK 21, Chrome и Docker Compose **2.24.4+** (runtime-JAR override использует `!reset`). Wrapper Gradle 8.14.3 восстановлен; SHA-256 дистрибутива закреплён в properties, checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
+Нужны JDK 21, Chrome и Docker Compose v2. Wrapper Gradle 8.14.3 содержит закреплённую SHA-256 дистрибутива; checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
 
-Из корня проекта:
-
-```shell
-python scripts/run-e2e.py
-```
-
-Программа запуска собирает сервисы из Dockerfile, выбирает шесть разных свободных портов и создаёт уникальный Compose-проект `shop-e2e-*` с новыми томами. Между освобождением временных сокетов и запуском Compose другой процесс может занять порт; в этом случае запуск завершается явной ошибкой. Обычное окружение `shop-runtime` не затрагивается. В конце сохраняются логи и останавливаются только контейнеры этого запуска. Тома сохраняются: автоматического удаления данных нет.
-
-Более быстрый локальный вариант использует уже собранные JAR и образ среды Java:
+Приложение и все зависимости запускаются из корня одной командой:
 
 ```shell
-mvn -B -ntp -DskipTests package
-python scripts/run-e2e.py --runtime-jars
+docker compose up -d --build
 ```
 
-Укажите JAVA_HOME на JDK 21. На Windows launcher вызывает `gradlew.bat`, на Linux — `bash gradlew`. При `--runtime-jars` образ `eclipse-temurin:21-jre-jammy` должен быть доступен Docker. При нестандартной установке браузера задайте `E2E_CHROME_BINARY` и при необходимости `E2E_CHROME_DRIVER`. Для локальной конфигурации Gradle можно передать путь `E2E_GRADLE_INIT_SCRIPT`; CI использует обычный Maven Central.
+После готовности сервисов тесты используют это же окружение. Для Windows:
 
-Каждый запуск получает свою папку `target/e2e/<project>/`: настройки окружения, логи Compose, свежие результаты Allure в `allure-results/` и материалы браузерной диагностики в `browser-evidence/`. JUnit XML и HTML-отчёт Gradle находятся в `e2e-tests/build/test-results/test` и `e2e-tests/build/reports/tests/test/index.html`. Для просмотра Allure используйте `allure serve target/e2e/<project>/allure-results`; программу командной строки Allure нужно установить отдельно. CI сохраняет эти файлы и `runtime-e2e-control.log`. Результаты разных запусков не смешиваются.
+```powershell
+.\e2e-tests\gradlew.bat -p e2e-tests test
+```
 
-Набор содержит 44 проверки серверной цепочки и 12 браузерных сценариев. Тесты используют согласованные функции `withShopTemplate` и `withBrowserTemplate`, явные бизнес-шаги Allure, вложенные HTTP/Selenide-операции и типизированные DTO. В отчёт записываются версия коммита, отметка `dirty` при незакоммиченных изменениях, контрольная сумма SHA-256 исходников тестов и имя Compose-проекта. Прежние идентификаторы backend-сценариев в Allure сохранены; браузерным тестам не присваиваются выдуманные идентификаторы TMS. Требования и привязка к тестам находятся в CASES, а исполняемые шаги и диагностика формируются кодом в Allure.
+На Linux: `bash e2e-tests/gradlew -p e2e-tests test`. JAVA_HOME должен указывать на JDK 21. Стандартные адреса: STORE 6789, TARIFFS 6790, WAREHOUSE 6791, PostgreSQL 34567, Kafka 9092. При других портах задайте E2E_STORE_URL, E2E_TARIFFS_URL, E2E_WAREHOUSE_URL, E2E_POSTGRES_PORT и E2E_KAFKA. Для нестандартного Chrome доступны E2E_CHROME_BINARY и E2E_CHROME_DRIVER.
 
-Программа запуска выполняет тесты последовательно в собственном Compose-проекте. Серверные сценарии создают независимые магазины и города; HTML использует штатные S-1/S-2, уникальные товары с UUID и собственные браузерные профили. Остатки появляются только через настоящие поставки. Ресурсы регистрируются до воздействия. Очистка выполняется даже при ошибке подготовки: восстанавливает сервисы, снимает тестовые задержки, возвращает снимок тарифного кеша и удаляет только созданные сценарием данные. Исходная ошибка сохраняется, ошибки очистки добавляются к ней как `suppressed`. Монотонные номера приёмки и поколения кеша не откатываются.
+Набор содержит 28 серверных запуска и 11 браузерных сценариев. Сценарии остановки контейнеров, рестартов в управляемых точках и SQL-сбоя удалены по замечаниям пользователя; отдельного Spring-профиля, Compose-файла и Python launcher нет. Интеграционные проверки восстановления в модулях сохраняются. Четыре конкурентных E2E и функция race также удалены; последовательные проверки повторов сохранены. Локальные E2E не управляют Docker и не удаляют данные после теста: каждый сценарий создаёт свои предусловия поставкой с уникальными идентификаторами. Корзины не резервируют товары.
 
-Наблюдатель Kafka назначает разделы и фиксирует конечные смещения до действия. Наличие события, минимальное число физических копий и точное количество в ограниченном окне проверяются отдельно. Ошибки разбора или транспорта не превращаются в отсутствие события. Потеря отметки отправки outbox допускает больше двух физических копий, но требует одинаковые исходные данные при одном логическом движении товара. Локальный браузерный прокси воспроизводит потерю запроса, потерю ответа и 503 после настоящей фиксации операции. Chrome может самостоятельно повторять POST; история сохраняет все попытки, которые обязаны иметь прежние ключ и тело. Прокси меняет только тестовый адрес WAREHOUSE в конфигурации UI и управляемый сетевой сбой. Бизнес-операции выполняют настоящие сервисы.
+REST DAO возвращают исходный Rest Assured Response. RequestExecutor содержит отдельные HTTP-методы без ветвлений и шагов Allure; BaseSpecification готовит запрос и проверку статуса по референсу. SQL DAO возвращают nullable; тесты явно проверяют данные матчерами Kotest. Асинхронные состояния ожидаются через awaitPoll, инкапсулирующий runBlocking, Kotest eventually и конфигурацию ожидания. Бизнес-шаги описывают подготовку, действия и проверяемый результат по правилам Allure из golenev-xlsx-report-system; вложенные @Step выполняются с AspectJ, как в референсе.
 
-`compose.e2e.yml` явно включает профиль `e2e` у STORE/WAREHOUSE и lease 10 секунд. Только в этом профиле создаётся `e2e_gates`: store/subject-scoped SQL gates перед pricing/publish и после Kafka ack. При закрытом gate worker освобождает поток, оставляя persisted lease для восстановления; sleep в бизнес-логику не добавлен. Gates переживают restart. Таблица и компоненты отсутствуют в обычном профиле, что проверяют runtime-тесты; HTTP crash-control API отсутствует. Этот профиль предназначен для принадлежащего тестам окружения.
+Selenide использует DriverConfig, страницы и читаемый Allure listener. Фильтры встроенного прокси воспроизводят нечитаемый ответ и 503 до/после принятия заявки. interceptSubmissionKeys собирает ключи исходного оформления и повторов; фильтр снимается при завершении действия. Браузер настраивается в BeforeEach и закрывается в AfterEach. Корзины из sessionStorage после теста не собираются и не удаляются. Фильтры одноразового отказа и подмены статуса снимаются в AfterEach; повтор проходит без новой подмены.
 
-Полная матрица CASES-01–34 объединяет Kotlin E2E, интеграционные проверки модулей и HTML: [CASES.md](CASES.md). Плановый reset, DB outage на cache miss и некоторые варианты storage failure отдельно проверяются интеграционные проверки модулей; браузерная потеря ответа/reload — Kotlin + Selenide. Успех Kotlin не подменяет эти уровни.
-
-Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, без ошибок и пропусков, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
+Результаты: e2e-tests/build/test-results, build/reports/tests, build/allure-results и build/browser-evidence. CI запускает обычный Compose и Gradle, сохраняет отчёты и логи. Текущие тесты ожидают экспресс-ревью пользователя; компиляция не считается их выполнением.
 
 Проверка задачи 4 (4 октября 2026): `mvn -B -ntp test` — **202 теста**, без ошибок и пропусков. WAREHOUSE: 62 `DeliveryIntegrationTest`, 2 `WarehouseRecoveryTest`, 2 runtime. После перехода WAREHOUSE на JDBC и исправления асинхронного ожидания lastError отдельный модульный прогон — **66/66**. Проверены реальные Kafka/PostgreSQL, HTTP WireMock, строгий вход, повторы/конкуренция, HALF_UP/overflow, автоматический retry и рестарт, rollback, storage failure без offset commit, Kafka outage и replay после потерянной отметки ack. Подробная привязка к CASES — в [покрытии](CASES.md). CI Compose smoke дополнен реальным TARIFFS pricing и проверкой одного POSTED/outbox после рестарта; удалённый результат указывается в PR после запуска.
 
@@ -306,14 +297,18 @@ python scripts/run-e2e.py --runtime-jars
 
 Проверка задачи 7 (4 октября 2026): Maven reactor **324/324**, без ошибок и пропусков (contracts 62, STORE 124, TARIFFS 63, WAREHOUSE 75). `npm run test:unit` — **2/2**, исходный HTML-набор — **9/9** на реальных сервисах в отдельной Docker/Java-среде. Проверены независимые contexts, отсутствие резерва, нехватка/version conflict, переоценка и immutable snapshot, потеря запроса/ответа и 503 после commit с прежним key/body, supplier replay, XSS-текст, точные большие суммы, store scope и mobile layout. Полный прогон после исправления мобильного тестового локатора прошёл; CI source-build/browser результат указывается в PR.
 
-Проверка задачи 8 (4 октября 2026): Maven reactor **326/326** (contracts 62, STORE 125, TARIFFS 63, WAREHOUSE 76), Kotlin E2E **44/44**, без ошибок и пропусков. E2E выполнен через `python scripts/run-e2e.py --runtime-jars` в новом `shop-e2e-*` с настоящими зависимостями и автоматически выбранными портами. После исправления ожидания committed offset WAREHOUSE полный reactor прошёл; rollback E2E проверяет предусмотренный контрактом 503 DEPENDENCY_UNAVAILABLE. Source-build, HTML и результаты удалённого CI фиксируются в PR после запуска.
+Проверка задачи 8 (4 октября 2026): Maven reactor **326/326** (contracts 62, STORE 125, TARIFFS 63, WAREHOUSE 76), Kotlin E2E **44/44**, без ошибок и пропусков. E2E выполнен в отдельном Compose-проекте с настоящими зависимостями. После исправления ожидания committed offset WAREHOUSE полный reactor прошёл; rollback E2E проверяет предусмотренный контрактом 503 DEPENDENCY_UNAVAILABLE. Source-build, HTML и результаты удалённого CI фиксируются в PR после запуска.
 
-Проверка после замечаний (4 октября 2026): компиляция E2E-модуля прошла; **56/56** обновлённых E2E (44 серверных + 12 Kotlin/Selenide) прошли без ошибок и пропусков в `shop-e2e-4eeba6f5b321` с готовыми JAR сервисов. Проверены JSON Allure, вложения Rest Assured и читаемого Selenide listener. Остальные тесты локально не запускались; их исходники и код приложения не изменены. Результат CI для опубликованного коммита проверяется отдельно.
+Историческая проверка предыдущего рефакторинга (4 октября 2026): компиляция E2E-модуля прошла; **56/56** обновлённых E2E (44 серверных + 12 Kotlin/Selenide) прошли без ошибок и пропусков в `shop-e2e-4eeba6f5b321` с готовыми JAR сервисов. Проверены JSON Allure, вложения Rest Assured и читаемого Selenide listener. Остальные тесты локально не запускались; их исходники и код приложения не изменены. Результат CI для опубликованного коммита проверяется отдельно.
 
-Структура E2E приведена к образцу `golenev-xlsx-report-system`: общий корень пакетов `org.golenev`, параметры окружения в `config/Environment`, подключения Exposed в `db/DbFactory`, отдельные `Table` и `Dao` в `db/tables/<сущность>`. Обычные наблюдения используют типизированный Exposed DSL; составной аудит, очистка собственных данных и тестовые триггеры выполняются через `Transaction.exec` с привязанными значениями. Автоматические повторы SQL-транзакций отключены, чтобы не скрывать управляемые сбои.
+БД доступны через конкретные Table и Dao на Exposed. SQL DAO возвращают nullable; обязательность результата проверяет тест. ObservationDao, произвольный SQL и DDL-триггер E2E удалены.
 
-REST-запросы выполняют Rest Assured 5.4.0 и сервисные DAO в `restapi/endpoints`; настройки запроса, исполнитель и проверка ответа находятся в `restapi/config`. Каждому запросу создаётся отдельная спецификация с ограниченным временем ожидания и вложениями Allure. Каждая модель данных и перечисление имеют отдельный файл.
+REST-запросы выполняют Rest Assured 5.4.0 и сервисные DAO в `restapi/endpoints`; настройки запроса, исполнитель и проверка ответа находятся в `restapi/config`. Каждому запросу создаётся отдельная спецификация с централизованной проверкой статуса и вложениями Allure. HTTP и Kafka используют общий JsonUtils.objectMapper с поддержкой Kotlin и Java Time. Каждая модель данных и перечисление имеют отдельный файл; поля DTO и значения перечислений описаны многострочными комментариями.
 
-Страницы Selenide находятся в `ui/pages`, настройки — в `ui/config/DriverConfig`, обработчик событий — в `ui/allure`. Из проекта-образца перенесены `ReadableAllureSelenideListener`, реестр имён, нормализация локаторов, разбор событий и расширения `name`. Страницы используют текущий WebDriver через стандартный Selenide; в сценариях двух покупателей переключение WebDriver задано явно. Имена элементов попадают в читаемые вложения Allure.
+Страницы Selenide находятся в ui/pages, настройки — в ui/config/DriverConfig, читаемый listener — в ui/allure. Браузер создаётся перед тестом и закрывается после него. Данные поставок и корзин сохраняются; следующий сценарий создаёт собственные предусловия.
 
-Комментарии, документация функций и текст бизнес-шагов написаны по-русски. После этих замечаний проверяются компиляция E2E-модуля и только обновлённые E2E; остальные тесты не изменяются и локально не перезапускаются.
+Комментарии функций и бизнес-шаги написаны по-русски. Вместе с удалением профиля из сервисов удалены его компоненты и две runtime-проверки наличия этих компонентов. Проверки восстановления в интеграционных тестах модулей сохраняются.
+
+Текущие 39 запусков ожидают экспресс-ревью. Проверяется компиляция; тесты этой версии ещё не выполнялись. Исторический прогон 56/56 не подтверждает текущий набор.
+
+Kotlin E2E и Java-сервисы с исходниками тестов скомпилированы без выполнения тестов. Штатный Compose содержит все семь сервисов. Полный запуск новой версии пока не подтверждён: предыдущая Docker-сборка остановилась на недоступности Maven Central внутри контейнера (`Temporary failure in name resolution`).
