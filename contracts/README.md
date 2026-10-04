@@ -1,6 +1,6 @@
 # Контракты магазина v1
 
-Статус: контракты зафиксированы задачей 1. TARIFFS реализован задачей 3, WAREHOUSE приёмка/pricing/outbox и техническое API — задачей 4. Задача 5 реализует STORE GoodsPosted, каталог и OPEN-корзины с expectedCartVersion. Submit, SUBMITTED snapshot и OrderSubmitted outbox — задача 6; HTML — задача 7. Legacy endpoints удалены.
+Статус: контракты зафиксированы задачей 1. TARIFFS реализован задачей 3, WAREHOUSE приёмка/pricing/outbox и техническое API — задачей 4. STORE GoodsPosted/каталог/OPEN-корзины реализованы задачей 5; submit, SUBMITTED snapshot, submission status и OrderSubmitted outbox — задачей 6. HTML — задача 7. Legacy endpoints удалены.
 
 ## Файлы и проверка
 

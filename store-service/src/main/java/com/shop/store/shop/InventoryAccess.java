@@ -25,7 +25,7 @@ public class InventoryAccess {
         if(stocks.size()>1000) throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Inventory exceeds the v1 catalog limit");
         return new Catalog(store,stocks);
     }
-    /** Locks existing affected stock rows in UUID order, matching the stable order future checkout will use. */
+    /** Locks existing affected stock rows in UUID order, matching acceptance's stable inventory lock order. */
     public Map<String,Existing> lockIncoming(String store,List<PostedLine> lines) {
         String placeholders=String.join(",",Collections.nCopies(lines.size(),"?"));
         List<Object> params=new ArrayList<>(); params.add(store); lines.forEach(line -> params.add(line.productId()));
@@ -33,7 +33,7 @@ public class InventoryAccess {
                 (row,number) -> new Existing(stock(row,number),row.getLong("last_delivery_sequence")),params.toArray());
         Map<String,Existing> result=new HashMap<>(); rows.forEach(row -> result.put(row.stock().productId(),row)); return result;
     }
-    /** Locks one scope-owned SKU so quantity validation cannot race a future checkout; this lock does not reserve goods. */
+    /** Locks one scope-owned SKU so quantity validation cannot race acceptance; this short lock does not reserve goods. */
     public Stock lockStock(String store,UUID stock) {
         List<Stock> rows=jdbc.query("SELECT * FROM inventory WHERE store_id=? AND stock_item_id=? FOR UPDATE",this::stock,store,stock);
         if(rows.isEmpty()) throw new ShopException(404,"NOT_FOUND","Stock item not found"); return rows.getFirst();

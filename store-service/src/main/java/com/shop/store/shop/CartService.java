@@ -15,8 +15,9 @@ public class CartService {
     private final JdbcTemplate jdbc;
     private final InventoryAccess inventory;
     private final Clock clock;
-    /** Receives scoped SQL access and an injectable UTC clock; no external HTTP dependencies remain in STORE. */
-    public CartService(JdbcTemplate jdbc,InventoryAccess inventory,Clock clock) { this.jdbc=jdbc; this.inventory=inventory; this.clock=clock; }
+    private final ShopCodec codec;
+    /** Receives scoped SQL, UTC time and the persisted snapshot codec; STORE has no tariff HTTP dependency. */
+    public CartService(JdbcTemplate jdbc,InventoryAccess inventory,Clock clock,ShopCodec codec) { this.jdbc=jdbc; this.inventory=inventory; this.clock=clock; this.codec=codec; }
     /** Reads a bounded store-scoped catalog, retaining zero-stock SKUs and stable identifiers. */
     @Transactional(readOnly=true)
     public Catalog catalog(String store) { return inventory.catalog(store); }
@@ -27,12 +28,15 @@ public class CartService {
         jdbc.update("INSERT INTO carts(cart_id,store_id,created_at) VALUES(?,?,?)",cart,store,Timestamp.from(clock.instant()));
         return get(store,cart);
     }
-    /** Returns header/composition/current prices from one repeatable snapshot, avoiding mixed versions during concurrent edits. */
+    /** Reads OPEN at current prices from one repeatable snapshot; SUBMITTED returns the accepted immutable snapshot after repricing. */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Cart get(String store,UUID cart) {
         Map<String,Object> header=header(store,cart,false);
-        if(!header.get("state").equals("OPEN"))
-            throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart snapshot unavailable");
+        if(!header.get("state").equals("OPEN")) {
+            List<String> snapshots=jdbc.queryForList("SELECT cart_snapshot FROM submissions WHERE store_id=? AND cart_id=?",String.class,store,cart);
+            if(snapshots.isEmpty()) throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart snapshot unavailable");
+            return codec.cartSnapshot(snapshots.getFirst());
+        }
         List<CartLine> lines=jdbc.query("""
                 SELECT i.stock_item_id,i.product_id,i.short_name,i.unit_price,c.quantity FROM cart_items c
                 JOIN inventory i ON i.store_id=c.store_id AND i.stock_item_id=c.stock_item_id
@@ -45,7 +49,7 @@ public class CartService {
         BigDecimal total=lines.stream().map(line -> new BigDecimal(line.lineTotal())).reduce(new BigDecimal("0.00"),BigDecimal::add);
         if(lines.size()>1000 || !total.toPlainString().matches("(0|[1-9][0-9]{0,35})\\.[0-9]{2}"))
             throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart amount or size exceeds the v1 response limit");
-        return new Cart(store,cart,((Number)header.get("version")).longValue(),"OPEN",lines,total.toPlainString(),"RUB");
+        return new Cart(store,cart,((Number)header.get("version")).longValue(),"OPEN",lines,total.toPlainString(),"RUB",null);
     }
     /** Locks cart then stock; checks expected version/current quantity and replaces one line atomically, never touching inventory quantity. */
     @Transactional
@@ -70,7 +74,7 @@ public class CartService {
             throw new ShopException(404,"NOT_FOUND","Cart item not found");
         advance(store,cart); return mutationView(store,cart);
     }
-    /** Reads only a store-owned cart, optionally locking it before a mutation or future submit. */
+    /** Reads only a store-owned cart, optionally locking it before a composition/version mutation. */
     private Map<String,Object> header(String store,UUID cart,boolean lock) {
         List<Map<String,Object>> rows=jdbc.queryForList("SELECT version,state FROM carts WHERE store_id=? AND cart_id=?"+(lock?" FOR UPDATE":""),store,cart);
         if(rows.isEmpty()) throw new ShopException(404,"NOT_FOUND","Cart not found"); return rows.getFirst();

@@ -5,14 +5,30 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import static com.shop.store.shop.ShopModels.*;
 
-/** Public scope-aware catalog/cart API; purchase submission and legacy bypass endpoints are absent in this task. */
+/** Public scope-aware catalog/cart/acceptance API; payments, authorization and legacy bypass endpoints are outside this project. */
 @RestController
 @RequestMapping("/stores/{storeId}")
 public class ShopController {
     private final CartService carts;
     private final ShopCodec codec;
+    private final SubmissionService submissions;
+    private final SubmissionStore submissionStore;
     /** Receives transactional cart operations and strict protocol parsing; authentication is outside the agreed project. */
-    public ShopController(CartService carts,ShopCodec codec) { this.carts=carts; this.codec=codec; }
+    public ShopController(CartService carts,ShopCodec codec,SubmissionService submissions,SubmissionStore submissionStore) {
+        this.carts=carts; this.codec=codec; this.submissions=submissions; this.submissionStore=submissionStore;
+    }
+    /** Accepts or replays a store-scoped key; returns 202 only after the atomic inventory/submission/outbox transaction commits. */
+    @PostMapping(value="/carts/{cartId}/submit",consumes=MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Submission> submit(@PathVariable String storeId,@PathVariable String cartId,
+                                             @RequestHeader(value="Idempotency-Key",required=false) String key,@RequestBody String raw) {
+        Submission result=submissions.submit(codec.identifier(storeId),codec.uuid(cartId),key,codec.submit(raw));
+        return ResponseEntity.accepted().location(URI.create("/stores/"+result.storeId()+"/submissions/"+result.submissionId())).body(result);
+    }
+    /** Restores a known operation's accepted/publication state without performing another purchase or invoking the sender. */
+    @GetMapping("/submissions/{submissionId}")
+    public Submission submission(@PathVariable String storeId,@PathVariable String submissionId) {
+        return submissionStore.view(codec.identifier(storeId),codec.uuid(submissionId));
+    }
     /** Returns one SKU per product, including zero stock and the last applied sequence's price/metadata. */
     @GetMapping("/catalog")
     public Catalog catalog(@PathVariable String storeId) { return carts.catalog(codec.identifier(storeId)); }
