@@ -79,11 +79,9 @@ services:
       DB_USER: store_app
       DB_PASSWORD: store_local
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      TARIFFS_BASE_URL: http://tariffs-service:6790
     depends_on:
       postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
-      tariffs-service: {condition: service_healthy}
   tariffs-service:
     <<: *app
     healthcheck:

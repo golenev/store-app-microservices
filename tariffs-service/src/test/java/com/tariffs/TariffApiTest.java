@@ -410,16 +410,12 @@ class TariffApiTest {
         assertError(request(HttpMethod.PUT, "/tariffs/cache/reset", null), 405, "VALIDATION_ERROR");
     }
 
-    /** Old STORE still reads seven percentage records; its manual reset alias keeps the original response text. */
+    /** Removed percentage/reset aliases cannot mutate legacy or new rules; the new STORE consumes GoodsPosted instead. */
     @Test
-    void legacyStoreEndpointsRemainOperationalWithoutDelayOrLegacyCache() {
-        var list = http.getForEntity("/tariffs?all=true", JsonNode.class);
-        assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(list.getBody().isArray()).isTrue();
-        assertThat(list.getBody().size()).isEqualTo(7);
-        var reset = http.postForEntity("/api/v1/resetCache?now=true", null, String.class);
-        assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(reset.getBody()).isEqualTo("выполнен сброс кэша");
+    void legacyStoreEndpointsAreRemoved() {
+        assertError(http.getForEntity("/tariffs?all=true", JsonNode.class), 404, "NOT_FOUND");
+        assertError(request(HttpMethod.POST, "/api/v1/resetCache?now=true", null), 404, "NOT_FOUND");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tariffs", Integer.class)).isEqualTo(7);
     }
 
     /** Calls the real GET quote API using named dimensions, allowing malformed test input to reach validation. */
