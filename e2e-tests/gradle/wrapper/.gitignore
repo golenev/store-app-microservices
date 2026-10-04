@@ -1,1 +1,1 @@
-gradle-wrapper.jar
+# The verified Gradle wrapper JAR is versioned for reproducible E2E/CI startup.

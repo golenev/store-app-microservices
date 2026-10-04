@@ -24,6 +24,7 @@ class WarehouseRuntimeTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired Flyway flyway;
     @Autowired TestRestTemplate http;
+    @Autowired org.springframework.context.ApplicationContext context;
 
     /** Replaces all database credentials with a fresh, independently managed container. */
     @DynamicPropertySource
@@ -50,5 +51,13 @@ class WarehouseRuntimeTest {
         var response = http.getForEntity("/actuator/health", String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).contains("\"status\":\"UP\"");
+    }
+
+    /** Ordinary runtime lacks persisted gates and exposes no HTTP fault API, even though the test-profile source is packaged. */
+    @Test
+    void e2eControlsAreAbsentOutsideExplicitProfile() {
+        assertThat(context.getBeansOfType(com.shop.warehouse.delivery.WarehouseE2eGate.class)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT to_regclass('e2e_gates')::text", String.class)).isNull();
+        assertThat(http.postForEntity("/technical/e2e/gates", "{}", String.class).getStatusCode().value()).isEqualTo(404);
     }
 }

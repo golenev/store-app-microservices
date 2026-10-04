@@ -1,237 +1,104 @@
 package stageTests
 
+import awaitState
 import config.Database
-import config.HttpClient
+import helpers.*
 import constants.Endpoints
-import helpers.step
-import io.kotest.assertions.nondeterministic.eventually
-import io.kotest.matchers.longs.shouldBeGreaterThan
-import io.kotest.matchers.longs.shouldBeLessThan
-import io.kotest.matchers.shouldBe
-import io.qameta.allure.AllureId
-import kotlinx.coroutines.runBlocking
-import models.ProductPayload
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.slf4j.LoggerFactory
-import positiveConfig
-import testUtil.KafkaProducerImpl
-import java.math.BigDecimal
-import java.time.LocalDateTime
-import kotlin.system.measureTimeMillis
+import io.qameta.allure.AllureId
+import java.util.UUID
 
-@DisplayName("Проверка получения товара через Kafka")
-class KafkaTariffTest {
-    private val logger = LoggerFactory.getLogger(KafkaTariffTest::class.java)
-    private var barcodeId: Long = (10000000000..99999999999).random()
-
-    @AfterEach
-    fun cleanup() {
-        barcodeId.let {
-            logger.info("Удаляем записи для штрихкода {}", it)
-            Database.update("DELETE FROM cart WHERE barcode_id = ?", it)
-            Database.update("DELETE FROM product WHERE barcode_id = ?", it)
-        }
+/** Failure/restart windows are controlled only inside the validated owned E2E project and restored in finally blocks. */
+class KafkaTariffTest : ShopE2E() {
+    /** CASES-06: tariffs outage persists a failed pricing attempt; restoring the real service recovers automatically without manual retry. */
+    @Test @AllureId("6") fun pricingRecoversTariffsOutageAutomatically() {
+        val s=Shop.scope(); val event=Shop.delivery(s); Shop.control("stop","tariffs-service")
+        try {
+            Shop.publish(event); awaitState("failed pricing persisted",read={ Shop.receiving(event) },ready={ it.status==200 && it.json.path("lastError").isObject })
+            assertTrue(Shop.catalog(s)["items"].isEmpty)
+        } finally { Shop.control("start","tariffs-service"); Shop.healthy(Endpoints.TARIFFS) }
+        Shop.received(event); Shop.stocked(s,event); Shop.audit(s)
     }
 
-    private fun sendAndAssert(payload: ProductPayload, markupCoefficient: BigDecimal) {
-        step("Отправляем сообщение о товаре в Kafka") {
-            payload.barcodeId = barcodeId
-            logger.info("Отправляем сообщение со штрихкодом {} в Kafka", barcodeId)
-            KafkaProducerImpl().sendMessage("send-topic", payload)
-        }
-
-        val expectedPrice = payload.price.add(
-            payload.price.multiply(markupCoefficient).divide(BigDecimal.valueOf(100))
-        )
-
-        step("Ждём появления товара в БД и проверяем цену с учётом наценки") {
-            runBlocking {
-                eventually(positiveConfig) {
-                    val price = Database.queryForObject(
-                        "SELECT price FROM product WHERE barcode_id = ?",
-                        BigDecimal::class.java,
-                        barcodeId
-                    )
-
-                    price.compareTo(expectedPrice) shouldBe 0
-                    logger.info("Проверена цена {} для штрихкода {}", price, barcodeId)
-                }
-            }
-        }
+    /** CASES-07: restarting an application with a claimed WAITING_PRICING recovers its original sequence/time and single credit. */
+    @Test @AllureId("7") fun restartRecoversWaitingPricingWithoutChangingIdentity() {
+        val s=Shop.scope(); val event=Shop.delivery(s); Shop.gate("warehouse",s,"BEFORE_PRICING",event.payload.deliveryId)
+        try {
+            Shop.publish(event); Shop.reached("warehouse",s,"BEFORE_PRICING"); val waiting=Shop.received(event,"WAITING_PRICING")
+            Shop.control("stop","warehouse-service"); Shop.release("warehouse",s); Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE)
+            val posted=Shop.received(event); assertEquals(waiting["receivedAt"],posted["receivedAt"]); assertEquals(waiting["deliverySequence"],posted["deliverySequence"])
+            Shop.stocked(s,event); Shop.audit(s)
+        } finally { Shop.release("warehouse",s); Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE) }
     }
 
-    @AllureId("15")
-    @Test
-    @DisplayName("наценка применяется для food_100")
-    fun testFood100() {
-        step("Отправляем товар 'food_100' и проверяем наценку 1%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "food999",
-                    description = "desc",
-                    price = BigDecimal("100"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = true
-                ),
-                BigDecimal.valueOf(1)
-            )
-        }
+    /** CASES-25 WAREHOUSE: after POSTED the paused broker leaves persisted failed PENDING; recovery sends the original calculated event. */
+    @Test @AllureId("25") fun warehouseOutboxRecoversBrokerOutage() {
+        val s=Shop.scope(); val event=Shop.delivery(s); Shop.gate("warehouse",s,"BEFORE_PUBLISH")
+        var paused=false
+        try {
+            Shop.publish(event); val posted=Shop.received(event); Shop.reached("warehouse",s,"BEFORE_PUBLISH"); val payload=Shop.goods(event)
+            Shop.control("pause","kafka"); paused=true; Shop.release("warehouse",s)
+            awaitState("warehouse failed publication",read={ Database.scalar("warehouse","SELECT last_error FROM warehouse_outbox WHERE store_id=?",s.store) },ready={ it!=null })
+            assertEquals("PENDING",Database.scalar("warehouse","SELECT publication_status FROM warehouse_outbox WHERE store_id=?",s.store))
+            Shop.control("unpause","kafka"); paused=false; Shop.stocked(s,event)
+            assertEquals(posted["postedAt"],Shop.received(event)["postedAt"]); assertEquals(payload,Shop.goods(event)); Shop.audit(s)
+        } finally { Shop.release("warehouse",s); if(paused) Shop.control("unpause","kafka") }
     }
 
-    @AllureId("16")
-    @Test
-    @DisplayName("наценка применяется для food_300")
-    fun testFood300() {
-        step("Отправляем товар 'food_300' и проверяем наценку 3%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "food300",
-                    description = "desc",
-                    price = BigDecimal("200"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = true
-                ),
-                BigDecimal.valueOf(3)
-            )
-        }
+    /** CASES-25 STORE: submit commits while Kafka is paused; recovery publishes PENDING without another stock expense. */
+    @Test @AllureId("251") fun acceptedExpenseRecoversBrokerOutage() {
+        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); Shop.control("pause","kafka")
+        val accepted: config.Reply
+        try {
+            accepted=Shop.submit(s,cart); assertEquals(202,accepted.status)
+            awaitState("store failed publication",read={ Database.scalar("store","SELECT last_error FROM store_outbox WHERE store_id=?",s.store) },ready={ it!=null })
+            assertEquals(7,Shop.stock(s,stock["productId"].asText())!!["availableQuantity"].asInt())
+        } finally { Shop.control("unpause","kafka") }
+        Shop.published(s,accepted.json); assertEquals("1",Database.scalar("store","SELECT count(*) FROM stock_expenses WHERE store_id=?",s.store)); Shop.audit(s)
     }
 
-    @AllureId("17")
-    @Test
-    @DisplayName("наценка применяется для food_500")
-    fun testFood500() {
-        step("Отправляем товар 'food_500' и проверяем наценку 5%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "food500",
-                    description = "desc",
-                    price = BigDecimal("400"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = true
-                ),
-                BigDecimal.valueOf(5)
-            )
-        }
+    /** CASES-26 WAREHOUSE: crash after POSTED commit and claimed outbox but before send recovers one immutable event and credit. */
+    @Test @AllureId("26") fun warehouseRestartAfterCommitBeforePublication() {
+        val s=Shop.scope(); val event=Shop.delivery(s); Shop.gate("warehouse",s,"BEFORE_PUBLISH")
+        try {
+            Shop.publish(event); val posted=Shop.received(event); Shop.reached("warehouse",s,"BEFORE_PUBLISH"); val payload=Shop.goods(event)
+            assertTrue(Shop.catalog(s)["items"].isEmpty); Shop.control("stop","warehouse-service"); Shop.release("warehouse",s)
+            Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE); Shop.stocked(s,event)
+            assertEquals(posted,Shop.received(event)); assertEquals(payload,Shop.goods(event)); Shop.audit(s)
+        } finally { Shop.release("warehouse",s); Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE) }
     }
 
-    @AllureId("18")
-    @Test
-    @DisplayName("наценка применяется для food_1000")
-    fun testFood1000() {
-        step("Отправляем товар 'food_1000' и проверяем наценку 10%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "food1000",
-                    description = "desc",
-                    price = BigDecimal("600"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = true
-                ),
-                BigDecimal.valueOf(10)
-            )
-        }
+    /** CASES-26 STORE: committed expense with a claimed unsent outbox survives restart and still replays its original HTTP key/version. */
+    @Test @AllureId("261") fun storeRestartAfterCommitBeforePublication() {
+        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); val key=UUID.randomUUID().toString(); Shop.gate("store",s,"BEFORE_PUBLISH")
+        try {
+            val accepted=Shop.submit(s,cart,key); assertEquals(202,accepted.status); Shop.reached("store",s,"BEFORE_PUBLISH"); val snapshot=Shop.getCart(s,cart)
+            Shop.control("stop","store-service"); Shop.release("store",s); Shop.control("start","store-service"); Shop.healthy(Endpoints.STORE); Shop.published(s,accepted.json)
+            assertEquals(snapshot,Shop.getCart(s,cart)); assertEquals(accepted.json["submissionId"],Shop.submit(s,cart,key).json["submissionId"]); Shop.audit(s)
+        } finally { Shop.release("store",s); Shop.control("start","store-service"); Shop.healthy(Endpoints.STORE) }
     }
 
-    @AllureId("19")
-    @Test
-    @DisplayName("наценка применяется для not_food_100")
-    fun testNotFood100() {
-        step("Отправляем товар 'not_food_100' и проверяем наценку 5%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "notfood100",
-                    description = "desc",
-                    price = BigDecimal("100"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = false
-                ),
-                BigDecimal.valueOf(5)
-            )
-        }
+    /** CASES-27 WAREHOUSE: Kafka ack precedes a gated PUBLISHED mark; restart yields identical physical copies and only one logical credit. */
+    @Test @AllureId("27") fun warehouseAckLossReplaysExactGoods() {
+        val s=Shop.scope(); val event=Shop.delivery(s); Shop.gate("warehouse",s,"AFTER_ACK")
+        try {
+            Shop.publish(event); Shop.received(event); val id=Shop.reached("warehouse",s,"AFTER_ACK"); Shop.stocked(s,event)
+            Shop.control("stop","warehouse-service"); Shop.release("warehouse",s); Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE)
+            val copies=Shop.events("warehouse.goods-posted",id,2); assertTrue(copies.all { it==copies.first() })
+            Shop.drained("warehouse.goods-posted","store-goods-v1"); assertEquals(10,Shop.stocked(s,event)["availableQuantity"].asInt()); assertEquals("1",Database.scalar("store","SELECT count(*) FROM stock_movements WHERE store_id=?",s.store)); Shop.audit(s)
+        } finally { Shop.release("warehouse",s); Shop.control("start","warehouse-service"); Shop.healthy(Endpoints.WAREHOUSE) }
     }
 
-    @AllureId("20")
-    @Test
-    @DisplayName("наценка применяется для not_food_500")
-    fun testNotFood500() {
-        step("Отправляем товар 'not_food_500' и проверяем наценку 10%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "notfood500",
-                    description = "desc",
-                    price = BigDecimal("400"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = false
-                ),
-                BigDecimal.valueOf(10)
-            )
-        }
-    }
-
-    @AllureId("20")
-    @Test
-    @DisplayName("наценка применяется для not_food_1000")
-    fun testNotFood1000() {
-        step("Отправляем товар 'not_food_1000' и проверяем наценку 20%") {
-            sendAndAssert(
-                ProductPayload(
-                    shortName = "notfood1000",
-                    description = "desc",
-                    price = BigDecimal("600"),
-                    quantity = 1,
-                    addedAtTariffs = LocalDateTime.now().toString(),
-                    isFoodstuff = false
-                ),
-                BigDecimal.valueOf(20)
-            )
-        }
-    }
-
-    @AllureId("21")
-    @Test
-    @DisplayName("первый запрос тарифов медленный, повторный быстрый")
-    fun tariffsCacheTimeTest() {
-        step("Сбрасываем кэш тарифов через POST /api/v1/resetCache?now=true") {
-            val response = HttpClient.post(
-                url = "/api/v1/resetCache?now=true",
-                baseUri = Endpoints.TARIFFS_BASE_URL
-            )
-            response.statusCode shouldBe 200
-        }
-
-        step("Первый GET ${Endpoints.TARIFFS}?all=true должен выполняться более 5 секунд") {
-            val duration = measureTimeMillis {
-                val resp = HttpClient.get(
-                    url = Endpoints.TARIFFS,
-                    params = mapOf("all" to true),
-                    baseUri = Endpoints.TARIFFS_BASE_URL
-                )
-                resp.statusCode shouldBe 200
-            }
-            duration.shouldBeGreaterThan(5000)
-            logger.info("Первый запрос занял {} мс", duration)
-        }
-
-        step("Повторный GET ${Endpoints.TARIFFS}?all=true должен быть быстрее 5 секунд") {
-            val duration = measureTimeMillis {
-                val resp = HttpClient.get(
-                    url = Endpoints.TARIFFS,
-                    params = mapOf("all" to true),
-                    baseUri = Endpoints.TARIFFS_BASE_URL
-                )
-                resp.statusCode shouldBe 200
-            }
-            duration.shouldBeLessThan(5000)
-            logger.info("Повторный запрос занял {} мс", duration)
-        }
+    /** CASES-27 STORE: ack loss/restart replays the saved OrderSubmitted with the same ID/body and no second debit. */
+    @Test @AllureId("271") fun storeAckLossReplaysExactOrder() {
+        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); Shop.gate("store",s,"AFTER_ACK")
+        try {
+            val accepted=Shop.submit(s,cart); assertEquals(202,accepted.status); val id=Shop.reached("store",s,"AFTER_ACK")
+            assertEquals("PENDING",Database.scalar("store","SELECT publication_status FROM store_outbox WHERE store_id=?",s.store))
+            Shop.control("stop","store-service"); Shop.release("store",s); Shop.control("start","store-service"); Shop.healthy(Endpoints.STORE)
+            val copies=Shop.events("store.order-submitted",id,2); assertTrue(copies.all { it==copies.first() }); Shop.published(s,accepted.json)
+            assertEquals("1",Database.scalar("store","SELECT count(*) FROM stock_expenses WHERE store_id=?",s.store)); Shop.audit(s)
+        } finally { Shop.release("store",s); Shop.control("start","store-service"); Shop.healthy(Endpoints.STORE) }
     }
 }
-

@@ -4,7 +4,7 @@
 
 ## Текущее состояние
 
-Задачи 1–6 включены в master через PR #37–42: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины и атомарный submit/outbox. Задача 7 адаптирует сохранённые HTML-страницы и добавляет собственные браузерные проверки. Перенос Kotlin E2E — задача 8.
+Задачи 1–7 включены в master через PR #37–43: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Задача 8 переносит Kotlin E2E на эту архитектуру и добавляет отдельный CI stage с управляемыми отказами.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
@@ -103,7 +103,7 @@ npm run test:unit
 npm test
 ```
 
-`UI_BASE_URL` задаёт адрес STORE, по умолчанию `http://localhost:6789`; warehouse URL берётся из серверной конфигурации. Сценарии создают уникальные productId/deliveryId/cartId, работают последовательно, не сбрасывают тарифный кеш и не удаляют базы. Проверки сетевых окон перехватывают только ответы/запросы тестового браузера; штатный API выполняет реальные транзакции. Скриншоты сохраняются в `ui-tests/test-results` и CI artifacts. Это собственное UI-покрытие задачи 7, а не готовый Kotlin E2E задачи 8.
+`UI_BASE_URL` задаёт адрес STORE, по умолчанию `http://localhost:6789`; warehouse URL берётся из серверной конфигурации. Сценарии создают уникальные productId/deliveryId/cartId, работают последовательно, не сбрасывают тарифный кеш и не удаляют базы. Проверки сетевых окон перехватывают только ответы/запросы тестового браузера; штатный API выполняет реальные транзакции. Скриншоты сохраняются в `ui-tests/test-results` и CI artifacts. Это самостоятельное UI-покрытие; Kotlin E2E проверяет backend-поток и отказы отдельно.
 
 ## Миграции и fixtures
 
@@ -147,7 +147,7 @@ curl --fail -X PUT -H "Content-Type: application/json" -d '{"quantity":3,"expect
 
 Каталог/корзина ограничены 1000 позициями, quantity — положительный int, version — безопасный JSON integer. Цена допускает 26 цифр целой части, сумма — 36. Изменение корзины с переполнением суммы откатывается с 400. Если последующая переоценка делает уже существующую OPEN-корзину непредставимой в формате v1, GET возвращает 503; удаление/уменьшение состава может восстановить допустимую сумму. Суммы не обрезаются и не преобразуются в double.
 
-Старые STORE endpoints, raw Product listener и TARIFFS `/tariffs?all=true`/процентный CRUD/`/api/v1/resetCache` удалены. Новая цепочка использует WAREHOUSE и fractional quote. HTML сохранён для адаптации в задаче 7 и сейчас несовместим с новым API.
+Старые STORE endpoints, raw Product listener и TARIFFS `/tariffs?all=true`/процентный CRUD/`/api/v1/resetCache` удалены. Новая цепочка использует WAREHOUSE и fractional quote. Сохранённый HTML адаптирован к новым scoped endpoints.
 
 ## Оформление заявки STORE задачи 6
 
@@ -263,19 +263,34 @@ Docker обязателен для интеграционных проверок
 mvn -pl contract-tests test
 ```
 
-CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки задачи 7 выполняются на этих же реальных сервисах; полный Kotlin E2E остаётся задачей 8.
+CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки выполняются на этих же реальных сервисах. Отдельный job `e2e` после Maven запускает Kotlin-набор в собственном Compose project, собирая приложения из исходников.
 
-Kotlin E2E пока использует удалённый legacy API и не совместим с текущей версией. Перенос — задача 8; следующие команды станут проверкой новой архитектуры после переноса и восстановления wrapper:
+### Kotlin E2E и управляемые отказы
+
+Нужны Python 3, JDK 21 и Docker Compose **2.24.4+** (runtime-JAR override использует `!reset`). Wrapper Gradle 8.14.3 восстановлен; SHA-256 дистрибутива закреплён в properties, checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
+
+Из корня проекта:
 
 ```shell
-cd e2e-tests
-./gradlew test
-./gradlew allureReport
+python scripts/run-e2e.py
 ```
 
-Отчёт: `e2e-tests/build/reports/allure-report/index.html`. Полный перенос Kotlin E2E остаётся задачей 8; HTML проверяется отдельным набором `ui-tests`.
+Launcher собирает сервисы Dockerfiles, выбирает шесть разных свободных host ports и создаёт уникальный `shop-e2e-*` project с чистыми volumes. Закрытие временных sockets до Compose оставляет небольшое окно гонки за порт; bind failure завершает запуск явно. Обычное окружение `shop-runtime` не используется. В конце сохраняются логи и останавливаются только контейнеры этого запуска; volumes сохраняются, автоматического удаления данных нет.
 
-Текущий `gradle-wrapper.jar` не имеет main manifest: команды wrapper выше требуют восстановления wrapper в задаче 8. Компиляция `compileKotlin compileTestKotlin` прошла на Java 21 с установленным Gradle 8.8; E2E-сценарии в задаче 2 не запускались. Backend integration и Compose smoke описаны отдельно.
+Более быстрый локальный вариант использует уже собранные JAR и runtime image:
+
+```shell
+mvn -B -ntp -DskipTests package
+python scripts/run-e2e.py --runtime-jars
+```
+
+Укажите JAVA_HOME на JDK 21. На Windows launcher вызывает `gradlew.bat`, на Linux — `bash gradlew`. При `--runtime-jars` образ `eclipse-temurin:21-jre-jammy` должен быть доступен Docker. Конфигурация окружения и Compose-логи: `target/e2e/<project>/`; JUnit XML: `e2e-tests/build/test-results/test`, HTML: `e2e-tests/build/reports/tests/test/index.html`, Allure raw results: `e2e-tests/build/allure-results`. Дополнительный HTML Allure можно собрать `gradlew allureReport` из `e2e-tests`; команда скачивает Allure CLI отдельно и не входит в обязательный тестовый запуск. Gradle/Allure артефакты локальных прогонов перезаписываются/дополняются; CI начинает с чистого checkout и публикует результаты своего запуска.
+
+44 Kotlin-проверки обращаются к настоящим HTTP/Kafka/PostgreSQL/Redis. Fixtures создают только независимые магазины/города; остатки возникают через реальные поставки. Корзины, товары, события и ключи уникальны. SQL используется для наблюдения инвариантов и управляемых ошибок записи. Общие outage/reset-сценарии идут последовательно; гонки внутри отдельных тестов запускаются через barrier.
+
+`compose.e2e.yml` явно включает профиль `e2e` у STORE/WAREHOUSE и lease 10 секунд. Только в этом профиле создаётся `e2e_gates`: store/subject-scoped SQL gates перед pricing/publish и после Kafka ack. При закрытом gate worker освобождает поток, оставляя persisted lease для восстановления; sleep в бизнес-логику не добавлен. Gates переживают restart. Таблица и компоненты отсутствуют в обычном профиле, что проверяют runtime-тесты; HTTP crash-control API отсутствует. Этот профиль предназначен для принадлежащего тестам окружения.
+
+Полная матрица CASES-01–34 объединяет Kotlin E2E, module integration и HTML: [CASES.md](CASES.md). Плановый reset, DB outage на cache miss и некоторые варианты storage failure отдельно проверяются module integration; браузерная потеря ответа/reload — Playwright. Успех Kotlin не подменяет эти уровни.
 
 Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, 0 failures/errors/skipped, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
 
@@ -286,3 +301,5 @@ cd e2e-tests
 Проверка задачи 6 (4 октября 2026): `mvn -B -ntp test` — **309/309**, 0 failures/errors/skipped: contracts 62, STORE 118, TARIFFS 63, WAREHOUSE 66. Отдельный STORE прогон — **118/118**; добавлены 39 HTTP/SQL/Kafka submission-сценариев и 2 автоматических recovery/restart-сценария. Проверены настоящий конфликт UNIQUE с отдельным replay transaction, конкурентные покупки/PUT/приходы, rollback каждой стадии acceptance, точный immutable snapshot, Kafka outage и повтор после утраты PUBLISHED, lease fencing и >1 MiB OrderSubmitted из 1000 строк. Consumer-offset тест теперь ждёт появления committed offset без NPE. Compose CI расширен до submit/PUBLISHED/повтора ключа и сохранности расхода после пересоздания приложений; удалённый результат указывается в PR.
 
 Проверка задачи 7 (4 октября 2026): Maven reactor **324/324**, 0 failures/errors/skipped (contracts 62, STORE 124, TARIFFS 63, WAREHOUSE 75). `npm run test:unit` — **2/2**, `npm test` — **9/9** на реальных сервисах в отдельной Docker/Java-среде. Проверены независимые contexts, отсутствие резерва, нехватка/version conflict, переоценка и immutable snapshot, потеря запроса/ответа и 503 после commit с прежним key/body, supplier replay, XSS-текст, точные большие суммы, store scope и mobile layout. Полный прогон после исправления мобильного тестового локатора прошёл; CI source-build/browser результат указывается в PR.
+
+Проверка задачи 8 (4 октября 2026): Maven reactor **326/326** (contracts 62, STORE 125, TARIFFS 63, WAREHOUSE 76), Kotlin E2E **44/44**, без failures/errors/skipped. E2E выполнен через `python scripts/run-e2e.py --runtime-jars` в новом `shop-e2e-*` с настоящими зависимостями и автоматически выбранными портами. После исправления ожидания committed offset WAREHOUSE полный reactor прошёл; rollback E2E проверяет предусмотренный контрактом 503 DEPENDENCY_UNAVAILABLE. Source-build, HTML и результаты удалённого CI фиксируются в PR после запуска.

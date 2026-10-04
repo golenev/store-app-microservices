@@ -207,6 +207,8 @@ Remote default branch сейчас: master. Рабочая ветка при п�
 
 Ветка: `codex/shop-e2e-ci`. Зависит от задачи 7.
 
+Реализовано: Kotlin E2E на новых контрактах, 44 сценария на настоящих сервисах, изолированный launcher, persisted crash gates только в профиле e2e, восстановленный Gradle wrapper с SHA-256, отдельный CI job и итоговая матрица CASES-01–34 с явным разделением module/backend/browser. Gates отсутствуют в штатном runtime; HTTP control endpoints не добавлены. Результаты финальной проверки фиксируются в README/PR после запуска.
+
 Результат:
 
 - Перенести Kotlin E2E на новые контракты и изолированные fixtures; покрыть CASES-01–CASES-34.

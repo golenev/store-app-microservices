@@ -1,14 +1,9 @@
 package constants
 
+/** Public endpoints are supplied by the isolated E2E launcher; no global auth/cart/order routes remain. */
 object Endpoints {
-    const val BASE_URL = "http://localhost:6789"
-    const val AUTH = "/api/v1/auth"
-    const val SEND_TO_KAFKA = "/api/v1/sendToKafka"
-    const val PRODUCTS = "/api/v1/products"
-    const val CART = "/api/cart"
-    const val ORDER = "/order"
-
-    const val TARIFFS_BASE_URL = "http://localhost:6790"
-    const val TARIFFS = "/tariffs"
+    val STORE = System.getenv("E2E_STORE_URL") ?: "http://localhost:18889"
+    val WAREHOUSE = System.getenv("E2E_WAREHOUSE_URL") ?: "http://localhost:18891"
+    val TARIFFS = System.getenv("E2E_TARIFFS_URL") ?: "http://localhost:18890"
+    val KAFKA = System.getenv("E2E_KAFKA") ?: "localhost:19093"
 }
-
