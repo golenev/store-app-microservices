@@ -2,7 +2,6 @@ package org.golenev.tests.backend
 
 import io.kotest.assertions.withClue
 import io.kotest.matchers.booleans.shouldBeTrue
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.qameta.allure.AllureId
@@ -206,7 +205,7 @@ class ProductFlowE2ETest {
         }
     }
 
-    /** Неизвестная версия схемы не должна привести к приёмке, расчёту цены или приходу товара. */
+    /** Неизвестная версия схемы сохраняется в диагностике; чтение отсутствующей приёмки возвращает 404, каталог остаётся пустым. */
     @Test @AllureId("51") @DisplayName("Неизвестная версия события диагностируется без приёмки")
     fun unknownVersionHasNoReceipt() {
         val scope = step("Создаём магазин для поставки и покупок") {
@@ -226,7 +225,7 @@ class ProductFlowE2ETest {
             }
 
             (DeliveryDiagnosticsDao.countByRawMessage(raw).toString()).shouldBe("1")
-            (Shop.receiving(event)).shouldBeNull()
+            warehouseService.getDelivery(event.storeId, event.payload.deliveryId, expectedStatus = 404)
             (Shop.catalog(scope).items.isEmpty()).shouldBeTrue()
         }
     }

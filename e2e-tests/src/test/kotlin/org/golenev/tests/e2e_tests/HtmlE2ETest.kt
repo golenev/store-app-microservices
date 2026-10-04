@@ -194,10 +194,10 @@ class HtmlE2ETest {
         }
         val proxy = getSelenideProxy()
 
+        // BrowserUp выполняет последний добавленный фильтр первым: наблюдатели регистрируются после отказа.
+        requestFilters += rejectNextRequest(proxy, path)
         val keys = interceptSubmissionKeys(proxy, path) {
-            // Фильтр тела регистрируется перед фильтром отказа, чтобы увидеть исходный POST.
             val originalBody = interceptRequestBody(proxy, path) {
-                requestFilters += rejectNextRequest(proxy, path)
                 step("Отправляем первоначальное оформление корзины") { catalogPage.submit() }
                 step("Проверяем неизвестный результат и отсутствие списания товара") {
                     catalogPage.checkUnknownOutcome()
