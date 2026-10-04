@@ -1,6 +1,37 @@
 package org.golenev.commondto
 
 /** Позиция каталога STORE. Денежные значения сохраняются в виде десятичных строк контракта. */
-data class Stock(val stockItemId: String, val productId: String, val productType: String,
-                 val shortName: String, val description: String, val unitPrice: String,
-                 val currency: String, val availableQuantity: Int)
+data class Stock(
+    /**
+     * Идентификатор позиции остатка в каталоге магазина.
+     */
+    val stockItemId: String,
+    /**
+     * Идентификатор товара, связывающий поставку, остаток и корзину.
+     */
+    val productId: String,
+    /**
+     * Тип товара, используемый при выборе тарифного правила.
+     */
+    val productType: String,
+    /**
+     * Краткое название товара для отображения пользователю.
+     */
+    val shortName: String,
+    /**
+     * Описание товара, переданное поставщиком.
+     */
+    val description: String,
+    /**
+     * Продажная цена одной единицы товара в виде точной десятичной строки.
+     */
+    val unitPrice: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String,
+    /**
+     * Текущее количество товара, доступное для оформления; корзины его не резервируют.
+     */
+    val availableQuantity: Int
+)

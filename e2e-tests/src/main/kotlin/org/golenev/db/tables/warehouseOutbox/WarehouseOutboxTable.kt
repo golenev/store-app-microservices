@@ -8,4 +8,5 @@ object WarehouseOutboxTable : Table("warehouse_outbox") {
     val payload = text("payload")
     val lastError = text("last_error").nullable()
     val publicationStatus = varchar("publication_status", 32)
+    val deliveryId = varchar("delivery_id", 64)
 }

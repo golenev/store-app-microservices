@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Серверная позиция корзины, также используемая в неизменяемом составе принятой заявки. */
-data class CartLine(val stockItemId: String, val productId: String, val shortName: String,
-                    val quantity: Int, val unitPrice: String, val lineTotal: String)
+data class CartLine(
+    /**
+     * Идентификатор позиции остатка в каталоге магазина.
+     */
+    val stockItemId: String,
+    /**
+     * Идентификатор товара, связывающий поставку, остаток и корзину.
+     */
+    val productId: String,
+    /**
+     * Краткое название товара для отображения пользователю.
+     */
+    val shortName: String,
+    /**
+     * Количество единиц товара в позиции.
+     */
+    val quantity: Int,
+    /**
+     * Продажная цена одной единицы товара в виде точной десятичной строки.
+     */
+    val unitPrice: String,
+    /**
+     * Стоимость позиции: цена единицы, умноженная на количество; передаётся десятичной строкой.
+     */
+    val lineTotal: String
+)

@@ -1,4 +1,13 @@
 package org.golenev.commondto
 
 /** Каталог конкретного магазина. Контракт не гарантирует порядок позиций. */
-data class Catalog(val storeId: String, val items: List<Stock>)
+data class Catalog(
+    /**
+     * Идентификатор магазина, к которому относятся данные.
+     */
+    val storeId: String,
+    /**
+     * Позиции каталога с текущей ценой и доступным остатком.
+     */
+    val items: List<Stock>
+)

@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Ошибка HTTP по контракту. Текст сообщения служит диагностикой; ожидаемый код проверяется явно. */
-data class ApiError(val timestamp: String, val status: Int, val code: String, val message: String, val path: String,
-                    val details: List<ErrorDetail>? = null)
+data class ApiError(
+    /**
+     * Время формирования ответа об ошибке.
+     */
+    val timestamp: String,
+    /**
+     * HTTP-статус ответа об ошибке.
+     */
+    val status: Int,
+    /**
+     * Машинный код ошибки для явной проверки в тесте.
+     */
+    val code: String,
+    /**
+     * Диагностическое описание причины ошибки.
+     */
+    val message: String,
+    /**
+     * Путь HTTP-запроса, при обработке которого возникла ошибка.
+     */
+    val path: String,
+    /**
+     * Ошибки отдельных полей запроса; null, если детализация отсутствует.
+     */
+    val details: List<ErrorDetail>? = null
+)

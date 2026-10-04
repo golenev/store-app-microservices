@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Исходящее событие заявки, наблюдаемое независимо от HTTP-ответа оформления. */
-data class OrderSubmitted(val eventId: String, val eventType: String, val schemaVersion: Int,
-                          val occurredAt: String, val storeId: String, val payload: OrderPayload)
+data class OrderSubmitted(
+    /**
+     * Идентификатор события для распознавания повторной доставки сообщения.
+     */
+    val eventId: String,
+    /**
+     * Тип события, определяющий контракт его содержимого.
+     */
+    val eventType: String,
+    /**
+     * Версия схемы события, по которой получатель разбирает сообщение.
+     */
+    val schemaVersion: Int,
+    /**
+     * Время возникновения события.
+     */
+    val occurredAt: String,
+    /**
+     * Идентификатор магазина, к которому относятся данные.
+     */
+    val storeId: String,
+    /**
+     * Зафиксированный состав и стоимость принятой заявки.
+     */
+    val payload: OrderPayload
+)

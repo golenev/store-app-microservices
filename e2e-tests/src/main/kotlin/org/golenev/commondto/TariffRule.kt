@@ -1,6 +1,37 @@
 package org.golenev.commondto
 
 /** Сохранённое тарифное правило с версией, возвращаемое при создании, чтении и изменении. */
-data class TariffRule(val tariffRuleId: String, val version: Long, val productType: String,
-                      val cityId: String, val currency: String, val lowerBound: String,
-                      val upperBound: String?, val markupRate: String)
+data class TariffRule(
+    /**
+     * Идентификатор сохранённого тарифного правила.
+     */
+    val tariffRuleId: String,
+    /**
+     * Версия сохранённого тарифного правила, увеличиваемая при его изменении.
+     */
+    val version: Long,
+    /**
+     * Тип товара, используемый при выборе тарифного правила.
+     */
+    val productType: String,
+    /**
+     * Идентификатор города, для которого действует тарифное правило.
+     */
+    val cityId: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String,
+    /**
+     * Включительная нижняя граница закупочной цены для применения правила; передаётся десятичной строкой.
+     */
+    val lowerBound: String,
+    /**
+     * Исключительная верхняя граница закупочной цены; null означает отсутствие ограничения сверху.
+     */
+    val upperBound: String?,
+    /**
+     * Коэффициент наценки в виде десятичной строки: 0.20 означает наценку 20 процентов.
+     */
+    val markupRate: String
+)

@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Оболочка события поставщика для тестов. Классы сервисов и их доменной модели не импортируются. */
-data class DeliveryReceived(val eventId: String, val eventType: String = "DeliveryReceived", val schemaVersion: Int = 1,
-                            val occurredAt: String, val storeId: String, val payload: DeliveryPayload)
+data class DeliveryReceived(
+    /**
+     * Идентификатор события для распознавания повторной доставки сообщения.
+     */
+    val eventId: String,
+    /**
+     * Тип события, определяющий контракт его содержимого.
+     */
+    val eventType: String = "DeliveryReceived",
+    /**
+     * Версия схемы события, по которой получатель разбирает сообщение.
+     */
+    val schemaVersion: Int = 1,
+    /**
+     * Время возникновения события.
+     */
+    val occurredAt: String,
+    /**
+     * Идентификатор магазина, к которому относятся данные.
+     */
+    val storeId: String,
+    /**
+     * Неизменяемые данные поставки, переданные поставщиком.
+     */
+    val payload: DeliveryPayload
+)

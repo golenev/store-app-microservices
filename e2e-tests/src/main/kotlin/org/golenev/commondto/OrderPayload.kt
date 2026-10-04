@@ -1,5 +1,29 @@
 package org.golenev.commondto
 
 /** Сохранённый состав принятой заявки. Будущие изменения цен каталога не пересчитывают его значения. */
-data class OrderPayload(val submissionId: String, val cartId: String, val acceptedAt: String,
-                        val items: List<CartLine>, val totalAmount: String, val currency: String)
+data class OrderPayload(
+    /**
+     * Идентификатор принятой операции оформления корзины.
+     */
+    val submissionId: String,
+    /**
+     * Идентификатор корзины внутри магазина.
+     */
+    val cartId: String,
+    /**
+     * Время принятия операции оформления и фиксации списания товара.
+     */
+    val acceptedAt: String,
+    /**
+     * Зафиксированные позиции принятой заявки; последующие изменения каталога их не пересчитывают.
+     */
+    val items: List<CartLine>,
+    /**
+     * Итоговая стоимость всех позиций в виде точной десятичной строки.
+     */
+    val totalAmount: String,
+    /**
+     * Код валюты денежных значений, например RUB.
+     */
+    val currency: String
+)

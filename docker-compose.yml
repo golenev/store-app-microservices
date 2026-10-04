@@ -1,7 +1,6 @@
 name: shop-runtime
 
 x-app: &app
-  profiles: [apps]
   restart: "no"
   healthcheck: &app-health
     test: [CMD-SHELL, 'curl --fail --silent http://localhost:$$SERVER_PORT/actuator/health > /dev/null']
@@ -62,7 +61,6 @@ services:
       timeout: 5s
       retries: 20
   kafdrop:
-    profiles: [ui]
     image: obsidiandynamics/kafdrop:4.0.2
     ports: ['${KAFDROP_PORT:-9000}:9000']
     environment:

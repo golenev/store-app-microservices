@@ -8,4 +8,6 @@ object StoreOutboxTable : Table("store_outbox") {
     val payload = text("payload")
     val lastError = text("last_error").nullable()
     val publicationStatus = varchar("publication_status", 32)
+    val submissionId = uuid("submission_id")
+    val eventId = uuid("event_id")
 }

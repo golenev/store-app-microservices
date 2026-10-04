@@ -1,12 +1,11 @@
 package org.golenev.restapi.config
 
-import org.junit.jupiter.api.Assertions.assertEquals
+import io.restassured.response.Response
 
-/** Проверка статуса отделена от выбора DTO: тело ошибки нельзя разобрать как успешный контракт. */
+/** Проверяет HTTP-статус средствами Rest Assured по образцу проекта golenev-xlsx-report-system. */
 class ResponseValidator(private val expectedStatus: Int) {
-    /** Проверяет статус исходного ответа и возвращает его без изменения; при несовпадении сообщает тело ответа. */
-    fun validate(response: Reply): Reply {
-        assertEquals(expectedStatus, response.status, "Статус HTTP; ответ=${response.raw}")
-        return response
+    /** Проверяет статус исходного ответа; при несовпадении Rest Assured завершает тест с диагностикой. */
+    fun validate(response: Response) {
+        response.then().log().all().statusCode(expectedStatus)
     }
 }
