@@ -4,115 +4,303 @@ import config.Database
 import config.HttpClient
 import constants.Endpoints
 import helpers.*
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
+import models.*
 import io.qameta.allure.AllureId
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import java.util.UUID
 
-/** Accepted expenses are exercised only after real supplier ingress and asynchronous inventory consumption. */
-class OrderE2ETest : ShopE2E() {
-    /** CASES-16: given ten received units, acceptance deducts three, closes the cart and persists one immutable Kafka operation. */
-    @Test @AllureId("16") fun acceptancePersistsExactSnapshotAndEvent() {
-        val s = Shop.scope(); val stock = Shop.supply(s); val cart = Shop.filled(s, stock, 3)
-        val accepted = Shop.submit(s, cart); assertEquals(202, accepted.status); Shop.published(s, accepted.json)
-        assertEquals(7, Shop.stock(s, stock["productId"].asText())!!["availableQuantity"].asInt())
-        val closed = Shop.getCart(s, cart); assertEquals("SUBMITTED", closed["state"].asText()); assertEquals("360.00", closed["totalAmount"].asText())
-        val events = Shop.events("store.order-submitted", accepted.json["eventId"].asText(), 1)
-        assertEquals("OrderSubmitted", events.single()["eventType"].asText()); assertEquals("360.00", events.single()["payload"]["totalAmount"].asText())
-        assertEquals("1", Database.scalar("store", "SELECT count(*) FROM stock_expenses WHERE store_id=?", s.store)); Shop.audit(s)
+/** E2E acceptance invariants after actual supplier ingress; every method owns its lifecycle through a function Template. */
+@DisplayName("Оформление заявки и независимые корзины")
+class OrderE2ETest {
+    /** Given ten units and three in the cart, acceptance atomically deducts stock, freezes its snapshot and publishes one order. */
+    @Test @AllureId("16") @DisplayName("Принятая заявка атомарно списывает товар и передаёт неизменяемый состав")
+    fun acceptancePersistsExactSnapshotAndEvent() {
+        withShopTemplate { resources ->
+            val expectedRemaining = 7
+            val expectedTotal = "360.00"
+            val scope = resources.scope()
+            val (stock, cart) = step("Оприходуем 10 единиц и помещаем 3 в независимую корзину") {
+                val stock = Shop.supply(scope, Shop.delivery(scope, quantity = 10, price = "100.00"))
+                stock to Shop.filled(scope, stock, 3)
+            }
+            val observer = resources.observe("store.order-submitted", scope.store)
+            val accepted = step("Оформляем заявку по актуальной версии корзины") {
+                Shop.submit(scope, cart).expect(202).body<Submission>()
+            }
+            step("Проверяем единственный расход, закрытую корзину и состав переданной заявки") {
+                val published = Shop.published(scope, accepted)
+                assertEquals(accepted.submissionId, published.submissionId)
+                assertNotNull(published.publishedAt)
+                assertEquals(expectedRemaining, Shop.requireStock(scope, stock.productId).availableQuantity)
+                val closed = Shop.getCart(scope, cart)
+                assertEquals(CartState.SUBMITTED, closed.state)
+                assertEquals(expectedTotal, closed.totalAmount)
+                assertEquals(cart.version + 1, closed.version)
+                assertEquals(accepted.submissionId, closed.submissionId)
+                val event = observer.exactly(accepted.eventId, 1).single().body<OrderSubmitted>()
+                assertEquals("OrderSubmitted", event.eventType)
+                assertEquals(scope.store, event.storeId)
+                assertEquals(accepted.submissionId, event.payload.submissionId)
+                assertEquals(cart.cartId, event.payload.cartId)
+                assertEquals(expectedTotal, event.payload.totalAmount)
+                assertEquals(3, event.payload.items.single().quantity)
+                assertEquals("120.00", event.payload.items.single().unitPrice)
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM stock_expenses WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-14: two independent carts may each hold all five units; replacing one with six fails without changing inventory/version. */
-    @Test @AllureId("14") fun independentCartsNeverReserve() {
-        val s = Shop.scope(); val stock = Shop.supply(s, Shop.delivery(s, quantity=5)); val a = Shop.filled(s, stock, 5); val b = Shop.filled(s, stock, 5)
-        val refused = Shop.put(s, a, stock, 6); assertEquals(409, refused.status); assertEquals("INSUFFICIENT_STOCK", refused.json["code"].asText())
-        assertEquals(a, Shop.getCart(s,a)); assertEquals(b, Shop.getCart(s,b)); assertEquals(5, Shop.stock(s,stock["productId"].asText())!!["availableQuantity"].asInt()); Shop.audit(s)
+    /** Two customers independently hold the full stock; exceeding one's own available quantity changes neither cart nor stock. */
+    @Test @AllureId("14") @DisplayName("Корзины не резервируют товар и не допускают количество выше остатка")
+    fun independentCartsNeverReserve() {
+        withShopTemplate { resources ->
+            val expectedQuantity = 5
+            val scope = resources.scope()
+            val stock = step("Оприходуем 5 единиц товара") { Shop.supply(scope, Shop.delivery(scope, quantity = expectedQuantity)) }
+            val (first, second) = step("Два покупателя независимо кладут весь остаток в свои корзины") {
+                Shop.filled(scope, stock, expectedQuantity) to Shop.filled(scope, stock, expectedQuantity)
+            }
+            val error = step("Первый покупатель пытается увеличить количество до 6") {
+                Shop.put(scope, first, stock, 6).expect(409).body<ApiError>()
+            }
+            step("Проверяем отказ и сохранение обеих корзин без резервирования") {
+                assertEquals("INSUFFICIENT_STOCK", error.code)
+                assertEquals(first, Shop.getCart(scope, first))
+                assertEquals(second, Shop.getCart(scope, second))
+                assertEquals(expectedQuantity, Shop.requireStock(scope, stock.productId).availableQuantity)
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-15: two PUTs starting from one version have one winner and no silently overwritten cart composition. */
-    @Test @AllureId("15") fun competingCartEditsHaveOneVersionWinner() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.cart(s)
-        val replies=Shop.race({ Shop.put(s,cart,stock,2) }, { Shop.put(s,cart,stock,3) })
-        assertEquals(listOf(200,409), replies.map { it.status }.sorted()); val actual=Shop.getCart(s,cart)
-        assertEquals(1,actual["version"].asInt()); assertEquals(replies.single { it.status==200 }.json,actual); Shop.audit(s)
+    /** Two edits sharing one version have one winner; the winning quantity and next version are read independently afterwards. */
+    @Test @AllureId("15") @DisplayName("Конкурентные изменения одной версии корзины имеют одного победителя")
+    fun competingCartEditsHaveOneVersionWinner() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val (stock, cart) = step("Создаём пустую корзину для доступного товара") { Shop.supply(scope) to Shop.cart(scope) }
+            val outcomes = step("Одновременно заменяем количество на 2 и 3 с одной исходной версией") {
+                Shop.race({ Shop.put(scope, cart, stock, 2) }, { Shop.put(scope, cart, stock, 3) })
+            }
+            step("Проверяем единственное изменение версии и количество победившего запроса") {
+                assertEquals(listOf(200, 409), outcomes.map { it.status }.sorted())
+                val expectedQuantity = if (outcomes[0].status == 200) 2 else 3
+                val loser = outcomes.single { it.status == 409 }.body<ApiError>()
+                assertEquals("CART_VERSION_CONFLICT", loser.code)
+                val actual = Shop.getCart(scope, cart)
+                assertEquals(cart.cartId, actual.cartId)
+                assertEquals(cart.version + 1, actual.version)
+                assertEquals(expectedQuantity, actual.items.single().quantity)
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-17: another buyer depletes one of two lines; checkout rolls back all lines and preserves the open cart. */
-    @Test @AllureId("17") fun insufficientOneLineNeverPartiallyDeducts() {
-        val s=Shop.scope(); val first=Shop.supply(s); val second=Shop.supply(s)
-        val cart=Shop.put(s,Shop.filled(s,first,3),second,3).json
-        assertEquals(202,Shop.submit(s,Shop.filled(s,second,10)).status)
-        val response=Shop.submit(s,cart); assertEquals(409,response.status); assertEquals("INSUFFICIENT_STOCK",response.json["code"].asText())
-        assertEquals(10,Shop.stock(s,first["productId"].asText())!!["availableQuantity"].asInt()); assertEquals(cart,Shop.getCart(s,cart))
-        assertEquals("1",Database.scalar("store","SELECT count(*) FROM submissions WHERE store_id=?",s.store)); Shop.audit(s)
+    /** Another customer depletes one of two lines; failed acceptance preserves every unaffected stock and the original open cart. */
+    @Test @AllureId("17") @DisplayName("Нехватка одной позиции запрещает частичное списание остальных")
+    fun insufficientOneLineNeverPartiallyDeducts() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val (first, second) = step("Оприходуем два разных товара по 10 единиц") { Shop.supply(scope) to Shop.supply(scope) }
+            val cart = step("Первый покупатель добавляет по 3 единицы обоих товаров") {
+                Shop.put(scope, Shop.filled(scope, first, 3), second, 3).expect(200).body<Cart>()
+            }
+            step("Другой покупатель выкупает весь второй товар") {
+                Shop.submit(scope, Shop.filled(scope, second, 10)).expect(202)
+            }
+            val error = step("Пытаемся оформить исходную корзину после чужой покупки") {
+                Shop.submit(scope, cart).expect(409).body<ApiError>()
+            }
+            step("Проверяем нехватку, отсутствие частичного списания и сохранение открытой корзины") {
+                assertEquals("INSUFFICIENT_STOCK", error.code)
+                assertEquals(10, Shop.requireStock(scope, first.productId).availableQuantity)
+                assertEquals(0, Shop.requireStock(scope, second.productId).availableQuantity)
+                assertEquals(cart, Shop.getCart(scope, cart))
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM submissions WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-18: accepted HTTP request repeated sequentially returns one operation and never charges twice. */
-    @Test @AllureId("18") fun acceptedRequestReplaysOriginalVersion() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); val key=UUID.randomUUID().toString()
-        val accepted=Shop.submit(s,cart,key); assertEquals(202,accepted.status); val repeated=Shop.submit(s,cart,key)
-        assertEquals(202,repeated.status); assertEquals(accepted.json["submissionId"],repeated.json["submissionId"])
-        assertEquals(7,Shop.stock(s,stock["productId"].asText())!!["availableQuantity"].asInt()); Shop.audit(s)
+    /** A replay retains the original request version even after the cart closes, returning one accepted operation and expense. */
+    @Test @AllureId("18") @DisplayName("Повтор исходного ключа возвращает принятую операцию без второго расхода")
+    fun acceptedRequestReplaysOriginalVersion() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем 10 единиц товара") { Shop.supply(scope) }
+            val cart = step("Помещаем 3 единицы в корзину") { Shop.filled(scope, stock, 3) }
+            val key = UUID.randomUUID().toString()
+            val accepted = step("Принимаем заявку с сохранённым ключом") { Shop.submit(scope, cart, key).expect(202).body<Submission>() }
+            val repeated = step("Повторяем исходные ключ и версию закрывшейся корзины") { Shop.submit(scope, cart, key).expect(202).body<Submission>() }
+            step("Проверяем прежние идентификаторы и один расход") {
+                assertEquals(accepted.submissionId, repeated.submissionId)
+                assertEquals(accepted.eventId, repeated.eventId)
+                assertEquals(7, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM stock_expenses WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-18: simultaneous identical submit requests resolve real UNIQUE/transaction races to one accepted operation. */
-    @Test @AllureId("181") fun simultaneousSameKeyCreatesOneExpense() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); val key=UUID.randomUUID().toString()
-        val replies=Shop.race({ Shop.submit(s,cart,key) }, { Shop.submit(s,cart,key) })
-        assertEquals(listOf(202,202),replies.map { it.status }); assertEquals(replies[0].json["submissionId"],replies[1].json["submissionId"])
-        assertEquals("1",Database.scalar("store","SELECT count(*) FROM stock_expenses WHERE store_id=?",s.store)); Shop.audit(s)
+    /** Simultaneous identical requests exercise actual UNIQUE/transaction races and still resolve to one accepted operation. */
+    @Test @AllureId("181") @DisplayName("Одновременные повторы одного ключа создают один расход")
+    fun simultaneousSameKeyCreatesOneExpense() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем 10 единиц товара") { Shop.supply(scope) }
+            val cart = step("Создаём корзину с 3 единицами") { Shop.filled(scope, stock, 3) }
+            val key = UUID.randomUUID().toString()
+            val replies = step("Отправляем два одинаковых оформления одновременно") {
+                Shop.race({ Shop.submit(scope, cart, key) }, { Shop.submit(scope, cart, key) })
+            }
+            step("Проверяем одинаковые операции и единственное списание") {
+                val first = replies[0].expect(202).body<Submission>()
+                val second = replies[1].expect(202).body<Submission>()
+                assertEquals(first.submissionId, second.submissionId)
+                assertEquals(first.eventId, second.eventId)
+                assertEquals(7, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM stock_expenses WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-19: changing either cart or version under an already accepted key is a conflict, with no additional expense. */
-    @Test @AllureId("19") fun acceptedKeyCannotChangeRequest() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,1); val key=UUID.randomUUID().toString(); assertEquals(202,Shop.submit(s,cart,key).status)
-        val other=Shop.filled(s,stock,1)
-        for (request in listOf(other,Shop.getCart(s,cart))) { val response=Shop.submit(s,request,key); assertEquals(409,response.status); assertEquals("IDEMPOTENCY_KEY_REUSED",response.json["code"].asText()) }
-        assertEquals("1",Database.scalar("store","SELECT count(*) FROM submissions WHERE store_id=?",s.store)); Shop.audit(s)
+    /** A used key cannot change either cart identity or expected version; both conflicts leave the original acceptance intact. */
+    @Test @AllureId("19") @DisplayName("Принятый ключ нельзя использовать с другой корзиной или версией")
+    fun acceptedKeyCannotChangeRequest() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем товар и создаём две независимые корзины") { Shop.supply(scope) }
+            val cart = Shop.filled(scope, stock, 1)
+            val other = Shop.filled(scope, stock, 1)
+            val key = UUID.randomUUID().toString()
+            step("Принимаем оформление первой корзины") { Shop.submit(scope, cart, key).expect(202) }
+            val changedCart = step("Отправляем принятый ключ для другой корзины") { Shop.submit(scope, other, key).expect(409).body<ApiError>() }
+            val changedVersion = step("Отправляем принятый ключ с изменённой версией первой корзины") {
+                Shop.submit(scope, cart.copy(version = cart.version + 1), key).expect(409).body<ApiError>()
+            }
+            step("Проверяем конфликт параметров и отсутствие дополнительных расходов") {
+                assertEquals("IDEMPOTENCY_KEY_REUSED", changedCart.code)
+                assertEquals("IDEMPOTENCY_KEY_REUSED", changedVersion.code)
+                assertEquals(9, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM submissions WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-20: closed carts reject new keys and edits while preserving their immutable accepted snapshot. */
-    @Test @AllureId("20") fun closedCartRejectsNewExpenseAndMutation() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,1); assertEquals(202,Shop.submit(s,cart).status)
-        val closed=Shop.getCart(s,cart); assertEquals(409,Shop.submit(s,closed).status); assertEquals(409,Shop.put(s,closed,stock,2).status)
-        assertEquals(closed,Shop.getCart(s,closed)); Shop.audit(s)
+    /** A submitted cart rejects another expense and any composition change, preserving its accepted snapshot. */
+    @Test @AllureId("20") @DisplayName("Закрытая корзина не допускает нового оформления и изменения состава")
+    fun closedCartRejectsNewExpenseAndMutation() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем товар и создаём корзину") { Shop.supply(scope) }
+            val cart = Shop.filled(scope, stock, 1)
+            step("Принимаем оформление корзины") { Shop.submit(scope, cart).expect(202) }
+            val expectedSnapshot = Shop.getCart(scope, cart)
+            val submitError = step("Пытаемся оформить закрытую корзину с новым ключом") { Shop.submit(scope, expectedSnapshot).expect(409).body<ApiError>() }
+            val editError = step("Пытаемся изменить состав закрытой корзины") { Shop.put(scope, expectedSnapshot, stock, 2).expect(409).body<ApiError>() }
+            step("Проверяем закрытое состояние и неизменность принятого состава") {
+                assertEquals("CART_ALREADY_SUBMITTED", submitError.code)
+                assertEquals("CART_ALREADY_SUBMITTED", editError.code)
+                assertEquals(expectedSnapshot, Shop.getCart(scope, cart))
+                assertEquals(9, Shop.requireStock(scope, stock.productId).availableQuantity)
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-21: synchronized last-unit purchases produce one winner, one insufficiency and exactly one debit. */
-    @Test @AllureId("21") fun lastUnitHasOneWinner() {
-        val s=Shop.scope(); val stock=Shop.supply(s,Shop.delivery(s,quantity=1)); val a=Shop.filled(s,stock,1); val b=Shop.filled(s,stock,1)
-        val replies=Shop.race({ Shop.submit(s,a) }, { Shop.submit(s,b) }); assertEquals(listOf(202,409),replies.map { it.status }.sorted())
-        assertEquals("INSUFFICIENT_STOCK",replies.single { it.status==409 }.json["code"].asText()); assertEquals(0,Shop.stock(s,stock["productId"].asText())!!["availableQuantity"].asInt()); Shop.audit(s)
+    /** Two buyers submit simultaneously for the last unit; exactly one wins and the loser observes stock insufficiency. */
+    @Test @AllureId("21") @DisplayName("Последнюю единицу товара выкупает один из двух конкурирующих покупателей")
+    fun lastUnitHasOneWinner() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем последнюю единицу товара") { Shop.supply(scope, Shop.delivery(scope, quantity = 1)) }
+            val (first, second) = step("Два покупателя кладут последнюю единицу в разные корзины") { Shop.filled(scope, stock, 1) to Shop.filled(scope, stock, 1) }
+            val replies = step("Оформляем обе корзины одновременно") { Shop.race({ Shop.submit(scope, first) }, { Shop.submit(scope, second) }) }
+            step("Проверяем одного победителя, нехватку у проигравшего и нулевой остаток") {
+                assertEquals(listOf(202, 409), replies.map { it.status }.sorted())
+                assertEquals("INSUFFICIENT_STOCK", replies.single { it.status == 409 }.body<ApiError>().code)
+                assertEquals(0, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("1", Database.scalar("store", "SELECT count(*) FROM stock_expenses WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-22: stale expectedCartVersion rejects acceptance without changing stock or creating an outbox. */
-    @Test @AllureId("22") fun staleVersionCannotPurchase() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val old=Shop.filled(s,stock,1); val current=Shop.put(s,old,stock,2).json
-        val rejected=Shop.submit(s,old); assertEquals(409,rejected.status); assertEquals("CART_VERSION_CONFLICT",rejected.json["code"].asText())
-        assertEquals(current,Shop.getCart(s,old)); assertEquals("0",Database.scalar("store","SELECT count(*) FROM store_outbox WHERE store_id=?",s.store)); Shop.audit(s)
+    /** Editing a captured cart version makes its old submit stale without changing stock or creating an outbox. */
+    @Test @AllureId("22") @DisplayName("Устаревшая версия корзины не может списать товар")
+    fun staleVersionCannotPurchase() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем товар и создаём корзину с одной единицей") { Shop.supply(scope) }
+            val original = Shop.filled(scope, stock, 1)
+            val expectedCart = step("Меняем количество в корзине на 2") { Shop.put(scope, original, stock, 2).expect(200).body<Cart>() }
+            val error = step("Оформляем заявку с сохранённой устаревшей версией") { Shop.submit(scope, original).expect(409).body<ApiError>() }
+            step("Проверяем конфликт версии и сохранение последнего состава без расхода") {
+                assertEquals("CART_VERSION_CONFLICT", error.code)
+                assertEquals(expectedCart, Shop.getCart(scope, original))
+                assertEquals(10, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("0", Database.scalar("store", "SELECT count(*) FROM store_outbox WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+        }
     }
 
-    /** CASES-23/30: identical keys in separate scopes create independent expenses; foreign cart/stock/submission lookups fail. */
-    @Test @AllureId("30") fun storeScopesSeparateKeysAndResources() {
-        val a=Shop.scope(); val b=Shop.scope("SPB"); val sa=Shop.supply(a); val sb=Shop.supply(b); val ca=Shop.filled(a,sa,1); val cb=Shop.filled(b,sb,1); val key=UUID.randomUUID().toString()
-        val aa=Shop.submit(a,ca,key); val ab=Shop.submit(b,cb,key); assertEquals(202,aa.status); assertEquals(202,ab.status); assertNotEquals(aa.json["submissionId"],ab.json["submissionId"])
-        assertEquals(404,HttpClient.request(Endpoints.STORE,"/stores/${b.store}/carts/${ca["cartId"].asText()}").status)
-        assertEquals(404,Shop.put(b,Shop.cart(b),sa,1).status)
-        assertEquals(404,HttpClient.request(Endpoints.STORE,"/stores/${b.store}/submissions/${aa.json["submissionId"].asText()}").status)
-        assertEquals("121.00",sb["unitPrice"].asText()); Shop.audit(a); Shop.audit(b)
+    /** Keys are unique within a store only; foreign carts, inventory and submissions cannot cross store ownership. */
+    @Test @AllureId("30") @DisplayName("Ключи и ресурсы двух магазинов имеют независимые области видимости")
+    fun storeScopesSeparateKeysAndResources() {
+        withShopTemplate { resources ->
+            val first = resources.scope()
+            val second = resources.scope("SPB")
+            val (firstStock, secondStock) = step("Оприходуем товары в Москве и Санкт-Петербурге") { Shop.supply(first) to Shop.supply(second) }
+            val firstCart = Shop.filled(first, firstStock, 1)
+            val secondCart = Shop.filled(second, secondStock, 1)
+            val key = UUID.randomUUID().toString()
+            val (acceptedFirst, acceptedSecond) = step("Оформляем две заявки с одинаковой строкой ключа в разных магазинах") {
+                Shop.submit(first, firstCart, key).expect(202).body<Submission>() to Shop.submit(second, secondCart, key).expect(202).body<Submission>()
+            }
+            step("Проверяем независимость операций, тарифов и недоступность чужих ресурсов") {
+                assertNotEquals(acceptedFirst.submissionId, acceptedSecond.submissionId)
+                assertEquals("121.00", secondStock.unitPrice)
+                HttpClient.request(Endpoints.STORE, "/stores/${second.store}/carts/${firstCart.cartId}").expect(404)
+                Shop.put(second, Shop.cart(second), firstStock, 1).expect(404)
+                HttpClient.request(Endpoints.STORE, "/stores/${second.store}/submissions/${acceptedFirst.submissionId}").expect(404)
+                Shop.audit(first)
+                Shop.audit(second)
+            }
+        }
     }
 
-    /** CASES-24: scoped SQL fault after inventory update rolls back acceptance; the original key works once after fault release. */
-    @Test @AllureId("24") fun commitFailureRollsBackWholeAcceptance() {
-        val s=Shop.scope(); val stock=Shop.supply(s); val cart=Shop.filled(s,stock,3); val key=UUID.randomUUID().toString()
-        Database.update("store", "CREATE OR REPLACE FUNCTION e2e_reject_expense() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM e2e_gates WHERE store_id=NEW.store_id AND point='SUBMIT_ROLLBACK' AND blocked) THEN RAISE EXCEPTION 'e2e controlled rollback'; END IF; RETURN NEW; END $$")
-        Database.update("store", "DROP TRIGGER IF EXISTS e2e_expense_fail ON stock_expenses")
-        Database.update("store", "CREATE TRIGGER e2e_expense_fail BEFORE INSERT ON stock_expenses FOR EACH ROW EXECUTE FUNCTION e2e_reject_expense()")
-        Shop.gate("store",s,"SUBMIT_ROLLBACK")
-        try {
-            val rejected=Shop.submit(s,cart,key); assertEquals(503,rejected.status); assertEquals("DEPENDENCY_UNAVAILABLE",rejected.json["code"].asText()); assertEquals(cart,Shop.getCart(s,cart))
-            assertEquals("0",Database.scalar("store","SELECT count(*) FROM submissions WHERE store_id=?",s.store)); assertEquals("0",Database.scalar("store","SELECT count(*) FROM store_outbox WHERE store_id=?",s.store)); Shop.audit(s)
-        } finally { Shop.release("store",s) }
-        assertEquals(202,Shop.submit(s,cart,key).status); Shop.audit(s)
+    /** A controlled SQL fault after inventory update rolls back every acceptance write; the original key works after recovery. */
+    @Test @AllureId("24") @DisplayName("Ошибка записи полностью откатывает принятие заявки")
+    fun commitFailureRollsBackWholeAcceptance() {
+        withShopTemplate { resources ->
+            val scope = resources.scope()
+            val stock = step("Оприходуем товар и готовим корзину с 3 единицами") { Shop.supply(scope) }
+            val cart = Shop.filled(scope, stock, 3)
+            val key = UUID.randomUUID().toString()
+            step("Воспроизводим ошибку записи расхода только для этого покупателя") { resources.failExpense(scope) }
+            val error = step("Оформляем заявку при недоступной записи расхода") { Shop.submit(scope, cart, key).expect(503).body<ApiError>() }
+            step("Проверяем полный откат остатка, корзины и исходящего сообщения") {
+                assertEquals("DEPENDENCY_UNAVAILABLE", error.code)
+                assertEquals(cart, Shop.getCart(scope, cart))
+                assertEquals(10, Shop.requireStock(scope, stock.productId).availableQuantity)
+                assertEquals("0", Database.scalar("store", "SELECT count(*) FROM submissions WHERE store_id=?", scope.store))
+                assertEquals("0", Database.scalar("store", "SELECT count(*) FROM store_outbox WHERE store_id=?", scope.store))
+                Shop.audit(scope)
+            }
+            step("Восстанавливаем запись и повторяем исходный запрос") {
+                Shop.release("store", scope)
+                Shop.submit(scope, cart, key).expect(202)
+            }
+            step("Проверяем единственный расход после восстановления") {
+                assertEquals(7, Shop.requireStock(scope, stock.productId).availableQuantity)
+                Shop.audit(scope)
+            }
+        }
     }
 }

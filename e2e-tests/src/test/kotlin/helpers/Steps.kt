@@ -2,5 +2,7 @@ package helpers
 
 import io.qameta.allure.Allure
 
-/** Records a descriptive test step and propagates its original result/failure; no business action is retried implicitly. */
-fun <T> step(description: String, block: () -> T): T = Allure.step(description, block)
+/** Records a business or nested technical step, returning its result and preserving the original failure. */
+fun <T> step(description: String, block: () -> T): T {
+    return Allure.step(description, Allure.ThrowableRunnable<T> { block() })
+}

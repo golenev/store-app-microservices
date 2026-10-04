@@ -2,6 +2,5 @@
   "name": "shop-html-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test --test-concurrency=1 shop.test.js", "test:unit": "node --test common.test.js" },
-  "devDependencies": { "playwright": "1.62.1" }
+  "scripts": { "test": "node --test common.test.js", "test:unit": "node --test common.test.js" }
 }

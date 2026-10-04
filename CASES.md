@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: поведение реализовано задачами 1–7; задача 8 добавляет Kotlin E2E и итоговую матрицу покрытия. Уровни проверки разделены: module integration проверяет локальные транзакции/границы, Kotlin — реальные межсервисные потоки и отказы, Playwright — HTML и восстановление браузерных запросов. Исторические записи этапов ниже описывают состояние на момент соответствующего PR; актуальное покрытие находится в разделе задачи 8.
+Статус: задачи 1–8 включены в master. Текущий рефакторинг E2E сохраняет требования и переносит их проверки на правила tech-book 1.1. Уровни проверки разделены: module integration проверяет локальные транзакции/границы, Kotlin — реальные межсервисные потоки и отказы, Kotlin + Selenide — HTML и восстановление браузерных запросов. Исторические записи этапов ниже описывают состояние на момент соответствующего PR; актуальное покрытие находится в разделе задачи 8.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -214,7 +214,7 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 
 ## Покрытие HTML задачи 7
 
-`ui-tests/shop.test.js` использует Playwright и настоящие STORE/WAREHOUSE/TARIFFS/Kafka/PostgreSQL/Redis. У каждого сценария свои productId/deliveryId и browser contexts с независимым sessionStorage. Тесты идут последовательно, сброс тарифного кеша не используется. Маршрутизация тестового браузера управляет только сетевыми окнами; backend продолжает выполнять настоящие транзакции.
+`e2e-tests/src/test/kotlin/stageTests/HtmlE2ETest.kt` использует Kotlin + Selenide и настоящие STORE/WAREHOUSE/TARIFFS/Kafka/PostgreSQL/Redis. У каждого сценария свои productId/deliveryId и browser contexts с независимым sessionStorage. Тесты идут последовательно в собственном Compose project; исходные кеш/fixtures восстанавливаются, созданная дельта очищается. Маршрутизация тестового браузера управляет только сетевыми окнами; backend продолжает выполнять настоящие транзакции.
 
 | CASES / инвариант | Функция теста | Проверяемый результат |
 | --- | --- | --- |
@@ -224,9 +224,9 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 | CASES-18/29/31 | `ambiguous503` | Прокси возвращает 503 после настоящего commit. Повтор использует прежний ключ и прежний расход. |
 | CASES-18/29/31 | `lostRequest` | Запрос теряется до STORE. До reload остаток прежний; повтор исходного key/body принимает заявку один раз. |
 | CASES-22 | `versionConflict` | Сторонний PUT меняет version/quantity; stale submit показывает конфликт и перечитывает состав. Следующая попытка покупает актуальные 2 единицы. |
-| Безопасный вывод / деньги v1 | `safeRendering` | Имя с img/onerror и описание со script отображаются буквально; DOM не содержит внедрённых тегов. Цена выше безопасного Number сохраняет точный серверный total 23418718062326581.80. |
+| Безопасный вывод / деньги v1 | `safeRendering`, `exactLargeMoney` | Имя с img/onerror и описание со script отображаются буквально; DOM не содержит внедрённых тегов. Отдельный `exactLargeMoney` проверяет точный серверный total 23418718062326581.80 выше точности Number. |
 | CASES-02: сетевой повтор поставщика | `supplierRetry` | После Kafka ack ответ теряется; reload повторяет весь envelope, поставка/приход не удваиваются. Это последовательный browser retry; backend-конкуренция покрыта предыдущими задачами. |
-| CASES-23/30/31 | `storesAndPages` | S-2 открывает свою пустую корзину, возврат S-1 восстанавливает прежний состав; мобильная ширина 390 без overflow. Сохранённые страницы не вызывают global cart/order/auth endpoints и не отправляют Authorization. |
+| CASES-23/30/31 | `storesAndPages`, `preservedPages`, `mobileLayout` | S-2 открывает свою пустую корзину, возврат S-1 восстанавливает прежний состав; отдельный `mobileLayout` проверяет ширину 390 без overflow, `preservedPages` — новые API без global cart/order/auth и Authorization. |
 
 `ui-tests/common.test.js`: `exactMoney` и `invalidMoney` проверяют нормализацию десятичных строк и отказ для нуля, exponent, отрицательного/неполного значения и лишней точности. `UiSettingsTest` проверяет публичный GET конфигурации и отклонение unsafe URL. `WarehouseUiCorsTest` проверяет реальные MVC preflight: разрешённые exact origins и JSON POST/GET, запрет постороннего origin/retry-pricing, отсутствие credentials и отказ для некорректной конфигурации.
 
@@ -266,15 +266,25 @@ Compose smoke задачи 6 добавляет submit на 3 единицы, о
 | 26 | KafkaTariffTest: `warehouseRestartAfterCommitBeforePublication`, `storeRestartAfterCommitBeforePublication` | Kotlin: каждый сервис остановлен после commit до send, восстановлен с прежней БД и payload. |
 | 27 | KafkaTariffTest: `warehouseAckLossReplaysExactGoods`, `storeAckLossReplaysExactOrder` | Kotlin: gate после реального Kafka ack, restart, две одинаковые физические записи и одно логическое движение. |
 | 28 | ProductFlowE2ETest: `replenishmentRepricesStockAndFreezesAcceptedSnapshot` | Kotlin: новая цена до submit, неизменяемый snapshot после следующего пополнения. |
-| 29 | ui-tests/shop.test.js: `lostReply`, `ambiguous503`, `lostRequest` | Browser: reload после потери HTTP в разных окнах, сохранённый key/body и один расход. |
+| 29 | HtmlE2ETest: `lostReply`, `ambiguous503`, `lostRequest` | Browser: reload после потери HTTP в разных окнах, сохранённый key/body и один расход. |
 | 30 | OrderE2ETest: `storeScopesSeparateKeysAndResources` | Kotlin: одинаковая строка ключа двух магазинов создаёт две независимые операции. |
-| 31 | ui-tests/shop.test.js: `independentCarts`, `storesAndPages` | Browser: contexts/sessionStorage, scoped API, актуальная нехватка и store switching. |
+| 31 | HtmlE2ETest: `independentCarts`, `storesAndPages` | Browser: contexts/sessionStorage, scoped API, актуальная нехватка и store switching. |
 | 32 | ProductFlowE2ETest: `duplicateProductLinesAreRejected` | Kotlin: два одинаковых productId → REJECTED, без прихода. |
 | 33 | TariffApiE2ETest: `newRuleAutomaticallyUnblocksWaitingDelivery` | Kotlin: отсутствующее правило добавлено, автоматический pricing и один приход без retry API. |
 | 34 | ProductFlowE2ETest: `manualRetryCannotDuplicateActivePricing` | Kotlin: manual retry во время активной pricing lease, после release один POSTED/outbox/приход. |
 
 E2E fault controls — SQL-таблица `e2e_gates`, созданная компонентом только при явном профиле `e2e`. Идентификаторы точки ограничены магазином/поставкой/событием. Gates сохраняются после перезапуска; worker возвращает управление и ждёт reclaim persisted lease. Управляющего HTTP API нет. StoreRuntimeTest/WarehouseRuntimeTest `e2eControlsAreAbsentOutsideExplicitProfile` проверяют отсутствие компонента/таблицы и 404 для control URL в обычном профиле.
 
-CI: Maven reactor → отдельный Kotlin E2E job; независимый Compose smoke собирает штатные приложения и запускает HTML. Артефакты Kotlin job содержат JUnit XML/HTML, Allure raw results, Compose/environment diagnostics. Исторические module-проверки выше дополняют эту матрицу, а не считаются отдельными сквозными запусками. Результаты последнего подтверждённого запуска приводятся в README и PR.
+CI: Maven reactor → отдельный Kotlin E2E job; браузерные Selenide E2E выполняются в том же изолированном job. Независимый Compose smoke собирает штатные приложения и запускает неизменённые JS unit-тесты. Артефакты Kotlin job содержат JUnit XML/HTML, Allure raw results, Compose/environment diagnostics. Исторические module-проверки выше дополняют эту матрицу, а не считаются отдельными сквозными запусками. Результаты последнего подтверждённого запуска приводятся в README и PR.
 
 Подтверждённая локальная проверка задачи 8: **326 Maven + 44 Kotlin E2E**, 0 failures/errors/skipped. Runtime-profile assertions отдельно подтверждены обычным стартом обоих сервисов. Полный E2E выполнен с Maven-built JAR; source-build/HTML проверяются отдельными CI jobs.
+
+## Рефакторинг E2E по tech-book 1.1
+
+Требования CASES-01–34 сохранены. Исполняемые бизнес-шаги и вложенные операции берутся из Allure, а не из ручной копии автотеста. Приведённые таблицы сопоставляют требования и гарантии с методами; они не заменяют сгенерированный сценарий.
+
+Backend: прежние 44 запуска и Allure ID сохранены. HTML: 12 самостоятельных проверок в `HtmlE2ETest`; денежная точность, безопасный текст, переключение магазина, сохранённые страницы и мобильная вёрстка разделены. Общий lifecycle реализован функциями с постфиксом `Template`, как согласовано пользователем. Kafka-проверки сохраняют транспортную кратность и границы отрицательного наблюдения. Ошибки чтения/парсинга не маскируются таймаутом отсутствия.
+
+Команда полного запуска: `python scripts/run-e2e.py`; локально с собранными JAR — `python scripts/run-e2e.py --runtime-jars`. Каждый запуск пишет свежие Allure/evidence в `target/e2e/<project>/`. Module integration и `ui-tests/common.test.js` не изменены. Результат рефакторинга фиксируется после полного проверенного прогона в README и PR.
+
+Подтверждённый прогон рефакторинга: **56/56** Kotlin E2E, без failures/errors/skipped, проект `shop-e2e-d954c7fdd90e`; все 12 HTML и прежние 44 backend-проверки прошли вместе. Неизменённые JS unit — **2/2**. Allure results содержат вложенные шаги и существующие файлы evidence; из них собран HTML-отчёт. Source-build CI и его результат фиксируются в PR.

@@ -4,7 +4,7 @@
 
 ## Текущее состояние
 
-Задачи 1–7 включены в master через PR #37–43: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Задача 8 переносит Kotlin E2E на эту архитектуру и добавляет отдельный CI stage с управляемыми отказами.
+Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Kotlin E2E проверяют новую архитектуру в отдельном CI stage с управляемыми отказами. Текущий рефакторинг E2E применяет tech-book 1.1 и переносит браузерное покрытие на Kotlin + Selenide.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
@@ -93,17 +93,15 @@ Compose использует имя проекта `shop-runtime` и отдел�
 
 STORE `GET /ui/config` возвращает `warehouseBaseUrl` из `WAREHOUSE_PUBLIC_URL` (по умолчанию `http://localhost:6791`). Это **доступный браузеру** URL, а не внутреннее имя `warehouse-service`. WAREHOUSE разрешает CORS только точным `SHOP_UI_ORIGINS` (по умолчанию `http://localhost:6789,http://127.0.0.1:6789`), без credentials: POST `/technical/deliveries` и GET scoped delivery status. Диагностические POST не разрешены. Compose автоматически учитывает STORE_PORT/WAREHOUSE_PORT; при запуске из IDEA с другими портами задайте оба значения явно. Для HTTPS UI используйте HTTPS warehouse URL/прокси, иначе браузер блокирует mixed content.
 
-Браузерные проверки требуют Node.js 22+, Chromium и запущенные три сервиса с Kafka/PostgreSQL/Redis:
+Браузерные E2E находятся в `e2e-tests/src/test/kotlin/stageTests/HtmlE2ETest.kt`: Kotlin + Selenide 7.12.1 + JUnit 5 + Allure. Они запускаются вместе с backend E2E через `python scripts/run-e2e.py`. Нужны JDK 21, установленный Chrome, Python 3 и Docker; отдельный пользовательский браузер не используется. Selenide создаёт собственные профили и драйверы.
+
+В `ui-tests` сохранены прежние JavaScript unit-тесты нормализации денег. Их исходники не изменены; Node.js 22+ нужен только для них:
 
 ```shell
 cd ui-tests
 npm ci
-npx playwright install chromium
 npm run test:unit
-npm test
 ```
-
-`UI_BASE_URL` задаёт адрес STORE, по умолчанию `http://localhost:6789`; warehouse URL берётся из серверной конфигурации. Сценарии создают уникальные productId/deliveryId/cartId, работают последовательно, не сбрасывают тарифный кеш и не удаляют базы. Проверки сетевых окон перехватывают только ответы/запросы тестового браузера; штатный API выполняет реальные транзакции. Скриншоты сохраняются в `ui-tests/test-results` и CI artifacts. Это самостоятельное UI-покрытие; Kotlin E2E проверяет backend-поток и отказы отдельно.
 
 ## Миграции и fixtures
 
@@ -267,7 +265,7 @@ CI запускает весь Maven reactor и проверяет конфиг�
 
 ### Kotlin E2E и управляемые отказы
 
-Нужны Python 3, JDK 21 и Docker Compose **2.24.4+** (runtime-JAR override использует `!reset`). Wrapper Gradle 8.14.3 восстановлен; SHA-256 дистрибутива закреплён в properties, checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
+Нужны Python 3, JDK 21, Chrome и Docker Compose **2.24.4+** (runtime-JAR override использует `!reset`). Wrapper Gradle 8.14.3 восстановлен; SHA-256 дистрибутива закреплён в properties, checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
 
 Из корня проекта:
 
@@ -284,13 +282,19 @@ mvn -B -ntp -DskipTests package
 python scripts/run-e2e.py --runtime-jars
 ```
 
-Укажите JAVA_HOME на JDK 21. На Windows launcher вызывает `gradlew.bat`, на Linux — `bash gradlew`. При `--runtime-jars` образ `eclipse-temurin:21-jre-jammy` должен быть доступен Docker. Конфигурация окружения и Compose-логи: `target/e2e/<project>/`; JUnit XML: `e2e-tests/build/test-results/test`, HTML: `e2e-tests/build/reports/tests/test/index.html`, Allure raw results: `e2e-tests/build/allure-results`. Дополнительный HTML Allure можно собрать `gradlew allureReport` из `e2e-tests`; команда скачивает Allure CLI отдельно и не входит в обязательный тестовый запуск. Gradle/Allure артефакты локальных прогонов перезаписываются/дополняются; CI начинает с чистого checkout и публикует результаты своего запуска.
+Укажите JAVA_HOME на JDK 21. На Windows launcher вызывает `gradlew.bat`, на Linux — `bash gradlew`. При `--runtime-jars` образ `eclipse-temurin:21-jre-jammy` должен быть доступен Docker. При нестандартной установке браузера задайте `E2E_CHROME_BINARY` и при необходимости `E2E_CHROME_DRIVER`. Для локальной конфигурации Gradle можно передать путь `E2E_GRADLE_INIT_SCRIPT`; CI использует обычный Maven Central.
 
-44 Kotlin-проверки обращаются к настоящим HTTP/Kafka/PostgreSQL/Redis. Fixtures создают только независимые магазины/города; остатки возникают через реальные поставки. Корзины, товары, события и ключи уникальны. SQL используется для наблюдения инвариантов и управляемых ошибок записи. Общие outage/reset-сценарии идут последовательно; гонки внутри отдельных тестов запускаются через barrier.
+Каждый запуск получает свою папку `target/e2e/<project>/`: environment/Compose diagnostics, свежие `allure-results/` и `browser-evidence/`. JUnit XML и Gradle HTML: `e2e-tests/build/test-results/test` и `e2e-tests/build/reports/tests/test/index.html`. Для просмотра Allure используйте `allure serve target/e2e/<project>/allure-results` (CLI устанавливается отдельно). CI сохраняет эти артефакты и `runtime-e2e-control.log`. Результаты Allure разных запусков не смешиваются.
+
+Набор содержит 44 backend-проверки и 12 браузерных сценариев. Тесты используют согласованные функции `withShopTemplate` / `withBrowserTemplate`, явные бизнес-шаги Allure, вложенные HTTP/Selenide-операции и типизированные DTO. Commit (с отметкой dirty для рабочего дерева), SHA-256 manifest исходников тестов и Compose project записываются в metadata. Прежние Allure ID backend-сценариев сохранены; браузерным тестам не присваиваются выдуманные TMS ID. Требования и привязка к тестам — в CASES; исполняемый сценарий и evidence формируются кодом в Allure.
+
+Launcher сериализует тесты в собственном Compose project. Backend fixtures создают независимые магазины/города; HTML использует штатные S-1/S-2 с UUID товарами и собственными браузерными профилями. Остатки появляются только через настоящие поставки. Ресурсы регистрируются до воздействия; очистка запускается даже при падении подготовки, восстанавливает сервисы, gates и снимок tariff cache, удаляет только созданную дельту. Исходная ошибка сохраняется, ошибки очистки добавляются как suppressed. Технические sequence/generation high-water marks не откатываются.
+
+Kafka observer назначает partitions и фиксирует end offsets до действия. Наличие, минимум физических копий и точное количество в ограниченном окне проверяются отдельно; parser/transport failure не превращается в отсутствие события. Outbox ack-loss допускает больше двух физических копий и требует прежний payload при одном логическом движении. Браузерный loopback relay воспроизводит потерю запроса/ответа и 503 после реального commit; Chrome может сам повторять POST, все попытки сохраняются в evidence и обязаны иметь исходные key/body. Relay изменяет только тестовую discovery URL и сетевое окно, бизнес-ответы приходят от настоящих сервисов.
 
 `compose.e2e.yml` явно включает профиль `e2e` у STORE/WAREHOUSE и lease 10 секунд. Только в этом профиле создаётся `e2e_gates`: store/subject-scoped SQL gates перед pricing/publish и после Kafka ack. При закрытом gate worker освобождает поток, оставляя persisted lease для восстановления; sleep в бизнес-логику не добавлен. Gates переживают restart. Таблица и компоненты отсутствуют в обычном профиле, что проверяют runtime-тесты; HTTP crash-control API отсутствует. Этот профиль предназначен для принадлежащего тестам окружения.
 
-Полная матрица CASES-01–34 объединяет Kotlin E2E, module integration и HTML: [CASES.md](CASES.md). Плановый reset, DB outage на cache miss и некоторые варианты storage failure отдельно проверяются module integration; браузерная потеря ответа/reload — Playwright. Успех Kotlin не подменяет эти уровни.
+Полная матрица CASES-01–34 объединяет Kotlin E2E, module integration и HTML: [CASES.md](CASES.md). Плановый reset, DB outage на cache miss и некоторые варианты storage failure отдельно проверяются module integration; браузерная потеря ответа/reload — Kotlin + Selenide. Успех Kotlin не подменяет эти уровни.
 
 Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, 0 failures/errors/skipped, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
 
@@ -300,6 +304,8 @@ python scripts/run-e2e.py --runtime-jars
 
 Проверка задачи 6 (4 октября 2026): `mvn -B -ntp test` — **309/309**, 0 failures/errors/skipped: contracts 62, STORE 118, TARIFFS 63, WAREHOUSE 66. Отдельный STORE прогон — **118/118**; добавлены 39 HTTP/SQL/Kafka submission-сценариев и 2 автоматических recovery/restart-сценария. Проверены настоящий конфликт UNIQUE с отдельным replay transaction, конкурентные покупки/PUT/приходы, rollback каждой стадии acceptance, точный immutable snapshot, Kafka outage и повтор после утраты PUBLISHED, lease fencing и >1 MiB OrderSubmitted из 1000 строк. Consumer-offset тест теперь ждёт появления committed offset без NPE. Compose CI расширен до submit/PUBLISHED/повтора ключа и сохранности расхода после пересоздания приложений; удалённый результат указывается в PR.
 
-Проверка задачи 7 (4 октября 2026): Maven reactor **324/324**, 0 failures/errors/skipped (contracts 62, STORE 124, TARIFFS 63, WAREHOUSE 75). `npm run test:unit` — **2/2**, `npm test` — **9/9** на реальных сервисах в отдельной Docker/Java-среде. Проверены независимые contexts, отсутствие резерва, нехватка/version conflict, переоценка и immutable snapshot, потеря запроса/ответа и 503 после commit с прежним key/body, supplier replay, XSS-текст, точные большие суммы, store scope и mobile layout. Полный прогон после исправления мобильного тестового локатора прошёл; CI source-build/browser результат указывается в PR.
+Проверка задачи 7 (4 октября 2026): Maven reactor **324/324**, 0 failures/errors/skipped (contracts 62, STORE 124, TARIFFS 63, WAREHOUSE 75). `npm run test:unit` — **2/2**, исходный HTML-набор — **9/9** на реальных сервисах в отдельной Docker/Java-среде. Проверены независимые contexts, отсутствие резерва, нехватка/version conflict, переоценка и immutable snapshot, потеря запроса/ответа и 503 после commit с прежним key/body, supplier replay, XSS-текст, точные большие суммы, store scope и mobile layout. Полный прогон после исправления мобильного тестового локатора прошёл; CI source-build/browser результат указывается в PR.
 
 Проверка задачи 8 (4 октября 2026): Maven reactor **326/326** (contracts 62, STORE 125, TARIFFS 63, WAREHOUSE 76), Kotlin E2E **44/44**, без failures/errors/skipped. E2E выполнен через `python scripts/run-e2e.py --runtime-jars` в новом `shop-e2e-*` с настоящими зависимостями и автоматически выбранными портами. После исправления ожидания committed offset WAREHOUSE полный reactor прошёл; rollback E2E проверяет предусмотренный контрактом 503 DEPENDENCY_UNAVAILABLE. Source-build, HTML и результаты удалённого CI фиксируются в PR после запуска.
+
+Проверка рефакторинга E2E (4 октября 2026): **56/56** Kotlin E2E (44 backend + 12 Kotlin/Selenide), 0 failures/errors/skipped, полный запуск в `shop-e2e-d954c7fdd90e` через runtime-JAR launcher. JavaScript unit — **2/2**, исходники сохранены. Проверены реальные Allure JSON, вложенные шаги, наличие evidence и генерация HTML-отчёта. Локальная проверка использовала Maven-built JAR; source-build CI проверяет commit PR. Unit/integration/contract-тесты и production-код не изменены.
