@@ -10,10 +10,6 @@ spring:
       validation-timeout: 1000
       data-source-properties:
         socketTimeout: 5
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
   sql:
     init:
       mode: never

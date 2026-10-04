@@ -4,13 +4,13 @@
 
 ## Текущее состояние
 
-Задачи 1–3 включены в master через PR #37–39: [контракты v1](contracts/README.md), runtime и TARIFFS quote/CRUD/cache. Задача 4 реализует приёмку WAREHOUSE, автоматический pricing и GoodsPosted outbox. Новый STORE пока не применяет GoodsPosted и не списывает остаток.
+Задачи 1–4 включены в master через PR #37–40: [контракты v1](contracts/README.md), runtime, TARIFFS и WAREHOUSE. Задача 5 реализует приход GoodsPosted, каталог и независимые versioned корзины STORE. Оформление заявки, списание и OrderSubmitted outbox — задача 6.
 
-- **STORE** (`store-service`, package `com.shop.store`) — перенесённый legacy каталог, глобальная корзина, Basic auth и старый `/order`.
-- **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старый percentage list временно сохранён для STORE без отдельного кеша и задержки.
+- **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов и независимых корзин. Принимает только GoodsPosted, не вызывает TARIFFS; API без авторизации.
+- **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
 - **WAREHOUSE** (`warehouse-service`, package `com.shop.warehouse`) — принимает DeliveryReceived через Kafka, сохраняет состояние/попытки pricing, получает quote, рассчитывает HALF_UP цену и публикует GoodsPosted из outbox. Есть HTTP-диагностика и технический эмулятор поставщика.
 
-Legacy STORE всё ещё принимает сырой Product из `send-topic`, сам запрашивает тарифы и сохраняет продукт по barcode. Здесь пока нет независимых корзин, нового накопления остатка, атомарного списания, идемпотентности и outbox. HTML сохранён и работает через прежние endpoints; адаптация — задача 7.
+Сырой Product listener, общая корзина, Basic auth и старый `/order` удалены. HTML-файлы сохранены, но пока вызывают удалённые endpoints и не обеспечивают рабочий пользовательский поток; адаптация — задача 7. Submit и outgoing outbox STORE пока отсутствуют.
 
 [План из восьми задач](docs/implementation-plan.md), [CASES](CASES.md), [правила реализации](AGENTS.md), [первоначальное ревью](docs/architecture-review.md). Каждая задача получает отдельную ветку и PR.
 
@@ -61,7 +61,7 @@ docker compose --profile apps up -d --build --wait
 docker compose --profile apps ps
 ```
 
-Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; STORE также ждёт TARIFFS. Первый build требует доступа к Docker Hub и Maven Central.
+Каждый образ собирает свой Maven-модуль на Java 21 и запускается непривилегированным пользователем. Приложения ждут health инфраструктуры; WAREHOUSE также ждёт TARIFFS. STORE зависит только от PostgreSQL и Kafka. Первый build требует доступа к Docker Hub и Maven Central.
 
 Дополнительный UI в любом режиме:
 
@@ -81,31 +81,47 @@ Compose использует имя проекта `shop-runtime` и отдел�
 
 ## Миграции и fixtures
 
-Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. STORE/TARIFFS используют Hibernate `ddl-auto: validate`; WAREHOUSE работает через JDBC без ORM. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
+Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. Все три сервиса работают через JDBC без ORM. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
 
-- STORE V1 создаёт прежние `product`, `cart`, `orders` с FK и проверками количества/цены.
-- TARIFFS V1/V2 сохраняют прежние `tariffs` и семь процентных fixtures. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.
+- STORE V1 сохраняет прежние `product`, `cart`, `orders`, которые больше не обслуживаются API. V2 создаёт `store_scopes` (S-1/S-2), `stock_receipts`, `inventory`, `processed_events`, `stock_movements`, `incoming_goods_diagnostics`, `carts`, `cart_items`. Исторические записи не переносятся в inventory.
+- TARIFFS V1/V2 сохраняют прежние `tariffs` и семь исторических процентных fixtures без legacy API. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.
 - WAREHOUSE V1 создаёт `stores`; V2 добавляет S-1 → MOSCOW и S-2 → SPB; V3 — приёмку, items, inbox/диагностику, sequence и outbox.
 
 Повторный старт валидирует checksum и не повторяет выполненные миграции. Применённые SQL-файлы не редактируют: изменения схемы оформляют следующей версией миграции.
 
 `infra/postgres/init/01-databases.sql` создаёт БД и роли только при первом запуске нового PostgreSQL volume. Каждая роль подключается только к своей БД; чужие сервисные и служебные БД запрещены. Изменение bootstrap SQL само по себе не обновляет существующий volume. Исторические данные не мигрируются, существующие базы и volumes автоматически не удаляются.
 
-## Legacy API и HTML
+## Каталог и корзины STORE задачи 5
 
-Откройте `http://localhost:6789/login.html`, пользователь `user`, пароль `qwerty`. Для прямых API-запросов передавайте Basic auth.
+API на `http://localhost:6789` без авторизации. Магазины S-1/S-2 заданы fixtures; создание других магазинов через публичный API не предусмотрено. UUID корзины разделяет покупателей, а знание UUID даёт доступ к учебной корзине.
 
-| Endpoint STORE | Текущее действие |
+| Endpoint | Результат |
 | --- | --- |
-| POST `/api/v1/sendToKafka` | Отправить legacy Product в send-topic |
-| GET `/api/v1/products` | Прочитать старый каталог |
-| POST `/api/cart` | Добавить единицу barcodeId в общую корзину |
-| GET `/api/cart` | Прочитать общую корзину |
-| POST `/api/cart/decrement` | Уменьшить позицию |
-| DELETE `/api/cart/clear` | Очистить общую корзину |
-| POST `/order` | Сохранить клиентский snapshot без нового submit |
+| GET `/stores/{storeId}/catalog` | Одна позиция на productId, стабильный stockItemId, текущая цена и availableQuantity, включая нулевой остаток |
+| POST `/stores/{storeId}/carts` без body | 201, новая OPEN-корзина с version=0 и Location |
+| GET `/stores/{storeId}/carts/{cartId}` | Состав/version и сумма по текущим ценам из одного repeatable-read snapshot |
+| PUT `/stores/{storeId}/carts/{cartId}/items/{stockItemId}` | Полная замена количества позиции; body `{"quantity":3,"expectedCartVersion":0}` |
+| DELETE `/stores/{storeId}/carts/{cartId}/items/{stockItemId}?expectedCartVersion=1` | Удаление существующей позиции и новая версия корзины |
 
-TARIFFS сохраняет `GET /tariffs?all=true` и legacy CRUD процентных `tariffs` для старого STORE. Этот список читается из БД без задержки и кеша; он независим от новых `tariff_rules`. Изменение новых правил пока не меняет legacy приёмку STORE. `POST /api/v1/resetCache?now=true` — временный alias нового reset с прежним текстом ответа. Ни один reset не переоценивает уже сохранённые товары.
+После поставки примера WAREHOUSE:
+
+```shell
+curl --fail http://localhost:6789/stores/S-1/catalog
+curl --fail -X POST http://localhost:6789/stores/S-1/carts
+curl --fail -X PUT -H "Content-Type: application/json" -d '{"quantity":3,"expectedCartVersion":0}' http://localhost:6789/stores/S-1/carts/CART_UUID/items/STOCK_UUID
+```
+
+Подставьте cartId из POST и stockItemId из каталога. В PowerShell используйте `curl.exe`; правила quoting JSON зависят от версии shell. Не передавайте цены/суммы от клиента. PUT заменяет количество, не прибавляет к нему. Успешный PUT, даже с прежним количеством, и DELETE увеличивают version на 1. Устаревшая version → 409 CART_VERSION_CONFLICT; отсутствующая строка DELETE → 404 без изменения version. Количество больше текущего остатка → 409 INSUFFICIENT_STOCK. Чужой магазин/cart/stock → 404.
+
+Изменение корзины блокирует её строку, проверяет version и для PUT блокирует inventory. Остаток не меняется: при availableQuantity=5 две корзины могут независимо содержать по 5. Новая поставка может изменить цену OPEN-корзины, но не version её состава. Атомарное списание и повторная проверка остатка при submit появятся в задаче 6.
+
+Приход фиксирует receipt, inventory, движения и eventId одной транзакцией. STORE защищает eventId и `(storeId, deliveryId)` независимо: новый eventId того же нормализованного содержимого не создаёт второй приход. Изменённое содержимое и повторный deliverySequence другой поставки диагностируются без изменения остатка. Сначала берётся event advisory lock, затем строка магазина, затем затронутый inventory в порядке stockItemId. Приходы одного магазина сериализованы; это сознательная граница учебной реализации.
+
+Уникальный приход всегда добавляет quantity. Цена/имя/описание меняются только при большем неизменяемом deliverySequence WAREHOUSE. Поздняя старая поставка добавляет товар, сохраняя последнюю цену. Противоречивый productType одного productId, переполнение количества и превышение 1000 SKU отвергают весь приход. Строгий JSON, денежная формула HALF_UP и UTC-времена проверяются до применения. Некорректные сообщения сохраняются в `incoming_goods_diagnostics` по topic/partition/offset; сбой записи повторяется consumer без преждевременного offset commit. Лимит Kafka topic/fetch — 16 MiB.
+
+Каталог/корзина ограничены 1000 позициями, quantity — положительный int, version — безопасный JSON integer. Цена допускает 26 цифр целой части, сумма — 36. Изменение корзины с переполнением суммы откатывается с 400. Если последующая переоценка делает уже существующую OPEN-корзину непредставимой в формате v1, GET возвращает 503; удаление/уменьшение состава может восстановить допустимую сумму. Суммы не обрезаются и не преобразуются в double.
+
+Старые STORE endpoints, raw Product listener и TARIFFS `/tariffs?all=true`/процентный CRUD/`/api/v1/resetCache` удалены. Новая цепочка использует WAREHOUSE и fractional quote. HTML сохранён для адаптации в задаче 7 и сейчас несовместим с новым API. Submit, submission status и STORE sender пока недоступны.
 
 ## Тарифный API задачи 3
 
@@ -145,7 +161,7 @@ Quote требует положительную purchasePrice, только RUB 
 
 Плановый сброс — `0 0 0 * * *`, `Europe/Moscow`, через тот же reset. Redis read/write timeout — 500 ms, connect timeout — 500 ms. При отказе read/write quote возвращает результат PostgreSQL; при cache miss и отказе БД — 503 DEPENDENCY_UNAVAILABLE. Заполненный quote работает без доступной БД. Manual reset при отказе Redis возвращает 503; запланированный сбой логируется. Ответ 503 не доказывает, что команда reset не была исполнена позднее. Общий health при Redis outage может быть DOWN, readiness с доступной БД остаётся UP.
 
-Это компонент TARIFFS. WAREHOUSE задачи 4 использует quote для HALF_UP расчёта; применение GoodsPosted к остатку STORE относится к задаче 5.
+WAREHOUSE использует quote для HALF_UP расчёта; STORE применяет уже рассчитанный GoodsPosted без HTTP-вызова TARIFFS. Сброс кеша сам по себе не меняет цены inventory.
 
 ## Приёмка WAREHOUSE задачи 4
 
@@ -164,7 +180,7 @@ curl --fail -H "Content-Type: application/json" --data-binary @contracts/example
 curl --fail http://localhost:6791/stores/S-1/deliveries/D-1
 ```
 
-В PowerShell используйте `curl.exe`. Первый GET может вернуть 404 до приёмки Kafka, затем WAITING_PRICING и POSTED. HTML пока работает через legacy STORE; новое техническое API подключается к нему в задаче 7.
+В PowerShell используйте `curl.exe`. Первый GET может вернуть 404 до приёмки Kafka, затем WAITING_PRICING и POSTED. После POSTED отдельно дождитесь товара в STORE `/stores/S-1/catalog`: доставка между сервисами асинхронна. Техническое API подключается к HTML в задаче 7.
 
 Приёмка сохраняется одной короткой транзакцией. Для учебной версии PostgreSQL advisory lock сериализует ingress, защищая eventId и `(storeId, deliveryId)` даже при одновременных повторах. Новая поставка один раз увеличивает store-scoped deliverySequence и сохраняет receivedAt. Сравнение сортирует строки по lineId и JSON-ключи; eventId/occurredAt транспортной оболочки не входят в бизнес-fingerprint. Изменение имени, описания, количества, цены, типа или идентификаторов значимо. Новый eventId прежнего содержимого допустим; конфликт сохраняется в диагностике и не изменяет результат.
 
@@ -184,7 +200,7 @@ Pricing worker раз в 500 ms выбирает одну наступившую
 mvn -B -ntp test
 ```
 
-Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway, а для ORM-модулей Hibernate validate; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
+Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
 
 Историческая проверка задачи 2: на Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
 
@@ -196,10 +212,9 @@ Docker обязателен для интеграционных проверок
 mvn -pl contract-tests test
 ```
 
-CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Сквозной CI нового потока — задача 8; текущие CASES не объявляются пройденными по runtime health.
-Отдельный Compose smoke job собирает все три образа, проверяет health и сохранность записи/fixtures после пересоздания приложений; сохраняет логи как CI artifact.
+CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины и проверяет отсутствие резерва. После пересоздания приложений сверяет каталог, корзину, единственный приход/outbox и fixtures; сохраняет логи. Полный Kotlin E2E, включая submit и HTML, остаётся задачей 8.
 
-Kotlin E2E остаётся набором прежнего API, а не проверкой новой архитектуры. Его STORE JDBC defaults обновлены на store_db; переопределения: `STORE_DB_URL`, `STORE_DB_USER`, `STORE_DB_PASSWORD`. Для старого набора при запущенной среде:
+Kotlin E2E пока использует удалённый legacy API и не совместим с текущей версией. Перенос — задача 8; следующие команды станут проверкой новой архитектуры после переноса и восстановления wrapper:
 
 ```shell
 cd e2e-tests
@@ -214,3 +229,5 @@ cd e2e-tests
 Проверка задачи 3: `mvn -B -ntp test` — 138 тестов, 0 failures/errors/skipped, включая 63 HTTP/PostgreSQL/Redis сценария в `TariffApiTest`. Повторный модульный прогон после изменения readiness — 63/63. Нет утверждений о кеше на основании длительности запроса: проверки считают SQL-вызовы, сверяют snapshots, версии, TTL и данные Redis. Outage воспроизводится pause/unpause реальных контейнеров, каждый тест восстанавливает их в finally.
 
 Проверка задачи 4 (4 октября 2026): `mvn -B -ntp test` — **202 теста**, 0 failures/errors/skipped. WAREHOUSE: 62 `DeliveryIntegrationTest`, 2 `WarehouseRecoveryTest`, 2 runtime. После перехода WAREHOUSE на JDBC и исправления асинхронного ожидания lastError отдельный модульный прогон — **66/66**. Проверены реальные Kafka/PostgreSQL, HTTP WireMock, строгий вход, повторы/конкуренция, HALF_UP/overflow, автоматический retry и рестарт, rollback, storage failure без offset commit, Kafka outage и replay после потерянной отметки ack. Подробная привязка к CASES — в [покрытии](CASES.md). CI Compose smoke дополнен реальным TARIFFS pricing и проверкой одного POSTED/outbox после рестарта; удалённый результат указывается в PR после запуска.
+
+Проверка задачи 5 (4 октября 2026): `mvn -B -ntp test` — **268 тестов**, 0 failures/errors/skipped: 62 contract, 77 STORE (74 inventory/cart + 3 runtime), 63 TARIFFS, 66 WAREHOUSE. STORE использует реальные PostgreSQL/Kafka и HTTP: дубли/конфликты, порядок цен, независимость и version races корзин, согласованное конкурентное чтение, rollback, сохранение диагностики до Kafka offset commit, 1000 SKU и денежные границы. TARIFFS отдельно прошёл `mvn -B -ntp -pl tariffs-service clean test` — 63/63, включая отсутствие legacy endpoints. Удалены устаревшие STORE тесты прежней модели; исторические результаты выше не обозначают доступность старого API. CI Compose smoke проверяет новую цепочку до корзин; результат удалённого запуска указывается в PR.

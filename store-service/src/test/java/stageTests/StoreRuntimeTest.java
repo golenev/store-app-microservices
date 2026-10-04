@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 @ActiveProfiles("test")
 @SpringBootTest(classes = StoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.kafka.listener.auto-startup=false", "spring.kafka.admin.auto-create=false"})
+        properties = {"store.listener.enabled=false", "spring.kafka.admin.auto-create=false"})
 class StoreRuntimeTest {
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -42,14 +42,15 @@ class StoreRuntimeTest {
         registry.add("spring.datasource.password", () -> "store_local");
     }
 
-    /** A clean database receives V1 once; migrating again preserves a stored order and reports no work. */
+    /** V1/V2 preserve legacy data and create new scopes once; repeat migration neither rewrites data nor fixtures. */
     @Test
     void migrationIsRepeatableWithoutDestroyingData() {
         assertThat(jdbc.queryForObject("select current_user", String.class)).isEqualTo("store_app");
         jdbc.update("insert into orders(id,created_at,order_sum,items) values(42,now(),1.00,'[]'::jsonb)");
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject("select count(*) from orders where id=42", Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForList("SELECT store_id FROM store_scopes ORDER BY store_id", String.class)).containsExactly("S-1", "S-2");
     }
 
     /** Each role connects only to its own database; other service and maintenance databases reject it. */

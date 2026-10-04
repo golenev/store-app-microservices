@@ -1,6 +1,6 @@
 # Ключевые сквозные сценарии
 
-Статус: спецификация целевого поведения. Задачи 1–3 проверили контракты, runtime и TARIFFS. Задача 4 реализует и проверяет WAREHOUSE: приёмку Kafka, pricing, автоматическое восстановление и GoodsPosted outbox. Покрытые части перечислены ниже. Применение GoodsPosted в STORE, новые корзины и оформление заказа ещё не реализованы; полный сквозной сценарий не объявляется выполненным по успеху отдельного сервиса.
+Статус: спецификация целевого поведения. Задачи 1–4 проверили контракты, runtime, TARIFFS и WAREHOUSE. Задача 5 реализует приход GoodsPosted, inventory и независимые OPEN-корзины STORE. Покрытые части перечислены ниже. Оформление заявки и STORE outbox ещё не реализованы; полный сквозной сценарий не объявляется выполненным по успеху отдельного сервиса. HTML и старый Kotlin E2E пока несовместимы с новым API.
 
 Согласованные решения: `docs/implementation-plan.md`. Правила реализации: `AGENTS.md`.
 
@@ -99,6 +99,8 @@
 
 ## Проверки runtime задачи 2
 
+Это историческое покрытие этапа 2. В задаче 5 legacy ProductFlow/unit-тесты удалены вместе с прежней моделью; актуальные STORE-проверки приведены ниже.
+
 Исторический результат PR #38. `TariffServiceCacheTest` существовал в этом PR; в задаче 3 его заменил `TariffApiTest`, искусственные задержки и legacy cache удалены.
 
 Это подготовка окружения, а не выполнение CASES-01–34. WAREHOUSE пока не обрабатывает поставки; legacy STORE не списывает остаток при оформлении.
@@ -134,7 +136,7 @@ Infrastructure-only запуск: `docker compose up -d --wait`; все три �
 | CASES-13: тарифная часть | `redisOutageFallsBackToDatabaseAndResetReturns503`, `databaseOutageOnCacheMissReturns503`, `cachedQuoteSurvivesDatabaseOutage` | Без Redis quote вычисляется через БД, reset возвращает 503, readiness остаётся 200. Без БД cache miss возвращает 503, cache hit работает. WAITING_PRICING относится к задаче 4. |
 | CRUD / конкуренция | `crudUsesVersionedFullReplacementAndExplicitNullUpperBound`, `concurrentUpdatesIncrementVersionTwice`, `creationRespectsTheCatalogLimit`, `concurrentCreatesCannotExceedCatalogLimit` | UUID, версия 1 и атомарное увеличение, явный nullable upperBound, лимит 1000 правил даже при конкурентном создании последнего места. |
 | Валидация / изоляция | `invalidQuotePrices`, `invalidDimensionsAndIdentifiers`, `invalidRuleValues`, `malformedRuleJson`, `invalidReplacementDoesNotChangeTheRule`, `databaseRejectsInvalidBounds`, `cityAndProductTypeAreSeparateCacheDimensions`, `malformedCacheEntryIsRecomputed` | Ошибочные деньги, диапазоны, UUID, типы, неизвестные/повторные поля отклоняются; invalid PUT не меняет правило; ключ включает город, тип, валюту и цену. Повреждённый JSON кеша пересчитывается. |
-| Миграции / совместимость | `migrationsPreserveFixturesAndHealth`, `legacyStoreEndpointsRemainOperationalWithoutDelayOrLegacyCache`, `routingErrorsDoNotBecomeServerErrors` | V1–V4 повторно не меняют данные; семь legacy тарифов доступны старому STORE без искусственного sleep. Legacy таблица и новые правила независимы до задачи 5. |
+| Миграции / совместимость (история задачи 3) | `migrationsPreserveFixturesAndHealth`, прежний `legacyStoreEndpointsRemainOperationalWithoutDelayOrLegacyCache`, `routingErrorsDoNotBecomeServerErrors` | В задаче 3 семь legacy тарифов были доступны старому STORE. В задаче 5 прежний compatibility-тест заменён на `legacyStoreEndpointsAreRemoved`: старые endpoints возвращают 404, семь исторических DB fixtures сохранены. |
 
 CI Compose smoke дополнен HTTP-сценарием: создать правило → quote v1 → PUT v2 → получить прежний cached quote → reset → получить quote v2 → удалить правило. После рестарта проверяется сохранность 14 новых и 7 legacy fixtures. Результат удалённого запуска указывается в PR после выполнения; наличие workflow само по себе не считается успешным запуском.
 
@@ -163,3 +165,26 @@ CI Compose smoke дополнен HTTP-сценарием: создать пра
 | Лимиты / scope / миграции | DeliveryIntegrationTest: `thousandLineDeliveryTraversesKafkaWithoutTruncation`, `exhaustedStoreSequenceIsDiagnosedWithoutOverflow`, `statusApiValidatesScopeAndErrors`; WarehouseRuntimeTest: `fixturesSurviveRepeatedMigration`, `healthIsUp` | Более 1 MB / 1000 строк проходит через Kafka без усечения, 1001 отклоняется; sequence не переполняется; GET не смешивает магазины; ошибки имеют безопасный UTC формат; V1–V3 повторно не меняют fixtures. |
 
 CI Compose smoke дополнен настоящей цепочкой технический publisher → Kafka → WAREHOUSE → TARIFFS → POSTED/outbox PUBLISHED. Повторяется исходное событие, затем приложения пересоздаются с прежней БД; GET и SQL проверяют один результат/outbox и прежнюю цену. Результат удалённого source-build прогона указывается в PR после выполнения. Это проверка поставки до границы WAREHOUSE, не полный CASES-01 с inventory STORE.
+
+## Проверки STORE задачи 5
+
+Проверено 4 октября 2026 года: `mvn -B -ntp test` — **268 тестов, 0 failures/errors/skipped**. STORE: 74 `store-service/src/test/java/stageTests/InventoryCartIntegrationTest.java` и 3 `StoreRuntimeTest`. Фокусированный запуск: `mvn -B -ntp -pl store-service test`. Реальные PostgreSQL 16/Kafka, HTTP random port; уникальные магазины и UUID для каждого сценария. Прямой вызов receiver применяется для отдельных транзакционных инвариантов, реальный Kafka consumer — для доставки, большого сообщения и проверки offset. Сбои SQL воспроизводятся только внутри тестового контейнера.
+
+| CASES / инвариант | Методы InventoryCartIntegrationTest | Проверенный результат и граница |
+| --- | --- | --- |
+| CASES-01: STORE | `kafkaReceiptAndPublicCartApiWorkTogether` | GoodsPosted проходит настоящую Kafka, появляется одна позиция по 120.00; HTTP создаёт корзину и меняет её состав без расхода. WAREHOUSE/TARIFFS не запускаются в этом module integration. |
+| CASES-03/27: приход | `duplicateBusinessPayloadWithNewEventNeverAddsStockTwice` | Прежний eventId и новый eventId идентичной поставки дают один приход. Порядок строк, scale наценки и текстовая точность одного Instant не создают новые бизнес-данные. |
+| CASES-04: STORE | `changedContentCannotOverwriteReceipt`, `eventIdCannotChangeStoreOwnership`, `sequenceCannotBelongToTwoDeliveries`, `inconsistentTypeRejectsWholeNewDelivery` | Значимые изменения прежней поставки/eventId сохраняют диагностику; stock/movements неизменны. Конфликт типа или sequence отвергает всю новую поставку. |
+| CASES-05/32: STORE ingress | `invalidGoodsAreDiagnosedWithoutStock`, `consumerOffsetWaitsForDiagnosticCommit` | 28 отрицательных вариантов, включая tombstone, malformed/duplicate/unknown JSON, неверный key, финансовую формулу и дубли продукта/строки. Consumer повторяет ошибку записи диагностики; offset продвигается только после durable commit. WAREHOUSE REJECTED проверяется отдельно в задаче 4. |
+| CASES-08/28: открытая корзина | `replenishmentKeepsSkuAndRepricesAllRemainingUnits` | 6 по 120.00 + 10 по 144.00 → прежний stockItemId, quantity=16, цена/метаданные последней поставки. OPEN-корзина читает новую цену без изменения version. Snapshot submit ещё отсутствует. |
+| CASES-09 | `delayedOlderDeliveryPreservesLatestSequencePrice` | Поздний уникальный старый приход увеличивает количество, сохраняя цену и метаданные большего sequence; повтор не добавляет количество. |
+| Конкурентный приход / rollback | `concurrentReceiptsAndDuplicatesHaveOneSku`, `movementFailureRollsBackReceiptAndQuantity`, `quantityOverflowIsAtomic` | Две уникальные поставки и конкурентный дубль дают один SKU и точный баланс. SQL failure движения/переполнение не оставляют частичного receipt, processed event или stock. После устранения сбоя повтор успешно применяется. |
+| CASES-14 | `independentCartsNeverReserveInventory` | Две корзины содержат по 5 при остатке 5; попытка заменить свою позицию на 6 даёт 409 без изменения version/состава. |
+| CASES-15 | `concurrentCartPutsHaveOneVersionWinner`, `concurrentCartReadsNeverMixHeaderAndComposition`, `replacementAndDeletionUseExpectedVersion` | У конкурентных PUT одной версии ровно один победитель. GET при заменах показывает согласованные version/quantity; PUT заменяет количество, даже повтор прежнего значения увеличивает version. DELETE отсутствующей строки или stale version не меняет корзину. |
+| CASES-20: редактирование | `closedAndExhaustedCartsCannotMutate` | SQL fixture закрытой корзины/исчерпанной version не допускает изменения. Публичный submit и чтение принятого snapshot относятся к задаче 6. |
+| CASES-23: каталог/корзина | `storesAndCartsAreIsolated`, `eventIdCannotChangeStoreOwnership` | Чужой cart/stock не доступен в API магазина; одинаковые productId разных магазинов создают отдельные позиции. Submission scope ещё не реализован. |
+| Quantity=0 / JSON / rollback | `zeroStockRemainsVisibleAndCannotBeAdded`, `invalidCartJsonNeverChangesState`, `cartStorageFailureRollsBackCompositionAndVersion` | Нулевой остаток виден, PUT положительного количества отвергается; удалить существующую строку можно. Невалидный JSON и storage failure откатывают состав/version. Нулевой остаток пока задаётся fixture, не покупкой. |
+| Лимиты v1 | `catalogLimitIsEnforcedWithoutTruncatingKafkaMessage`, `aggregateMoneyLimitRejectsMutationAtomically` | Реальное многомегабайтное Kafka-сообщение с 1000 SKU проходит; 1001 SKU отвергается атомарно. Выход суммы за 36 цифр не сохраняет новую строку/version. |
+| Legacy / runtime | `removedLegacyRoutesAndInvalidPathsCannotBypassNewModel`; StoreRuntimeTest | Старые purchase/auth/raw-product endpoints отсутствуют; ошибки безопасны. V1/V2 повторно не изменяют legacy marker и S-1/S-2. TARIFFS `legacyStoreEndpointsAreRemoved` подтверждает отсутствие старых процентных API при сохранении исторических fixtures. |
+
+В `.github/workflows/product-flow-test.yml` Compose smoke расширен до настоящей цепочки DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → каталог STORE. Две HTTP-корзины независимо получают весь доступный остаток, inventory остаётся прежним. После пересоздания приложений сохранены каталог, корзина и единственное приходное движение. Результат удалённого запуска приводится в PR после выполнения. Это сквозная проверка поставки/корзин; CASES-16–19/21–22/24/29–31 и STORE-части outbox ещё ожидают задачи 6–8.

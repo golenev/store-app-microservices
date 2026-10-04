@@ -2,7 +2,7 @@
 
 Дата согласования: 3 октября 2026 года.
 
-Статус: задачи 1–3 включены в master через PR #37–39. Задача 4 реализована в codex/warehouse-deliveries: приёмка, сохраняемый автоматический pricing, GoodsPosted outbox и техническое API. Локально reactor 202/202, итоговый WAREHOUSE JDBC прогон 66/66. Задачи 5–8 ещё не реализованы. Следующая ветка создаётся после merge задачи 4.
+Статус: задачи 1–4 включены в master через PR #37–40. Задача 5 реализована в `codex/store-inventory-carts`: приход GoodsPosted, inventory, независимые versioned OPEN-корзины, удаление legacy API STORE/TARIFFS и прежней авторизации. Задачи 6–8 ещё не реализованы. Следующая ветка создаётся после merge задачи 5.
 
 ## 1. Зафиксированные решения
 
@@ -144,6 +144,8 @@ Remote default branch сейчас: master. Рабочая ветка при п�
 ### Задача 5. Единый остаток STORE и независимые корзины
 
 Ветка: `codex/store-inventory-carts`. Зависит от задачи 4.
+
+Реализовано: Flyway V2 с отдельной моделью inventory/приходов/корзин, атомарная дедупликация GoodsPosted, последняя цена по deliverySequence, scoped REST и expectedCartVersion без резерва. Удалены raw Product, legacy STORE/TARIFFS endpoints и авторизация; исторические миграции/таблицы и HTML сохранены. Все сервисы используют JDBC. Проверка 4 октября 2026: полный reactor 268/268 (STORE 77/77), отдельный TARIFFS clean test 63/63. Compose CI расширен поставкой до STORE, независимыми корзинами и сохранностью после рестарта. Submit/outgoing outbox и адаптация HTML остаются следующими задачами.
 
 Результат:
 
