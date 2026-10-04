@@ -9,6 +9,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.qameta.allure.AllureId
 import io.qameta.allure.Epic
 import io.qameta.allure.Feature
 import org.golenev.commondto.Cart
@@ -61,7 +62,7 @@ class HtmlE2ETest {
         }
     }
     /** Новая поставка меняет цену открытой корзины. После оформления ещё одна поставка не должна изменить принятую сумму. */
-    @Test @io.qameta.allure.AllureId("150") @DisplayName("Открытая корзина обновляет цену, принятая заявка сохраняет снимок")
+    @Test @AllureId("150") @DisplayName("Открытая корзина обновляет цену, принятая заявка сохраняет снимок")
     fun priceSnapshot() {
         val product = createdProductId
         step("Готовим поставку пяти единиц товара $product по закупочной цене 100 рублей") {
@@ -114,7 +115,7 @@ class HtmlE2ETest {
     }
 
     /** После настоящего принятия Selenide подменяет JSON ответа повреждённым телом. Перезагрузка повторяет исходные ключ и версию; расход остаётся один. */
-    @Test @io.qameta.allure.AllureId("151") @DisplayName("Нечитаемый ответ оформления: перезагрузка повторяет исходный запрос")
+    @Test @AllureId("151") @DisplayName("Нечитаемый ответ оформления: перезагрузка повторяет исходный запрос")
     fun lostResponse() {
         val product = prepareCartTemplate()
         val path = step("Получаем текущую корзину покупателя") {
@@ -151,7 +152,7 @@ class HtmlE2ETest {
     }
 
     /** Встроенный прокси Selenide заменяет настоящий ответ 202 на 503 после фиксации заявки. Кнопка повтора сохраняет исходный запрос и один расход. */
-    @Test @io.qameta.allure.AllureId("152") @DisplayName("503 после принятия: кнопка повтора сохраняет ключ и тело запроса")
+    @Test @AllureId("152") @DisplayName("503 после принятия: кнопка повтора сохраняет ключ и тело запроса")
     fun ambiguous503() {
         val product = prepareCartTemplate()
         val path = step("Получаем текущую корзину покупателя") {
@@ -186,7 +187,7 @@ class HtmlE2ETest {
     }
 
     /** Фильтр Selenide возвращает 503 до передачи POST в STORE. Фильтр отклоняет только первый запрос; перезагрузка оформляет исходную операцию один раз, а фильтр удаляется после теста. */
-    @Test @io.qameta.allure.AllureId("153") @DisplayName("Отказ до принятия: перезагрузка оформляет один раз с исходным ключом")
+    @Test @AllureId("153") @DisplayName("Отказ до принятия: перезагрузка оформляет один раз с исходным ключом")
     fun lostRequest() {
         val product = prepareCartTemplate()
         val path = step("Получаем текущую корзину покупателя") {
@@ -225,7 +226,7 @@ class HtmlE2ETest {
     }
 
     /** Другой клиент меняет корзину после загрузки UI. Устаревшее оформление обновляет состав перед следующей попыткой. */
-    @Test @io.qameta.allure.AllureId("154") @DisplayName("Конфликт версии обновляет корзину перед следующим оформлением")
+    @Test @AllureId("154") @DisplayName("Конфликт версии обновляет корзину перед следующим оформлением")
     fun versionConflict() {
         val product = prepareCartTemplate()
         val cart = step("Получаем текущую корзину покупателя") {
@@ -252,7 +253,7 @@ class HtmlE2ETest {
     }
 
     /** Название и описание содержат текст HTML-скрипта. Браузер должен показать его буквально, без создания тегов и исполнения. */
-    @Test @io.qameta.allure.AllureId("155") @DisplayName("Название и описание товара отображаются текстом без исполнения HTML")
+    @Test @AllureId("155") @DisplayName("Название и описание товара отображаются текстом без исполнения HTML")
     fun safeRendering() {
         val product = createdProductId
         val name = "<img src=x onerror=\"window.compromised=true\">"
@@ -275,7 +276,7 @@ class HtmlE2ETest {
     }
 
     /** Цена превышает точность целых чисел JavaScript. Рассчитанная сервером сумма должна отображаться точной десятичной строкой. */
-    @Test @io.qameta.allure.AllureId("156") @DisplayName("Большая денежная сумма отображается без потери точности")
+    @Test @AllureId("156") @DisplayName("Большая денежная сумма отображается без потери точности")
     fun exactLargeMoney() {
         val product = createdProductId
         step("Готовим поставку товара $product с большой закупочной ценой") {
@@ -302,7 +303,7 @@ class HtmlE2ETest {
     }
 
     /** После публикации поставки прокси Selenide подменяет JSON ответа. Перезагрузка сохраняет всё событие; новый eventId той же поставки служит границей обработки повтора. */
-    @Test @io.qameta.allure.AllureId("157") @DisplayName("Перезагрузка поставщика сохраняет событие и не удваивает приход")
+    @Test @AllureId("157") @DisplayName("Перезагрузка поставщика сохраняет событие и не удваивает приход")
     fun supplierRetry() {
         val product = createdProductId
         step("Заполняем поставку семью единицами товара") {
@@ -347,7 +348,7 @@ class HtmlE2ETest {
     }
 
     /** В одном браузере переключаются S-1 и S-2. Корзина второго магазина пуста, а возврат восстанавливает состав первого. */
-    @Test @io.qameta.allure.AllureId("158") @DisplayName("Переключение магазина сохраняет независимую корзину каждого магазина")
+    @Test @AllureId("158") @DisplayName("Переключение магазина сохраняет независимую корзину каждого магазина")
     fun storesAndPages() {
         prepareCartTemplate()
         val firstCart = step("Получаем текущую корзину покупателя") {
@@ -366,7 +367,7 @@ class HtmlE2ETest {
     }
 
     /** Сохранённые страницы обращаются к scoped API без авторизации. Запросы наблюдает встроенный прокси Selenide. */
-    @Test @io.qameta.allure.AllureId("159") @DisplayName("Сохранённые HTML-страницы используют новые API без авторизации")
+    @Test @AllureId("159") @DisplayName("Сохранённые HTML-страницы используют новые API без авторизации")
     fun preservedPages() {
         step("Открываем главную страницу магазина") { Selenide.open("/index.html") }
         val requests = interceptPageRequests(getSelenideProxy()) {
@@ -388,7 +389,7 @@ class HtmlE2ETest {
     }
 
     /** Наполненная корзина отображается в области шириной 390 CSS-пикселей. Горизонтальная прокрутка не должна появиться. */
-    @Test @io.qameta.allure.AllureId("160") @DisplayName("Мобильная корзина помещается в viewport 390 пикселей")
+    @Test @AllureId("160") @DisplayName("Мобильная корзина помещается в viewport 390 пикселей")
     fun mobileLayout() {
         DriverConfig().setup(Environment.STORE_URL, mobile = true)
         prepareCartTemplate()

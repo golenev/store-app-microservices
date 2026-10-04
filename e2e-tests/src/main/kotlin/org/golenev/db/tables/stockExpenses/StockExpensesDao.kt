@@ -12,7 +12,12 @@ object StockExpensesDao {
     /** Считает движения расхода конкретного продукта; единственность расхода проверяет тест. */
     fun countByProductId(productId: String): Long {
         return dbStoreExec {
-            StockExpensesTable.join(InventoryTable, JoinType.INNER, StockExpensesTable.stockItemId, InventoryTable.stockItemId)
+            StockExpensesTable.join(
+                otherTable = InventoryTable,
+                joinType = JoinType.INNER,
+                onColumn = StockExpensesTable.stockItemId,
+                otherColumn = InventoryTable.stockItemId
+            )
                 .selectAll().where { InventoryTable.productId eq productId }.count()
         }
     }
@@ -21,8 +26,13 @@ object StockExpensesDao {
     fun sumQuantityByProductId(productId: String): Int? {
         return dbStoreExec {
             val total = StockExpensesTable.quantity.sum()
-            StockExpensesTable.join(InventoryTable, JoinType.INNER, StockExpensesTable.stockItemId, InventoryTable.stockItemId)
-                .select(total).where { InventoryTable.productId eq productId }.map { it[total] }.singleOrNull()
+            StockExpensesTable.join(
+                otherTable = InventoryTable,
+                joinType = JoinType.INNER,
+                onColumn = StockExpensesTable.stockItemId,
+                otherColumn = InventoryTable.stockItemId
+            )
+                .select(column = total).where { InventoryTable.productId eq productId }.map { it[total] }.singleOrNull()
         }
     }
 

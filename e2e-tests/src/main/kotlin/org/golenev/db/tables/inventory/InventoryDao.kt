@@ -11,7 +11,12 @@ object InventoryDao {
     fun findByStoreId(storeId: String): List<InventoryRow> {
         return dbStoreExec {
             InventoryTable.selectAll().where { InventoryTable.storeId eq storeId }.map {
-                InventoryRow(it[InventoryTable.stockItemId], it[InventoryTable.storeId], it[InventoryTable.productId], it[InventoryTable.availableQuantity])
+                InventoryRow(
+                    stockItemId = it[InventoryTable.stockItemId],
+                    storeId = it[InventoryTable.storeId],
+                    productId = it[InventoryTable.productId],
+                    availableQuantity = it[InventoryTable.availableQuantity]
+                )
             }
         }
     }
@@ -20,7 +25,12 @@ object InventoryDao {
     fun findByProductId(productId: String): List<InventoryRow> {
         return dbStoreExec {
             InventoryTable.selectAll().where { InventoryTable.productId eq productId }.map {
-                InventoryRow(it[InventoryTable.stockItemId], it[InventoryTable.storeId], it[InventoryTable.productId], it[InventoryTable.availableQuantity])
+                InventoryRow(
+                    stockItemId = it[InventoryTable.stockItemId],
+                    storeId = it[InventoryTable.storeId],
+                    productId = it[InventoryTable.productId],
+                    availableQuantity = it[InventoryTable.availableQuantity]
+                )
             }
         }
     }

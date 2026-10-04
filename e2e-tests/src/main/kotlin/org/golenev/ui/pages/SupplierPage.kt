@@ -3,7 +3,9 @@ package org.golenev.ui.pages
 import com.codeborne.selenide.Condition.*
 import com.codeborne.selenide.Selenide
 import com.codeborne.selenide.Selenide.`$`
+import com.codeborne.selenide.SelenideWait
 import com.codeborne.selenide.WebDriverRunner
+import io.qameta.allure.Step
 import org.golenev.ui.allure.name
 import java.time.Duration
 
@@ -20,24 +22,24 @@ class SupplierPage {
     private val result = `$`("#delivery-result").name("Результат приёмки поставки")
 
     /** Открывает форму поставщика и ждёт её готовность, без фиксированной паузы запуска. */
-    @io.qameta.allure.Step("Открываем страницу и ожидаем готовность")
+    @Step("Открываем страницу и ожидаем готовность")
     fun open() {
         Selenide.open("/send-to-kafka.html")
         form.shouldBe(visible)
-        com.codeborne.selenide.SelenideWait(WebDriverRunner.getWebDriver(), 30000, 100).until {
+        SelenideWait(WebDriverRunner.getWebDriver(), 30000, 100).until {
             submit.isEnabled || fresh.isEnabled
         }
     }
 
     /** Явно начинает следующую поставку, не меняя её идентификатор незаметно во время заполнения формы. */
-    @io.qameta.allure.Step("Начинаем новую поставку")
+    @Step("Начинаем новую поставку")
     fun newDelivery() {
         fresh.shouldBe(visible, enabled).click()
         submit.shouldBe(enabled)
     }
 
     /** Заполняет готовую форму корректными данными поставки и проверяет введённые значения. */
-    @io.qameta.allure.Step("Заполняем товар {productId}, количество {count}, закупочная цена {purchasePrice}")
+    @Step("Заполняем товар {productId}, количество {count}, закупочная цена {purchasePrice}")
     fun fill(productId: String, count: Int, purchasePrice: String, shortName: String, details: String) {
         product.shouldBe(enabled).setValue(productId).shouldHave(value(productId))
         productName.setValue(shortName).shouldHave(value(shortName))
@@ -47,25 +49,25 @@ class SupplierPage {
     }
 
     /** Отправляет текущее неизменяемое событие через настоящий API WAREHOUSE. */
-    @io.qameta.allure.Step("Отправляем заполненную поставку")
+    @Step("Отправляем заполненную поставку")
     fun send() {
         submit.shouldBe(visible, enabled).click()
     }
 
     /** Перезагружает ту же вкладку, чтобы приложение повторило сохранённое событие поставки. */
-    @io.qameta.allure.Step("Перезагружаем страницу с сохранённой операцией")
+    @Step("Перезагружаем страницу с сохранённой операцией")
     fun reload() {
         Selenide.refresh()
     }
 
     /** Проверяет неизвестный результат отправки перед перезагрузкой сохранённой операции поставщика. */
-    @io.qameta.allure.Step("Проверяем сообщение о неизвестном результате операции")
+    @Step("Проверяем сообщение о неизвестном результате операции")
     fun checkUnknownOutcome() {
         result.shouldHave(text("Результат отправки неизвестен"))
     }
 
     /** Ждёт настоящее состояние POSTED в WAREHOUSE после повтора. Приход в STORE проверяется отдельно. */
-    @io.qameta.allure.Step("Проверяем оприходование поставки")
+    @Step("Проверяем оприходование поставки")
     fun checkPosted() {
         result.shouldHave(text("POSTED — цена рассчитана"), Duration.ofSeconds(40))
     }

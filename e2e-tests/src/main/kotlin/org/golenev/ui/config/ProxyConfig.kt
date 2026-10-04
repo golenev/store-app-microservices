@@ -102,7 +102,7 @@ fun interceptSubmissionKeys(
     endpoint: String,
     run: () -> Unit,
 ): List<String?> {
-    val keys = java.util.concurrent.CopyOnWriteArrayList<String?>()
+    val keys = CopyOnWriteArrayList<String?>()
     val filterName = UUID.randomUUID().toString()
     proxyServer.addRequestFilter(filterName) { request, _, info ->
         if (info.url.endsWith(endpoint) && request.method().name() == "POST") {
