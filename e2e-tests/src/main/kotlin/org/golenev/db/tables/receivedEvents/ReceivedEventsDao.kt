@@ -1,14 +1,21 @@
 package org.golenev.db.tables.receivedEvents
 
+import java.util.UUID
 import org.golenev.db.dbWarehouseExec
 import org.jetbrains.exposed.sql.selectAll
-import java.util.*
 
-/** Явные запросы ReceivedEvents через Exposed; DAO возвращает данные без проверок тестовых инвариантов. */
+/** Доступ к строкам ReceivedEventsTable; подсчёты и проверки выполняет вызывающий тест. */
 object ReceivedEventsDao {
-
-    /** Считает обработанное событие по eventId; ожидание результата выполняется в тесте. */
-    fun countByEventId(eventId: String): Long {
-        return dbWarehouseExec { ReceivedEventsTable.selectAll().where { ReceivedEventsTable.eventId eq UUID.fromString(eventId) }.count() }
+    /** Читает события по eventId; некорректный UUID передаёт ошибку вызывающему тесту. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByEventId(eventId: String): List<ReceivedEventsRow> {
+        return dbWarehouseExec {
+            ReceivedEventsTable.selectAll().where { ReceivedEventsTable.eventId eq UUID.fromString(eventId) }.map {
+                ReceivedEventsRow(
+                    storeId = it[ReceivedEventsTable.storeId],
+                    deliveryId = it[ReceivedEventsTable.deliveryId],
+                    eventId = it[ReceivedEventsTable.eventId]
+                )
+            }
+        }
     }
 }

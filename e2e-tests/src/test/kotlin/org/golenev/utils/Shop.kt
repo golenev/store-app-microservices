@@ -151,10 +151,10 @@ object Shop {
         }
     }
 
-    /** Читает сохранённое неизменяемое исходящее событие. Оно служит исходным снимком для проверки повторов и сохранности данных. */
+    /** Читает сохранённое событие поставки event и требует ровно одну строку outbox. Отсутствие или дубли завершают проверку ошибкой; событие служит исходным снимком для проверки повторов. */
     @Step("Читаем сохранённое событие прихода")
     fun goods(event: DeliveryReceived): GoodsPosted {
-        val raw = WarehouseOutboxDao.findPayloadByDeliveryId(event.storeId, event.payload.deliveryId).shouldNotBeNull()
+        val raw = WarehouseOutboxDao.findByDeliveryId(event.storeId, event.payload.deliveryId).single().payload
         return JsonUtils.objectMapper.readValue(raw)
     }
 

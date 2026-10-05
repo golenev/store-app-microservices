@@ -109,8 +109,9 @@ class HtmlE2ETest {
             stock.unitPrice.shouldBe("360.00")
             catalogPage.open()
             catalogPage.checkTotal("480.00")
-            StockExpensesDao.countByProductId(product).shouldBe(1L)
-            (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(2)
+            val expenses = StockExpensesDao.findByProductId(product)
+            expenses.size.shouldBe(1)
+            expenses.sumOf { it.quantity }.shouldBe(2)
         }
     }
 
@@ -140,8 +141,9 @@ class HtmlE2ETest {
             step("Проверяем повтор исходного оформления и единственное списание") {
                 (JsonUtils.objectMapper.readValue<SubmitCart>(originalBody)).shouldBe(SubmitCart(1))
                 repeatedBody.shouldBe(originalBody)
-                (StockExpensesDao.countByProductId(product)).shouldBe(1L)
-                (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(1)
+                val expenses = StockExpensesDao.findByProductId(product)
+                expenses.size.shouldBe(1)
+                expenses.sumOf { it.quantity }.shouldBe(1)
             }
         }
         step("Проверяем сохранение ключа оформления при повторе") {
@@ -175,8 +177,9 @@ class HtmlE2ETest {
             }
             step("Проверяем повтор исходного оформления и единственное списание") {
                 repeatedBody.shouldBe(originalBody)
-                (StockExpensesDao.countByProductId(product)).shouldBe(1L)
-                (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(1)
+                val expenses = StockExpensesDao.findByProductId(product)
+                expenses.size.shouldBe(1)
+                expenses.sumOf { it.quantity }.shouldBe(1)
             }
         }
         step("Проверяем сохранение ключа оформления при повторе") {
@@ -203,8 +206,9 @@ class HtmlE2ETest {
                 step("Проверяем неизвестный результат и отсутствие списания товара") {
                     catalogPage.checkUnknownOutcome()
                     (Shop.stock(scope, product).shouldNotBeNull().availableQuantity).shouldBe(5)
-                    (StockExpensesDao.countByProductId(product)).shouldBe(0L)
-                    (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(0)
+                    val expenses = StockExpensesDao.findByProductId(product)
+                    expenses.size.shouldBe(0)
+                    expenses.sumOf { it.quantity }.shouldBe(0)
                 }
             }
             val repeatedBody = interceptRequestBody(proxy, path) {
@@ -214,8 +218,9 @@ class HtmlE2ETest {
             step("Проверяем повтор исходного оформления и единственное списание") {
                 repeatedBody.shouldBe(originalBody)
                 (Shop.stock(scope, product).shouldNotBeNull().availableQuantity).shouldBe(4)
-                (StockExpensesDao.countByProductId(product)).shouldBe(1L)
-                (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(1)
+                val expenses = StockExpensesDao.findByProductId(product)
+                expenses.size.shouldBe(1)
+                expenses.sumOf { it.quantity }.shouldBe(1)
             }
         }
         step("Проверяем сохранение ключа оформления при повторе") {
@@ -240,15 +245,17 @@ class HtmlE2ETest {
             catalogPage.checkError("Корзина изменилась")
             catalogPage.checkTotal("240.00")
             (Shop.stock(scope, product).shouldNotBeNull().availableQuantity).shouldBe(5)
-            (StockExpensesDao.countByProductId(product)).shouldBe(0L)
-            (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(0)
+            val expenses = StockExpensesDao.findByProductId(product)
+            expenses.size.shouldBe(0)
+            expenses.sumOf { it.quantity }.shouldBe(0)
         }
         step("Оформляем обновлённую корзину") { catalogPage.submit() }
         step("Проверяем передачу заявки и списание обновлённого количества") {
             catalogPage.checkPublished()
             (Shop.stock(scope, product).shouldNotBeNull().availableQuantity).shouldBe(3)
-            (StockExpensesDao.countByProductId(product)).shouldBe(1L)
-            (StockExpensesDao.sumQuantityByProductId(product) ?: 0).shouldBe(2)
+            val expenses = StockExpensesDao.findByProductId(product)
+            expenses.size.shouldBe(1)
+            expenses.sumOf { it.quantity }.shouldBe(2)
         }
     }
 
@@ -340,10 +347,10 @@ class HtmlE2ETest {
         }
         step("Проверяем сохранённый результат и отсутствие повторного движения товара") {
             awaitPoll {
-                (ReceivedEventsDao.countByEventId(marker.eventId).toString()).shouldBe("1")
+                (ReceivedEventsDao.findByEventId(marker.eventId).size).shouldBe(1)
             }
             (Shop.stock(scope, product).shouldNotBeNull().availableQuantity).shouldBe(7)
-            (StockReceiptsDao.countByDeliveryId("S-1", envelope.payload.deliveryId).toString()).shouldBe("1")
+            (StockReceiptsDao.findByDeliveryId("S-1", envelope.payload.deliveryId).size).shouldBe(1)
         }
     }
 

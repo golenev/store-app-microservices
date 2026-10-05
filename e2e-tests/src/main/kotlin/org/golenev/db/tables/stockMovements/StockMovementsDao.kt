@@ -1,24 +1,34 @@
 package org.golenev.db.tables.stockMovements
 
+import java.util.UUID
 import org.golenev.db.dbStoreExec
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.sum
-import java.util.*
 
-/** Типизированные наблюдения stock_movements в отдельной транзакции STORE. */
+/** Доступ к строкам StockMovementsTable; подсчёты и проверки выполняет вызывающий тест. */
 object StockMovementsDao {
-    /** Считает зафиксированные строки своего магазина; нулевое количество возвращается явно. */
-    fun countByStoreId(storeId: String): Long {
-        return dbStoreExec { StockMovementsTable.selectAll().where { StockMovementsTable.storeId eq storeId }.count() }
-    }
-
-    /** Возвращает сумму количества по позиции остатка либо null при отсутствии движений. */
-    fun sumQuantityByStockItemId(stockItemId: UUID): Int? {
+    /** Читает приходные движения магазина storeId. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStoreId(storeId: String): List<StockMovementsRow> {
         return dbStoreExec {
-            val total = StockMovementsTable.quantity.sum()
-            StockMovementsTable.select(total).where { StockMovementsTable.stockItemId eq stockItemId }.map { it[total] }.singleOrNull()
+            StockMovementsTable.selectAll().where { StockMovementsTable.storeId eq storeId }.map {
+                StockMovementsRow(
+                    storeId = it[StockMovementsTable.storeId],
+                    stockItemId = it[StockMovementsTable.stockItemId],
+                    quantity = it[StockMovementsTable.quantity]
+                )
+            }
         }
     }
 
-
+    /** Читает приходные движения позиции stockItemId без суммирования количества. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStockItemId(stockItemId: UUID): List<StockMovementsRow> {
+        return dbStoreExec {
+            StockMovementsTable.selectAll().where { StockMovementsTable.stockItemId eq stockItemId }.map {
+                StockMovementsRow(
+                    storeId = it[StockMovementsTable.storeId],
+                    stockItemId = it[StockMovementsTable.stockItemId],
+                    quantity = it[StockMovementsTable.quantity]
+                )
+            }
+        }
+    }
 }
