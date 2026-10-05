@@ -4,25 +4,35 @@ import org.golenev.db.dbWarehouseExec
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
 
-/** Типизированные наблюдения warehouse_outbox в отдельной транзакции WAREHOUSE. */
+/** Доступ к строкам WarehouseOutboxTable; подсчёты и проверки выполняет вызывающий тест. */
 object WarehouseOutboxDao {
-    /** Считает зафиксированные строки своего магазина; нулевое количество возвращается явно. */
-    fun countByStoreId(storeId: String): Long {
-        return dbWarehouseExec { WarehouseOutboxTable.selectAll().where { WarehouseOutboxTable.storeId eq storeId }.count() }
-    }
-
-    /** Возвращает исходный текст сохранённого события единственной операции магазина либо null. Отсутствие строки или несколько строк возвращают null; проверка результата выполняется в тесте. */
-    fun findPayloadByStoreId(storeId: String): String? {
+    /** Читает исходящие события магазина storeId без выбора единственной записи. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStoreId(storeId: String): List<WarehouseOutboxRow> {
         return dbWarehouseExec {
-            WarehouseOutboxTable.select(WarehouseOutboxTable.payload).where { WarehouseOutboxTable.storeId eq storeId }
-                .map { it[WarehouseOutboxTable.payload] }.singleOrNull()
+            WarehouseOutboxTable.selectAll().where { WarehouseOutboxTable.storeId eq storeId }.map {
+                WarehouseOutboxRow(
+                    storeId = it[WarehouseOutboxTable.storeId],
+                    payload = it[WarehouseOutboxTable.payload],
+                    lastError = it[WarehouseOutboxTable.lastError],
+                    publicationStatus = it[WarehouseOutboxTable.publicationStatus],
+                    deliveryId = it[WarehouseOutboxTable.deliveryId]
+                )
+            }
         }
     }
 
-    /** Читает исходное событие одной поставки магазина; отсутствие возвращает null. */
-    fun findPayloadByDeliveryId(storeId: String, deliveryId: String): String? {
-        return dbWarehouseExec { WarehouseOutboxTable.select(WarehouseOutboxTable.payload)
-            .where { (WarehouseOutboxTable.storeId eq storeId) and (WarehouseOutboxTable.deliveryId eq deliveryId) }
-            .map { it[WarehouseOutboxTable.payload] }.singleOrNull() }
+    /** Читает исходящие события поставки deliveryId магазина storeId. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByDeliveryId(storeId: String, deliveryId: String): List<WarehouseOutboxRow> {
+        return dbWarehouseExec {
+            WarehouseOutboxTable.selectAll().where { (WarehouseOutboxTable.storeId eq storeId) and (WarehouseOutboxTable.deliveryId eq deliveryId) }.map {
+                WarehouseOutboxRow(
+                    storeId = it[WarehouseOutboxTable.storeId],
+                    payload = it[WarehouseOutboxTable.payload],
+                    lastError = it[WarehouseOutboxTable.lastError],
+                    publicationStatus = it[WarehouseOutboxTable.publicationStatus],
+                    deliveryId = it[WarehouseOutboxTable.deliveryId]
+                )
+            }
+        }
     }
 }

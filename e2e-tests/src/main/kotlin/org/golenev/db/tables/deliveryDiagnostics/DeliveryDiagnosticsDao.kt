@@ -3,16 +3,27 @@ package org.golenev.db.tables.deliveryDiagnostics
 import org.golenev.db.dbWarehouseExec
 import org.jetbrains.exposed.sql.selectAll
 
-/** Типизированное наблюдение диагностик WAREHOUSE без изменения исходного сообщения. */
+/** Доступ к строкам DeliveryDiagnosticsTable; подсчёты и проверки выполняет вызывающий тест. */
 object DeliveryDiagnosticsDao {
-    /** Считает диагностики с точным исходным текстом; ошибка разбора сообщения не подменяется успешным DTO. */
-    fun countByRawMessage(raw: String): Long {
-        return dbWarehouseExec { DeliveryDiagnosticsTable.selectAll().where { DeliveryDiagnosticsTable.rawMessage eq raw }.count() }
+    /** Читает диагностики с точным исходным текстом raw. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByRawMessage(raw: String): List<DeliveryDiagnosticsRow> {
+        return dbWarehouseExec {
+            DeliveryDiagnosticsTable.selectAll().where { DeliveryDiagnosticsTable.rawMessage eq raw }.map {
+                DeliveryDiagnosticsRow(
+                    rawMessage = it[DeliveryDiagnosticsTable.rawMessage]
+                )
+            }
+        }
     }
 
-    /** Считает диагностики с заданным идентификатором события в исходном тексте; шаблон нужен для конфликта изменённой оболочки. */
-    fun countByEventId(eventId: String): Long {
-        return dbWarehouseExec { DeliveryDiagnosticsTable.selectAll().where { DeliveryDiagnosticsTable.rawMessage like "%$eventId%" }.count() }
+    /** Читает диагностики, содержащие eventId в исходном тексте; поиск сохраняет прежний SQL-шаблон. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByEventId(eventId: String): List<DeliveryDiagnosticsRow> {
+        return dbWarehouseExec {
+            DeliveryDiagnosticsTable.selectAll().where { DeliveryDiagnosticsTable.rawMessage like "%$eventId%" }.map {
+                DeliveryDiagnosticsRow(
+                    rawMessage = it[DeliveryDiagnosticsTable.rawMessage]
+                )
+            }
+        }
     }
-
 }

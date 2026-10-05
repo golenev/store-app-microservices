@@ -3,20 +3,21 @@ package org.golenev.db.tables.storeOutbox
 import org.golenev.db.dbStoreExec
 import org.jetbrains.exposed.sql.selectAll
 
-/** Типизированные наблюдения store_outbox в отдельной транзакции STORE. */
+/** Доступ к строкам StoreOutboxTable; подсчёты и проверки выполняет вызывающий тест. */
 object StoreOutboxDao {
-    /** Считает зафиксированные строки своего магазина; нулевое количество возвращается явно. */
-    fun countByStoreId(storeId: String): Long {
-        return dbStoreExec { StoreOutboxTable.selectAll().where { StoreOutboxTable.storeId eq storeId }.count() }
-    }
-
-    /** Возвращает исходный текст сохранённого события единственной операции магазина либо null. Отсутствие строки или несколько строк возвращают null; проверка результата выполняется в тесте. */
-    fun findPayloadByStoreId(storeId: String): String? {
+    /** Читает исходящие события магазина storeId без выбора единственной записи. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStoreId(storeId: String): List<StoreOutboxRow> {
         return dbStoreExec {
-            StoreOutboxTable.select(StoreOutboxTable.payload).where { StoreOutboxTable.storeId eq storeId }
-                .map { it[StoreOutboxTable.payload] }.singleOrNull()
+            StoreOutboxTable.selectAll().where { StoreOutboxTable.storeId eq storeId }.map {
+                StoreOutboxRow(
+                    storeId = it[StoreOutboxTable.storeId],
+                    payload = it[StoreOutboxTable.payload],
+                    lastError = it[StoreOutboxTable.lastError],
+                    publicationStatus = it[StoreOutboxTable.publicationStatus],
+                    submissionId = it[StoreOutboxTable.submissionId],
+                    eventId = it[StoreOutboxTable.eventId]
+                )
+            }
         }
     }
-
-
 }

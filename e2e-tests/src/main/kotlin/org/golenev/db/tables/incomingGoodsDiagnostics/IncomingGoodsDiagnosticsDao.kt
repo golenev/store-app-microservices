@@ -3,16 +3,27 @@ package org.golenev.db.tables.incomingGoodsDiagnostics
 import org.golenev.db.dbStoreExec
 import org.jetbrains.exposed.sql.selectAll
 
-/** Типизированное наблюдение диагностик STORE без изменения исходного сообщения. */
+/** Доступ к строкам IncomingGoodsDiagnosticsTable; подсчёты и проверки выполняет вызывающий тест. */
 object IncomingGoodsDiagnosticsDao {
-    /** Считает диагностики с точным исходным текстом; ошибка разбора сообщения не подменяется успешным DTO. */
-    fun countByRawMessage(raw: String): Long {
-        return dbStoreExec { IncomingGoodsDiagnosticsTable.selectAll().where { IncomingGoodsDiagnosticsTable.rawMessage eq raw }.count() }
+    /** Читает диагностики с точным исходным текстом raw. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByRawMessage(raw: String): List<IncomingGoodsDiagnosticsRow> {
+        return dbStoreExec {
+            IncomingGoodsDiagnosticsTable.selectAll().where { IncomingGoodsDiagnosticsTable.rawMessage eq raw }.map {
+                IncomingGoodsDiagnosticsRow(
+                    rawMessage = it[IncomingGoodsDiagnosticsTable.rawMessage]
+                )
+            }
+        }
     }
 
-    /** Считает диагностики с заданным идентификатором события в исходном тексте; шаблон нужен для конфликта изменённой оболочки. */
-    fun countByEventId(eventId: String): Long {
-        return dbStoreExec { IncomingGoodsDiagnosticsTable.selectAll().where { IncomingGoodsDiagnosticsTable.rawMessage like "%$eventId%" }.count() }
+    /** Читает диагностики, содержащие eventId в исходном тексте; поиск сохраняет прежний SQL-шаблон. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByEventId(eventId: String): List<IncomingGoodsDiagnosticsRow> {
+        return dbStoreExec {
+            IncomingGoodsDiagnosticsTable.selectAll().where { IncomingGoodsDiagnosticsTable.rawMessage like "%$eventId%" }.map {
+                IncomingGoodsDiagnosticsRow(
+                    rawMessage = it[IncomingGoodsDiagnosticsTable.rawMessage]
+                )
+            }
+        }
     }
-
 }

@@ -1,17 +1,25 @@
 package org.golenev.db.tables.submissions
 
+import java.util.UUID
 import org.golenev.db.dbStoreExec
 import org.golenev.db.tables.storeOutbox.StoreOutboxTable
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
-import java.util.*
 
-/** Типизированные наблюдения submissions в отдельной транзакции STORE. */
+/** Доступ к строкам SubmissionsTable; подсчёты и проверки выполняет вызывающий тест. */
 object SubmissionsDao {
-    /** Считает зафиксированные строки своего магазина; нулевое количество возвращается явно. */
-    fun countByStoreId(storeId: String): Long {
-        return dbStoreExec { SubmissionsTable.selectAll().where { SubmissionsTable.storeId eq storeId }.count() }
+    /** Читает принятые заявки магазина storeId. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStoreId(storeId: String): List<SubmissionsRow> {
+        return dbStoreExec {
+            SubmissionsTable.selectAll().where { SubmissionsTable.storeId eq storeId }.map {
+                SubmissionsRow(
+                    storeId = it[SubmissionsTable.storeId],
+                    submissionId = it[SubmissionsTable.submissionId],
+                    cartId = it[SubmissionsTable.cartId]
+                )
+            }
+        }
     }
 
     /** Возвращает идентификаторы принятых операций без outbox; отсутствие ошибок проверяет тест. */

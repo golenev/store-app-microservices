@@ -53,7 +53,7 @@ class OrderE2ETest {
             closed.totalAmount.shouldBe(expectedTotal)
             closed.version.shouldBe(cart.version + 1)
             closed.submissionId.shouldBe(accepted.submissionId)
-            val event = JsonUtils.objectMapper.readValue<OrderSubmitted>(StoreOutboxDao.findPayloadByStoreId(scope.store).shouldNotBeNull())
+            val event = JsonUtils.objectMapper.readValue<OrderSubmitted>(StoreOutboxDao.findByStoreId(scope.store).single().payload)
             event.eventType.shouldBe("OrderSubmitted")
             event.storeId.shouldBe(scope.store)
             event.payload.submissionId.shouldBe(accepted.submissionId)
@@ -61,10 +61,10 @@ class OrderE2ETest {
             event.payload.totalAmount.shouldBe(expectedTotal)
             (event.payload.items.single().quantity).shouldBe(3)
             (event.payload.items.single().unitPrice).shouldBe("120.00")
-            (StockExpensesDao.countByStoreId(scope.store).toString()).shouldBe("1")
+            (StockExpensesDao.findByStoreId(scope.store).size).shouldBe(1)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -91,8 +91,8 @@ class OrderE2ETest {
             (Shop.getCart(scope, second)).shouldBe(second)
             (Shop.stock(scope, stock.productId).shouldNotBeNull().availableQuantity).shouldBe(expectedQuantity)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -120,10 +120,10 @@ class OrderE2ETest {
             (Shop.stock(scope, first.productId).shouldNotBeNull().availableQuantity).shouldBe(10)
             (Shop.stock(scope, second.productId).shouldNotBeNull().availableQuantity).shouldBe(0)
             (Shop.getCart(scope, cart)).shouldBe(cart)
-            (SubmissionsDao.countByStoreId(scope.store).toString()).shouldBe("1")
+            (SubmissionsDao.findByStoreId(scope.store).size).shouldBe(1)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -145,10 +145,10 @@ class OrderE2ETest {
             repeated.submissionId.shouldBe(accepted.submissionId)
             repeated.eventId.shouldBe(accepted.eventId)
             (Shop.stock(scope, stock.productId).shouldNotBeNull().availableQuantity).shouldBe(7)
-            (StockExpensesDao.countByStoreId(scope.store).toString()).shouldBe("1")
+            (StockExpensesDao.findByStoreId(scope.store).size).shouldBe(1)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -178,10 +178,10 @@ class OrderE2ETest {
             changedCart.code.shouldBe("IDEMPOTENCY_KEY_REUSED")
             changedVersion.code.shouldBe("IDEMPOTENCY_KEY_REUSED")
             (Shop.stock(scope, stock.productId).shouldNotBeNull().availableQuantity).shouldBe(9)
-            (SubmissionsDao.countByStoreId(scope.store).toString()).shouldBe("1")
+            (SubmissionsDao.findByStoreId(scope.store).size).shouldBe(1)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -210,8 +210,8 @@ class OrderE2ETest {
             (Shop.getCart(scope, cart)).shouldBe(expectedSnapshot)
             (Shop.stock(scope, stock.productId).shouldNotBeNull().availableQuantity).shouldBe(9)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -234,10 +234,10 @@ class OrderE2ETest {
             error.code.shouldBe("CART_VERSION_CONFLICT")
             (Shop.getCart(scope, original)).shouldBe(expectedCart)
             (Shop.stock(scope, stock.productId).shouldNotBeNull().availableQuantity).shouldBe(10)
-            (StoreOutboxDao.countByStoreId(scope.store).toString()).shouldBe("0")
+            (StoreOutboxDao.findByStoreId(scope.store).size).shouldBe(0)
             InventoryDao.findByStoreId(scope.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(scope.store).isEmpty()).shouldBeTrue() }
@@ -271,14 +271,14 @@ class OrderE2ETest {
             Shop.put(second, Shop.cart(second), firstStock, 1, expectedStatus = 404)
             storeService.getSubmission(second.store, acceptedFirst.submissionId, expectedStatus = 404)
             InventoryDao.findByStoreId(first.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(first.store).isEmpty()).shouldBeTrue() }
             InventoryDao.findByStoreId(second.store).forEach { row ->
-                val received = StockMovementsDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
-                val spent = StockExpensesDao.sumQuantityByStockItemId(row.stockItemId) ?: 0
+                val received = StockMovementsDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
+                val spent = StockExpensesDao.findByStockItemId(row.stockItemId).sumOf { it.quantity }
                 withClue("Баланс продукта ${row.productId}") { row.availableQuantity.shouldBe(received - spent) }
             }
             withClue("У принятой заявки должен быть outbox") { (SubmissionsDao.findIdsWithoutOutboxByStoreId(second.store).isEmpty()).shouldBeTrue() }

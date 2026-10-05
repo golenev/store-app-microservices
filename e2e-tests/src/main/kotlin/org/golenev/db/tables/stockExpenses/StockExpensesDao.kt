@@ -1,53 +1,54 @@
 package org.golenev.db.tables.stockExpenses
 
+import java.util.UUID
 import org.golenev.db.dbStoreExec
 import org.golenev.db.tables.inventory.InventoryTable
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.sum
-import java.util.*
 
-/** Типизированные наблюдения stock_expenses в отдельной транзакции STORE. */
+/** Доступ к строкам StockExpensesTable; подсчёты и проверки выполняет вызывающий тест. */
 object StockExpensesDao {
-    /** Считает движения расхода конкретного продукта; единственность расхода проверяет тест. */
-    fun countByProductId(productId: String): Long {
+    /** Читает расходы продукта productId через связь с inventory. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByProductId(productId: String): List<StockExpensesRow> {
         return dbStoreExec {
             StockExpensesTable.join(
-                otherTable = InventoryTable,
-                joinType = JoinType.INNER,
-                onColumn = StockExpensesTable.stockItemId,
-                otherColumn = InventoryTable.stockItemId
-            )
-                .selectAll().where { InventoryTable.productId eq productId }.count()
+                InventoryTable, JoinType.INNER, StockExpensesTable.stockItemId, InventoryTable.stockItemId
+            ).selectAll().where { InventoryTable.productId eq productId }.map {
+                StockExpensesRow(
+                    storeId = it[StockExpensesTable.storeId],
+                    stockItemId = it[StockExpensesTable.stockItemId],
+                    quantity = it[StockExpensesTable.quantity],
+                    submissionId = it[StockExpensesTable.submissionId]
+                )
+            }
         }
     }
 
-    /** Возвращает сумму списанного количества продукта либо null, если движений ещё нет. */
-    fun sumQuantityByProductId(productId: String): Int? {
+    /** Читает расходы магазина storeId. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStoreId(storeId: String): List<StockExpensesRow> {
         return dbStoreExec {
-            val total = StockExpensesTable.quantity.sum()
-            StockExpensesTable.join(
-                otherTable = InventoryTable,
-                joinType = JoinType.INNER,
-                onColumn = StockExpensesTable.stockItemId,
-                otherColumn = InventoryTable.stockItemId
-            )
-                .select(column = total).where { InventoryTable.productId eq productId }.map { it[total] }.singleOrNull()
+            StockExpensesTable.selectAll().where { StockExpensesTable.storeId eq storeId }.map {
+                StockExpensesRow(
+                    storeId = it[StockExpensesTable.storeId],
+                    stockItemId = it[StockExpensesTable.stockItemId],
+                    quantity = it[StockExpensesTable.quantity],
+                    submissionId = it[StockExpensesTable.submissionId]
+                )
+            }
         }
     }
 
-    /** Считает зафиксированные строки своего магазина; нулевое количество возвращается явно. */
-    fun countByStoreId(storeId: String): Long {
-        return dbStoreExec { StockExpensesTable.selectAll().where { StockExpensesTable.storeId eq storeId }.count() }
-    }
-
-    /** Возвращает сумму количества по позиции остатка либо null при отсутствии движений. */
-    fun sumQuantityByStockItemId(stockItemId: UUID): Int? {
+    /** Читает расходы позиции stockItemId без суммирования количества. Чтение выполняется в отдельной транзакции; отсутствие строк возвращает пустой список. */
+    fun findByStockItemId(stockItemId: UUID): List<StockExpensesRow> {
         return dbStoreExec {
-            val total = StockExpensesTable.quantity.sum()
-            StockExpensesTable.select(total).where { StockExpensesTable.stockItemId eq stockItemId }.map { it[total] }.singleOrNull()
+            StockExpensesTable.selectAll().where { StockExpensesTable.stockItemId eq stockItemId }.map {
+                StockExpensesRow(
+                    storeId = it[StockExpensesTable.storeId],
+                    stockItemId = it[StockExpensesTable.stockItemId],
+                    quantity = it[StockExpensesTable.quantity],
+                    submissionId = it[StockExpensesTable.submissionId]
+                )
+            }
         }
     }
-
-
 }
