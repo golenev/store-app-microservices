@@ -1,7 +1,7 @@
 # Store App Microservices
 
 Учебный Java 21 / Spring Boot 3 проект с Kafka, PostgreSQL и Redis. Исходная версия появилась после курсов QA.GURU и консультаций [Alexandr056](https://github.com/Alexandr056).
-
+![backend-data-flow.png](backend-data-flow.png)
 ## Текущее состояние
 
 Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Kotlin E2E проверяют новую архитектуру в отдельном CI stage на штатном Docker Compose. Текущий рефакторинг E2E применяет tech-book 1.1 и переносит браузерное покрытие на Kotlin + Selenide.
