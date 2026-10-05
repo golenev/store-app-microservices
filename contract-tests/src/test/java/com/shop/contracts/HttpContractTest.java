@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Проверяет явно заданные JSON-примеры и согласованность OpenAPI со схемой; HTTP-запросы не выполняет. */
 class HttpContractTest {
-    /** Проверяет явно заданный JSON-пример delivery-received по определению DeliveryReceived; ошибок формата нет. */
+    /** Поставщик сообщает о поставке 10 единиц товара по 100 рублей. Проверяем формат сообщения о поставке. */
     @Test
     void acceptsDeliveryReceivedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -48,7 +48,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("DeliveryReceived").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример goods-posted по определению GoodsPosted; ошибок формата нет. */
+    /** Склад сообщает об оприходованном товаре с наценкой и продажной ценой. Проверяем формат сообщения для магазина. */
     @Test
     void acceptsGoodsPostedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -85,7 +85,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("GoodsPosted").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример order-submitted по определению OrderSubmitted; ошибок формата нет. */
+    /** Магазин сообщает о принятой заявке на 3 единицы товара с суммой 360 рублей. Проверяем формат сообщения о заявке. */
     @Test
     void acceptsOrderSubmittedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -117,7 +117,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("OrderSubmitted").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример quote-request по определению QuoteRequest; ошибок формата нет. */
+    /** Для расчёта наценки передаём тип товара, закупочную цену, валюту и город. Проверяем, что такой запрос соответствует договорённому формату. */
     @Test
     void acceptsQuoteRequestExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -131,7 +131,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("QuoteRequest").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример quote-response по определению QuoteResponse; ошибок формата нет. */
+    /** Ответ на запрос наценки содержит ставку 20%, идентификатор и версию тарифного правила. Проверяем формат этого ответа. */
     @Test
     void acceptsQuoteResponseExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -144,7 +144,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("QuoteResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример tariff-rule-request по определению TariffRuleRequest; ошибок формата нет. */
+    /** Для настройки тарифа задаём группу товаров, город, диапазон цен и наценку. Проверяем формат запроса на создание или замену правила. */
     @Test
     void acceptsTariffRuleRequestExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -160,7 +160,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("TariffRuleRequest").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример tariff-rule по определению TariffRule; ошибок формата нет. */
+    /** Тарифное правило содержит условия наценки, свой идентификатор и версию. Проверяем формат ответа с одним правилом. */
     @Test
     void acceptsTariffRuleExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -178,7 +178,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("TariffRule").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример tariff-rules по определению TariffRulesResponse; ошибок формата нет. */
+    /** Список тарифов содержит правило наценки для непродовольственных товаров в Москве. Проверяем формат списка правил. */
     @Test
     void acceptsTariffRulesExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -200,7 +200,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("TariffRulesResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример cache-reset по определению CacheResetResponse; ошибок формата нет. */
+    /** Подтверждение сброса тарифного кеша содержит его имя и время сброса. Проверяем формат подтверждения. */
     @Test
     void acceptsCacheResetExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -212,7 +212,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("CacheResetResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример delivery-waiting по определению DeliveryResponse; ошибок формата нет. */
+    /** Для поставки, ожидающей расчёта цен, указаны товары, число попыток и время следующей попытки. Проверяем формат ответа WAITING_PRICING. */
     @Test
     void acceptsDeliveryWaitingExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -245,7 +245,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("DeliveryResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример delivery-posted по определению DeliveryResponse; ошибок формата нет. */
+    /** Для оприходованной поставки указаны продажные цены и время завершения. Проверяем формат ответа POSTED. */
     @Test
     void acceptsDeliveryPostedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -278,7 +278,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("DeliveryResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример delivery-rejected по определению DeliveryResponse; ошибок формата нет. */
+    /** Для отклонённой поставки указаны причина отказа и исходные данные. Проверяем формат ответа REJECTED. */
     @Test
     void acceptsDeliveryRejectedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -324,7 +324,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("DeliveryResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример delivery-published по определению DeliveryPublishResponse; ошибок формата нет. */
+    /** Подтверждение отправки поставки в Kafka содержит идентификаторы и статус PUBLISHED. Проверяем формат подтверждения, а не доставку сообщения. */
     @Test
     void acceptsDeliveryPublishedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -339,7 +339,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("DeliveryPublishResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример catalog по определению CatalogResponse; ошибок формата нет. */
+    /** В каталоге магазина товар показан с ценой и доступным остатком. Проверяем формат данных каталога. */
     @Test
     void acceptsCatalogExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -362,7 +362,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("CatalogResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример cart-open по определению CartResponse; ошибок формата нет. */
+    /** В открытой корзине указаны выбранный товар, количество, цена и общая сумма. Проверяем формат ответа OPEN. */
     @Test
     void acceptsCartOpenExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -388,7 +388,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("CartResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример cart-empty по определению CartResponse; ошибок формата нет. */
+    /** Пустая открытая корзина содержит пустой список товаров и нулевую сумму. Проверяем, что такой ответ допустим. */
     @Test
     void acceptsCartEmptyExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -405,7 +405,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("CartResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример cart-submitted по определению CartResponse; ошибок формата нет. */
+    /** Оформленная корзина содержит принятый состав покупки и идентификатор заявки. Проверяем формат ответа SUBMITTED. */
     @Test
     void acceptsCartSubmittedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -432,7 +432,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("CartResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример put-cart-item по определению PutCartItemRequest; ошибок формата нет. */
+    /** Для изменения количества товара в корзине передаём итоговое количество и известную версию корзины. Проверяем формат запроса. */
     @Test
     void acceptsPutCartItemExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -444,7 +444,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("PutCartItemRequest").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример submit-request по определению SubmitRequest; ошибок формата нет. */
+    /** Для оформления корзины передаём её известную версию без клиентских цен и суммы. Проверяем формат тела запроса. */
     @Test
     void acceptsSubmitRequestExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -455,7 +455,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("SubmitRequest").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример submission-pending по определению SubmissionResponse; ошибок формата нет. */
+    /** Принятая заявка ещё ожидает отправки в Kafka: статус PENDING, времени публикации нет. Проверяем формат ответа о заявке. */
     @Test
     void acceptsSubmissionPendingExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -471,7 +471,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("SubmissionResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример submission-published по определению SubmissionResponse; ошибок формата нет. */
+    /** Для заявки, отправленной в Kafka, указаны статус PUBLISHED и время публикации. Проверяем формат ответа о заявке. */
     @Test
     void acceptsSubmissionPublishedExample() throws Exception {
         JsonNode example = JSON.readTree("""
@@ -488,7 +488,7 @@ class HttpContractTest {
         assertEquals(Set.of(), schema("SubmissionResponse").validate(example));
     }
 
-    /** Проверяет явно заданный JSON-пример error по определению ErrorResponse; ошибок формата нет. */
+    /** Ответ об ошибке содержит код, объяснение и сведения о запросе. Проверяем формат сообщения для клиента. */
     @Test
     void acceptsErrorExample() throws Exception {
         JsonNode example = JSON.readTree("""
