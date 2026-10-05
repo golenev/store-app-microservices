@@ -12,31 +12,52 @@ import java.time.Instant;
 import java.util.List;
 
 import static com.shop.contracts.ContractSupport.JSON;
-import static com.shop.contracts.ContractSupport.read;
 import static com.shop.contracts.ContractSupport.schema;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Verifies the target event wire format without starting any Spring service. */
+/** Проверяет формат явно заданных событий и тестовую сериализацию без запуска сервисов или Kafka. */
 class EventContractTest {
-    /** Test-local envelope; future services own their production DTOs independently. */
+    /** Тестовая оболочка события; не используется как модель работающих сервисов. */
     private record Envelope(String eventId, String eventType, int schemaVersion,
                             Instant occurredAt, String storeId, JsonNode payload) {
     }
 
-    /** Explicit supplier DTO keeps purchasePrice textual across deserialization/serialization. */
+    /** Тестовая позиция поставки сохраняет purchasePrice строкой при чтении и записи JSON. */
     private record DeliveryItem(String lineId, String productId, String productType, String shortName,
                                 String description, int quantity, String purchasePrice, String currency) {
     }
 
-    /** Supplier payload groups its uniquely identified lines under a delivery identifier. */
+    /** Тестовые данные поставки объединяют идентификатор поставки и список позиций. */
     private record DeliveryPayload(String deliveryId, List<DeliveryItem> items) {
     }
 
-    /** Each envelope retains its identifiers, textual payload and UTC instant on a DTO round trip. */
-    @ParameterizedTest
-    @ValueSource(strings = {"delivery-received", "goods-posted", "order-submitted"})
-    void eventEnvelopeRoundTripPreservesWireContract(String fixture) throws Exception {
-        JsonNode original = read("examples/events/" + fixture + ".json");
+    /** Преобразует явно заданный DeliveryReceived в тестовую модель и обратно; JSON, идентификаторы и время UTC сохраняются. */
+    @Test
+    void deliveryReceivedEnvelopeRoundTripPreservesWireContract() throws Exception {
+        JsonNode original = JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         Envelope dto = JSON.treeToValue(original, Envelope.class);
         JsonNode restored = JSON.valueToTree(dto);
 
@@ -45,10 +66,112 @@ class EventContractTest {
         assertEquals(Instant.parse(original.path("occurredAt").asText()), dto.occurredAt());
     }
 
-    /** Typed supplier lines preserve price scale and UTF-8 metadata without binary floating point. */
+    /** Преобразует явно заданный GoodsPosted в тестовую модель и обратно; JSON, идентификаторы и время UTC сохраняются. */
+    @Test
+    void goodsPostedEnvelopeRoundTripPreservesWireContract() throws Exception {
+        JsonNode original = JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000002",
+                  "eventType": "GoodsPosted",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:02Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "deliverySequence": 1,
+                    "receivedAt": "2026-10-03T10:00:01Z",
+                    "postedAt": "2026-10-03T10:00:02Z",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB",
+                        "markupRate": "0.20",
+                        "tariffRuleId": "b3000000-0000-4000-8000-000000000001",
+                        "tariffVersion": 1,
+                        "salePrice": "120.00"
+                      }
+                    ]
+                  }
+                }
+                """);
+        Envelope dto = JSON.treeToValue(original, Envelope.class);
+        JsonNode restored = JSON.valueToTree(dto);
+
+        assertEquals(original, restored);
+        assertTrue(schema(dto.eventType()).validate(restored).isEmpty());
+        assertEquals(Instant.parse(original.path("occurredAt").asText()), dto.occurredAt());
+    }
+
+    /** Преобразует явно заданный OrderSubmitted в тестовую модель и обратно; JSON, идентификаторы и время UTC сохраняются. */
+    @Test
+    void orderSubmittedEnvelopeRoundTripPreservesWireContract() throws Exception {
+        JsonNode original = JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000003",
+                  "eventType": "OrderSubmitted",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:03Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "submissionId": "b6000000-0000-4000-8000-000000000001",
+                    "cartId": "b5000000-0000-4000-8000-000000000001",
+                    "acceptedAt": "2026-10-03T10:00:03Z",
+                    "items": [
+                      {
+                        "stockItemId": "b4000000-0000-4000-8000-000000000001",
+                        "productId": "P-1",
+                        "shortName": "Мыло",
+                        "quantity": 3,
+                        "unitPrice": "120.00",
+                        "lineTotal": "360.00"
+                      }
+                    ],
+                    "totalAmount": "360.00",
+                    "currency": "RUB"
+                  }
+                }
+                """);
+        Envelope dto = JSON.treeToValue(original, Envelope.class);
+        JsonNode restored = JSON.valueToTree(dto);
+
+        assertEquals(original, restored);
+        assertTrue(schema(dto.eventType()).validate(restored).isEmpty());
+        assertEquals(Instant.parse(original.path("occurredAt").asText()), dto.occurredAt());
+    }
+
+    /** Преобразует пример поставки в тестовую модель и обратно; денежная строка и русское название сохраняются. */
     @Test
     void supplierDtoPreservesDecimalStringAndProductMetadata() throws Exception {
-        JsonNode event = read("examples/events/delivery-received.json");
+        JsonNode event = JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         DeliveryPayload payload = JSON.treeToValue(event.path("payload"), DeliveryPayload.class);
 
         assertEquals("100.00", payload.items().getFirst().purchasePrice());
@@ -57,10 +180,33 @@ class EventContractTest {
         assertEquals(event.path("payload"), JSON.valueToTree(payload));
     }
 
-    /** A price beyond JavaScript's safe integer range retains every digit as a decimal string. */
+    /** Подставляет большую денежную строку в поставку; схема принимает её, а тестовая модель сохраняет все цифры. */
     @Test
     void preservesPriceBeyondFloatingPointIntegerPrecision() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         ((ObjectNode) event.at("/payload/items/0")).put("purchasePrice", "9007199254740993.01");
         DeliveryPayload payload = JSON.treeToValue(event.path("payload"), DeliveryPayload.class);
 
@@ -69,82 +215,303 @@ class EventContractTest {
         assertEquals(event.path("payload"), JSON.valueToTree(payload));
     }
 
-    /** Unknown schema versions are not accepted as v1 even when the payload otherwise matches. */
+    /** После замены schemaVersion на 2 схема v1 отклоняет событие поставки. */
     @Test
     void rejectsUnknownSchemaVersion() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         event.put("schemaVersion", 2);
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** A posted payload cannot be mislabeled as a supplier or order event. */
+    /** После замены типа GoodsPosted на DeliveryReceived схема GoodsPosted отклоняет событие. */
     @Test
     void rejectsWrongEventType() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/goods-posted.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000002",
+                  "eventType": "GoodsPosted",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:02Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "deliverySequence": 1,
+                    "receivedAt": "2026-10-03T10:00:01Z",
+                    "postedAt": "2026-10-03T10:00:02Z",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB",
+                        "markupRate": "0.20",
+                        "tariffRuleId": "b3000000-0000-4000-8000-000000000001",
+                        "tariffVersion": 1,
+                        "salePrice": "120.00"
+                      }
+                    ]
+                  }
+                }
+                """);
         event.put("eventType", "DeliveryReceived");
         assertFalse(schema("GoodsPosted").validate(event).isEmpty());
     }
 
-    /** Numeric JSON prices are rejected so clients cannot silently introduce floating-point money. */
+    /** После замены денежной строки числом схема отклоняет позицию поставки. */
     @Test
     void rejectsNumericPurchasePrice() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         ((ObjectNode) event.at("/payload/items/0")).put("purchasePrice", 100.00);
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** Negative, zero and incorrectly scaled prices are invalid purchase amounts. */
+    /** Подставляет переданную некорректную цену в поставку; схема отклоняет ноль, отрицательные значения и неверный формат. */
     @ParameterizedTest
     @ValueSource(strings = {"0.00", "-1.00", "100", "100.0", "100.001", "01.00", "NaN"})
     void rejectsInvalidPurchasePrice(String price) throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         ((ObjectNode) event.at("/payload/items/0")).put("purchasePrice", price);
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** A supplier cannot deliver zero or negative units; stock availability has a separate rule. */
+    /** Подставляет переданное нулевое или отрицательное количество; схема отклоняет поставку. */
     @ParameterizedTest
     @ValueSource(ints = {0, -1})
     void rejectsNonPositiveDeliveryQuantity(int quantity) throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         ((ObjectNode) event.at("/payload/items/0")).put("quantity", quantity);
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** A missing deliverySequence cannot be replaced by Kafka arrival time for price selection. */
+    /** После удаления deliverySequence схема отклоняет GoodsPosted без порядка первой приёмки. */
     @Test
     void rejectsPostedEventWithoutImmutableSequence() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/goods-posted.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000002",
+                  "eventType": "GoodsPosted",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:02Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "deliverySequence": 1,
+                    "receivedAt": "2026-10-03T10:00:01Z",
+                    "postedAt": "2026-10-03T10:00:02Z",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB",
+                        "markupRate": "0.20",
+                        "tariffRuleId": "b3000000-0000-4000-8000-000000000001",
+                        "tariffVersion": 1,
+                        "salePrice": "120.00"
+                      }
+                    ]
+                  }
+                }
+                """);
         ((ObjectNode) event.path("payload")).remove("deliverySequence");
         assertFalse(schema("GoodsPosted").validate(event).isEmpty());
     }
 
-    /** UUID validation is active rather than merely documented in the schema. */
+    /** После замены eventId некорректной строкой схема отклоняет событие по формату UUID. */
     @Test
     void rejectsMalformedEventIdentifier() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         event.put("eventId", "not-a-uuid");
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** Invalid dates and non-UTC timestamps cannot enter a v1 event envelope. */
+    /** Подставляет переданное неверное время; схема отклоняет невозможную дату или значение без завершающего Z. */
     @ParameterizedTest
     @ValueSource(strings = {"2026-02-30T10:00:00Z", "2026-10-03T10:00:00", "2026-10-03T10:00:00+03:00"})
     void rejectsInvalidOrNonUtcTimestamp(String timestamp) throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         event.put("occurredAt", timestamp);
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** Explicit v1 schemas reject unexpected fields instead of accidentally accepting another contract. */
+    /** После добавления неизвестного поля схема отклоняет оболочку события поставки. */
     @Test
     void rejectsUnknownEnvelopeField() throws Exception {
-        ObjectNode event = (ObjectNode) read("examples/events/delivery-received.json");
+        ObjectNode event = (ObjectNode) JSON.readTree("""
+                {
+                  "eventId": "b2000000-0000-4000-8000-000000000001",
+                  "eventType": "DeliveryReceived",
+                  "schemaVersion": 1,
+                  "occurredAt": "2026-10-03T10:00:00Z",
+                  "storeId": "S-1",
+                  "payload": {
+                    "deliveryId": "D-1",
+                    "items": [
+                      {
+                        "lineId": "L-1",
+                        "productId": "P-1",
+                        "productType": "NON_FOOD",
+                        "shortName": "Мыло",
+                        "description": "Учебный товар",
+                        "quantity": 10,
+                        "purchasePrice": "100.00",
+                        "currency": "RUB"
+                      }
+                    ]
+                  }
+                }
+                """);
         event.put("stockItemId", "supplier-must-not-create-store-inventory");
         assertFalse(schema("DeliveryReceived").validate(event).isEmpty());
     }
 
-    /** Malformed and duplicate-key JSON is rejected before schema/business validation. */
+    /** Разбирает переданный повреждённый JSON; ожидает исключение для неверного синтаксиса, повторного ключа или лишнего документа. */
     @ParameterizedTest
     @ValueSource(strings = {"{", "{\"schemaVersion\":1,\"schemaVersion\":2}", "{} {}"})
     void rejectsMalformedOrAmbiguousJson(String input) {

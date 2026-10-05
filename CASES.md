@@ -88,14 +88,18 @@
 
 | Проверяемая часть | Тестовый файл/метод | Связанные CASES и границы проверки |
 | --- | --- | --- |
-| Примеры событий и HTTP | `contract-tests/src/test/java/com/shop/contracts/HttpContractTest.java`, `publishedExamplesMatchCanonicalDefinitions` | Форматы CASES-01/05/16/25; не обработка/доставка/транзакции |
-| Decimal strings и DTO round trip | `contract-tests/src/test/java/com/shop/contracts/EventContractTest.java`, `supplierDtoPreservesDecimalStringAndProductMetadata`, `preservesPriceBeyondFloatingPointIntegerPrecision`, `eventEnvelopeRoundTripPreservesWireContract` | Формат CASES-01/12/28; не расчёт тарифа или цены STORE |
+| Примеры событий и HTTP | `contract-tests/src/test/java/com/shop/contracts/HttpContractTest.java`, 22 явных метода `accepts…Example` с JSON внутри | Форматы CASES-01/05/16/25; не обработка/доставка/транзакции |
+| Decimal strings и DTO round trip | `contract-tests/src/test/java/com/shop/contracts/EventContractTest.java`, `supplierDtoPreservesDecimalStringAndProductMetadata`, `preservesPriceBeyondFloatingPointIntegerPrecision`, `deliveryReceivedEnvelopeRoundTripPreservesWireContract`, `goodsPostedEnvelopeRoundTripPreservesWireContract`, `orderSubmittedEnvelopeRoundTripPreservesWireContract` | Формат CASES-01/12/28; не расчёт тарифа или цены STORE |
 | Повреждённый JSON/версия/тип/UUID/UTC | `EventContractTest`, `rejectsMalformedOrAmbiguousJson`, `rejectsUnknownSchemaVersion`, `rejectsWrongEventType`, `rejectsMalformedEventIdentifier`, `rejectsInvalidOrNonUtcTimestamp` | Структурная часть CASES-05; не сохраняемая Kafka-диагностика |
 | Snapshot shape, версии и states | `HttpContractTest`, `rejectsClientSuppliedSubmitTotal`, `rejectsSubmitWithoutExpectedVersion`, `publishedSubmissionRequiresTimestamp`, `pendingSubmissionCannotClaimPublishedTimestamp`, `submittedCartRequiresSubmissionIdentifier` | Формат CASES-16/18/22/28; не atomic commit/дедупликация |
 | Отклонённая поставка | `HttpContractTest`, `rejectedDeliveryCanExposeInvalidOriginalQuantity`, `rejectedDeliveryRequiresOriginalPayload` | Представление CASES-05/32; не бизнес-валидация уникальности продуктов |
 | OpenAPI и внешние schema refs | `HttpContractTest`, `openApiDocumentParsesWithoutDiagnostics`, `openApiReferencesResolveToCanonicalDefinitions`, `submitDocumentsRequiredKeyAndAcceptedResponse` | Спецификация целевого API; ни один новый endpoint не считается доступным |
 
 После реализации каждого сценария добавлять отдельную запись покрытия: ID → абсолютный/репозиторный путь тестового файла, имя метода, уровень проверки, команда запуска и результат последнего проверенного запуска. Несколько уровней для одного сценария допустимы; интеграционные проверки модулей и сквозной E2E обозначать явно. Не ставить «пройден» по наличию теста без запуска.
+
+После переноса примеров в тесты каждый сценарий содержит собственный JSON; `examples/manifest.json` не участвует в запуске. Проверки остаются структурными: подготовленные данные сверяются со схемой, без настоящего или имитационного сервера. Документационные файлы `contracts/examples` этим модулем больше не проверяются.
+
+Проверка переноса 5 октября 2026 года: `mvn -o -B -ntp -pl contract-tests clean test` на Java 21 с локальным Maven-кешем — **62/62**, без ошибок, падений и пропусков (EventContractTest: 26, HttpContractTest: 36). Чистая сборка копирует только 2 ресурса: схему и OpenAPI; файлы примеров отсутствуют в ресурсах тестов.
 
 ## Проверки runtime задачи 2
 

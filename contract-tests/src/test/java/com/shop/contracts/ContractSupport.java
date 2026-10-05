@@ -16,7 +16,7 @@ import com.networknt.schema.SpecVersion;
 import java.io.IOException;
 import java.io.InputStream;
 
-/** Local test utilities; services must not depend on this class or module. */
+/** Загружает только спецификации для тестов; работающие сервисы не зависят от этого класса. */
 final class ContractSupport {
     static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
                     .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
@@ -25,15 +25,15 @@ final class ContractSupport {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .build();
 
-    /** Prevents construction: helpers only read immutable contract resources. */
+    /** Запрещает создание экземпляров: класс предоставляет только статические средства проверки. */
     private ContractSupport() {
     }
 
     /**
-     * Reads a classpath contract as strict JSON, rejecting malformed or duplicate fields.
-     * @param path path relative to contracts, independent of the working directory
-     * @return the parsed JSON without coercing decimal strings into numbers
-     * @throws IOException if a resource is absent or is not valid JSON
+     * Читает спецификацию из ресурсов как строгий JSON, отклоняя повреждённый синтаксис и повторные ключи.
+     * @param path путь относительно contracts в ресурсах теста
+     * @return JSON без преобразования денежных строк в числа
+     * @throws IOException если файл отсутствует или содержит некорректный JSON
      */
     static JsonNode read(String path) throws IOException {
         try (InputStream input = ContractSupport.class.getResourceAsStream("/contracts/" + path)) {
@@ -45,11 +45,11 @@ final class ContractSupport {
     }
 
     /**
-     * Loads a named canonical v1 definition with UUID/date-time format assertions enabled.
-     * The local $defs remain attached, so validation never fetches application schemas.
-     * @param definition wire definition to validate, such as GoodsPosted
-     * @return a validator for this definition, rather than the root event union
-     * @throws IOException if the schema resource cannot be read
+     * Создаёт валидатор выбранного определения v1 с проверкой форматов UUID и времени.
+     * Сохраняет локальные определения $defs и не обращается к сервисам или внешним схемам.
+     * @param definition имя определения, например GoodsPosted
+     * @return валидатор указанного определения вместо объединения всех событий
+     * @throws IOException если схема недоступна, повреждена или определение отсутствует
      */
     static JsonSchema schema(String definition) throws IOException {
         ObjectNode root = (ObjectNode) read("schemas/shop-v1.schema.json");

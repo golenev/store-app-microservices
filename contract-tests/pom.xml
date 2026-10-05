@@ -11,7 +11,7 @@
     <description>Test-only verification of the target shop wire contracts; no shared domain library.</description>
     <dependencyManagement>
         <dependencies>
-            <!-- Match the validator's Jackson version only in this test module. -->
+            <!-- Согласовать версию Jackson с валидатором только в этом тестовом модуле. -->
             <dependency>
                 <groupId>com.fasterxml.jackson</groupId>
                 <artifactId>jackson-bom</artifactId>
@@ -57,7 +57,8 @@
                 <targetPath>contracts</targetPath>
                 <filtering>false</filtering>
                 <includes>
-                    <include>**/*.json</include>
+                    <include>schemas/shop-v1.schema.json</include>
+                    <include>openapi.json</include>
                 </includes>
             </testResource>
         </testResources>
