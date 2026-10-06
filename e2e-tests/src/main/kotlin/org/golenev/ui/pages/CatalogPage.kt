@@ -3,6 +3,7 @@ package org.golenev.ui.pages
 import com.codeborne.selenide.CollectionCondition.size
 import com.codeborne.selenide.Condition.*
 import com.codeborne.selenide.Selenide
+import com.codeborne.selenide.SelenideWait
 import com.codeborne.selenide.Selenide.`$`
 import com.codeborne.selenide.WebDriverRunner
 import io.kotest.assertions.withClue
@@ -21,6 +22,7 @@ class CatalogPage {
     fun checkViewportWidth(expectedWidth: Int) {
         (Selenide.executeJavaScript<Long>("return window.innerWidth").shouldNotBeNull()).shouldBe(expectedWidth.toLong())
     }
+    private val cards = Selenide.`$$`("[data-product-id]").name("Карточки товаров каталога")
     private val newCart = `$`("#new-cart").name("Начать новую корзину")
     private val refresh = `$`("#refresh").name("Обновить каталог и корзину")
     private val submit = `$`("#submit").name("Оформить заявку")
@@ -48,7 +50,7 @@ class CatalogPage {
     /** Задаёт количество через карточку продукта с нужным UUID и проверяет отображённую серверную позицию корзины. */
     @Step("Добавляем товар {productId} в корзину")
     fun add(productId: String, quantity: Int, expectedUnitPrice: String = "120.00") {
-        val card = `$`("[data-product-id='$productId']").name("Карточка продукта $productId")
+        val card = cards.findBy(attribute("data-product-id", productId)).name("Карточка продукта $productId")
         val input = card.find("input[name='quantity']").name("Количество продукта $productId в своей корзине")
         val add = card.find("button[type='submit']").name("Положить продукт $productId в корзину")
         card.shouldBe(visible)
@@ -56,6 +58,33 @@ class CatalogPage {
         add.shouldBe(enabled).click()
         cartItems.shouldHave(text("$quantity × $expectedUnitPrice"))
         submit.shouldBe(enabled)
+    }
+
+    /** Обновляет каталог до появления ожидаемого остатка и цены; ожидание доставки между сервисами остаётся внутри страницы. */
+    @Step("Ожидаем товар {productId}: остаток {quantity}, цена {unitPrice}")
+    fun awaitProduct(productId: String, quantity: Int, unitPrice: String) {
+        SelenideWait(WebDriverRunner.getWebDriver(), 40000, 500).until {
+            val card = cards.findBy(attribute("data-product-id", productId))
+            if (card.exists() && card.find(".stock").text == "Доступно: $quantity" && card.find(".price").text == "$unitPrice ₽") {
+                true
+            } else {
+                refresh.shouldBe(enabled.because("обновление каталога должно быть доступно после завершения предыдущего запроса")).click()
+                refresh.shouldBe(enabled.because("новый каталог должен загрузиться перед проверкой поставки"))
+                false
+            }
+        }
+        val card = cards.findBy(attribute("data-product-id", productId))
+        card.shouldBe(visible.because("оприходованный товар должен появиться в каталоге"))
+        card.find(".stock").shouldHave(exactText("Доступно: $quantity").because("каталог должен показывать ожидаемый остаток"))
+        card.find(".price").shouldHave(exactText("$unitPrice ₽").because("цена должна включать тарифную наценку"))
+    }
+
+    /** Читает идентификатор остатка из формы выбранного товара для независимого сопоставления с сообщением заявки. */
+    @Step("Читаем идентификатор позиции каталога {productId}")
+    fun stockItemId(productId: String): String {
+        val card = cards.findBy(attribute("data-product-id", productId))
+        return card.shouldBe(visible.because("позиция должна быть доступна до чтения её идентификатора"))
+            .find("form").getAttribute("data-stock").shouldNotBeNull()
     }
 
     /** Нажимает оформление заявки. Ожидаемый успешный переход или отказ сценарий проверяет отдельно. */
@@ -127,7 +156,7 @@ class CatalogPage {
     /** Проверяет буквальное отображение недоверенных названия и описания, без исполняемых DOM-узлов. */
     @Step("Проверяем буквальное отображение товара {productId}")
     fun checkLiteralProduct(productId: String, expectedName: String, expectedDescription: String) {
-        val card = `$`("[data-product-id='$productId']").name("Небезопасный текст продукта $productId")
+        val card = cards.findBy(attribute("data-product-id", productId)).name("Небезопасный текст продукта $productId")
         card.find("h3").name("Название продукта $productId").shouldHave(exactText(expectedName))
         card.find("p:not(.price):not(.stock)").name("Описание продукта $productId").shouldHave(exactText(expectedDescription))
         card.findAll("img,script").name("Недопустимые исполняемые узлы продукта $productId").shouldHave(size(0))
