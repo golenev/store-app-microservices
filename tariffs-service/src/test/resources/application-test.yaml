@@ -1,7 +1,0 @@
-# Tests supply real container endpoints; schema creation remains Flyway-only.
-spring:
-  sql:
-    init:
-      mode: never
-  flyway:
-    clean-disabled: true

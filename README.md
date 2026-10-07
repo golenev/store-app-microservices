@@ -2,9 +2,17 @@
 
 Учебный Java 21 / Spring Boot 3 проект с Kafka, PostgreSQL и Redis. Исходная версия появилась после курсов QA.GURU и консультаций [Alexandr056](https://github.com/Alexandr056).
 ![backend-data-flow.png](backend-data-flow.png)
+## Учебный рефакторинг тестов (7 октября 2026)
+
+Текущий тестовый набор и ID описаны в [реестре пирамиды](docs/testing-pyramid.md). Старые сервисные тесты и серверные Kotlin E2E заменены: чистая логика трёх сервисов, одинаковые CRUD-сценарии тарифных правил с Mockito, учебным HTTP-клиентом и WireMock, PostgreSQL и публичным API. Контрактный модуль, `org.golenev.tests.e2e_tests` и его обвязка сохранены без изменений. Новых Kafka-тестов нет. Production-код не изменён.
+
+Локальная проверка нового набора: Maven **98/98**, отдельный CRUD API **9/9**, без ошибок и пропусков. Сохранённые 13 E2E компилируются, но в этой задаче не запускались. WireMock-набор использует учебный HTTP-клиент только в тестах; его результат не означает проверку production CRUD TARIFFS.
+
+Прежние результаты этапов ниже являются историческими: они не означают наличие удалённых тестов в текущем наборе. Проверки восстановления и конкуренции вне защищённого пакета удалены по согласованному объёму; учебный CRUD-набор не подтверждает эти инварианты.
+
 ## Текущее состояние
 
-Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Kotlin E2E проверяют новую архитектуру в отдельном CI stage на штатном Docker Compose. Текущий рефакторинг E2E применяет tech-book 1.1 и переносит браузерное покрытие на Kotlin + Selenide.
+Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Сохранённые Kotlin + Selenide E2E проверяют браузерные сценарии и передачу заявки в Kafka. Новый API-набор сравнивает CRUD тарифов с нижними уровнями; актуальные ID и результаты приведены в реестре пирамиды.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
@@ -249,7 +257,7 @@ Pricing worker раз в 500 ms выбирает одну наступившую
 mvn -B -ntp test
 ```
 
-Docker обязателен для интеграционных проверок. Профиль `test` сохраняет Flyway; адреса контейнеров задаются через DynamicPropertySource. Тесты не подключаются к Compose-базам.
+Docker обязателен для `TariffCrudPostgresTest`: он создаёт отдельную PostgreSQL и применяет production Flyway. Spring-контекст содержит только компоненты CRUD и транзакционный сервис; Redis и Kafka не участвуют. Чистая логика и Mockito запускаются без Docker. Команды выбора уровней приведены в [реестре](docs/testing-pyramid.md). Новый `TariffCrudApiTest` запускается отдельно на развёрнутом приложении; его адрес задаёт `PYRAMID_TARIFFS_URL`.
 
 Историческая проверка задачи 2: на Java 21 выполнено 78 тестов без ошибок, падений и пропусков: 62 контрактных, 7 legacy unit, 3 STORE runtime, 1 legacy ProductFlow, 3 TARIFFS cache/runtime и 2 WAREHOUSE runtime. Проверены bootstrap SQL, запрет доступа к чужим БД, чистые и повторные миграции, fixtures и HTTP health. Legacy ProductFlow использует настоящие Kafka/PostgreSQL и WireMock; cache-тесты — PostgreSQL/Redis. Полный Compose проверяется отдельно от Maven.
 
@@ -266,6 +274,8 @@ mvn -pl contract-tests test
 CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки выполняются на этих же реальных сервисах. Отдельный job `e2e` после Maven запускает Kotlin-набор в собственном Compose project, собирая приложения из исходников.
 
 ### Kotlin E2E
+
+Текущий Gradle-набор: сохранённый пакет `e2e_tests` и новый `org.golenev.tests.pyramid.TariffCrudApiTest`. Описания прежних серверных классов далее относятся к истории предыдущих PR.
 
 Нужны JDK 21, Chrome и Docker Compose v2. Wrapper Gradle 8.14.3 содержит закреплённую SHA-256 дистрибутива; checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
 
