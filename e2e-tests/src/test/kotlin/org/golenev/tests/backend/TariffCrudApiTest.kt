@@ -17,11 +17,12 @@ import java.util.UUID
 
 /**
  * Девять прежних CRUD-сценариев чёрного ящика по структуре backend-тестов golenev-xlsx-report-system.
- * Действия, разбор data class и проверки Kotest находятся в бизнес-шагах Allure.
+ * Субъект каждого сценария — тарифное правило: условия наценки для товаров одного города.
+ * Шаги показывают создание, переход условий, чтение состояния и итог принятой либо отклонённой операции.
  * Внешнее состояние читается только через HTTP. Каждый сценарий получает собственный город.
  */
 @Tag("api")
-@DisplayName("API: создание, чтение, замена и удаление тарифных правил")
+@DisplayName("Тарифные правила: жизненный цикл условий наценки для товаров города")
 class TariffCrudApiTest {
     private val tariffService = TariffCrudServiceDao()
     private val cityId = "PYR-" + UUID.randomUUID()
@@ -37,9 +38,12 @@ class TariffCrudApiTest {
      */
     @AfterEach
     fun cleanup() {
-        step("Удаляем тарифные правила, созданные текущим сценарием") {
-            createdRuleIds.forEach { ruleId -> tariffService.deleteRule(ruleId) }
+        createdRuleIds.forEach { ruleId ->
+            step("Удаляем созданное тарифное правило $ruleId для города $cityId после завершения сценария") {
+                tariffService.deleteRule(ruleId)
+            }
         }
+        createdRuleIds.clear()
     }
 
     /**
@@ -48,12 +52,11 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-001-API")
     @Test
-    @DisplayName("TAR-CRUD-001-API: создание правила версии 1")
-    fun createsRule() {
-
+    @DisplayName("Тарифное правило для непродовольственных товаров создаётся с наценкой 20% и сохраняется в версии 1")
+    fun shouldCreateTariffRuleWithVersionOne() {
         val response = createRuleTemplate(creationRequest)
         val createdRule = response.`as`(TariffRule::class.java)
-        step("Проверяем UUID, Location и все поля созданного правила версии 1") {
+        step("Проверяем, что тарифное правило ${createdRule.tariffRuleId} получило идентификатор, адрес и версию 1 с заданными условиями наценки") {
             UUID.fromString(createdRule.tariffRuleId)
             response.getHeader("Location").shouldBe("/tariffs/rules/" + createdRule.tariffRuleId, "Location созданного ресурса")
             createdRule.version.shouldBe(1L, "Начальная версия правила")
@@ -64,10 +67,10 @@ class TariffCrudApiTest {
             createdRule.upperBound.shouldBe(creationRequest.upperBound, "Верхняя граница")
             createdRule.markupRate.shouldBe(creationRequest.markupRate, "Дробная ставка")
         }
-        val savedRule = step("Читаем созданное правило через публичный GET") {
+        val savedRule = step("Читаем сохранённое тарифное правило ${createdRule.tariffRuleId} для города $cityId") {
             tariffService.getRule(createdRule.tariffRuleId).`as`(TariffRule::class.java)
         }
-        step("Проверяем сохранение всех полей после создания") {
+        step("Проверяем, что сохранённое тарифное правило ${createdRule.tariffRuleId} содержит исходные условия наценки и версию 1") {
             savedRule.shouldBe(createdRule, "GET возвращает созданное правило")
         }
     }
@@ -78,14 +81,13 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-002-API")
     @Test
-    @DisplayName("TAR-CRUD-002-API: чтение созданного правила")
-    fun readsRule() {
-
+    @DisplayName("Созданное тарифное правило возвращается с исходными условиями наценки и версией 1")
+    fun shouldReadTariffRuleWithOriginalTerms() {
         val createdRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
-        val actualRule = step("Читаем созданное правило по его UUID") {
+        val actualRule = step("Читаем тарифное правило ${createdRule.tariffRuleId}, созданное для непродовольственных товаров города $cityId") {
             tariffService.getRule(createdRule.tariffRuleId).`as`(TariffRule::class.java)
         }
-        step("Проверяем все поля и версию ответа чтения") {
+        step("Проверяем, что чтение тарифного правила ${createdRule.tariffRuleId} возвращает все исходные условия и версию 1") {
             actualRule.shouldBe(createdRule, "Ответ GET совпадает с ответом POST")
         }
     }
@@ -96,18 +98,17 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-003-API")
     @Test
-    @DisplayName("TAR-CRUD-003-API: полная замена и версия 2")
-    fun replacesRule() {
-
+    @DisplayName("Тарифное правило меняет условия на наценку 30% для продовольственных товаров и сохраняется в версии 2")
+    fun shouldReplaceTariffRuleTermsWithVersionTwo() {
         val originalRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
         val replacement = RuleInput(
             productType = "FOOD", cityId = cityId, currency = "RUB",
             lowerBound = "5.00", upperBound = null, markupRate = "0.30",
         )
-        val updatedRule = step("Полностью заменяем правило на FOOD, границу 5.00 и ставку 0.30 без верхнего предела") {
+        val updatedRule = step("Заменяем условия тарифного правила ${originalRule.tariffRuleId}: продовольственные товары, закупочная цена от 5.00 рублей без верхнего предела, наценка 30%") {
             tariffService.updateRule(originalRule.tariffRuleId, replacement).`as`(TariffRule::class.java)
         }
-        step("Проверяем прежний UUID, новую версию и все заменённые поля") {
+        step("Проверяем, что тарифное правило ${originalRule.tariffRuleId} сохранило идентификатор и получило новые условия наценки в версии 2") {
             updatedRule.tariffRuleId.shouldBe(originalRule.tariffRuleId, "UUID сохраняется")
             updatedRule.version.shouldBe(2L, "Версия увеличивается ровно на один")
             updatedRule.productType.shouldBe(replacement.productType, "Новый тип товара")
@@ -117,10 +118,10 @@ class TariffCrudApiTest {
             updatedRule.upperBound.shouldBe(replacement.upperBound, "Верхний предел снят")
             updatedRule.markupRate.shouldBe(replacement.markupRate, "Новая ставка")
         }
-        val savedRule = step("Читаем правило после полной замены") {
+        val savedRule = step("Читаем тарифное правило ${originalRule.tariffRuleId} после замены условий наценки") {
             tariffService.getRule(originalRule.tariffRuleId).`as`(TariffRule::class.java)
         }
-        step("Проверяем сохранение всех новых полей и версии") {
+        step("Проверяем, что тарифное правило ${originalRule.tariffRuleId} сохранило условия для продовольственных товаров и версию 2") {
             savedRule.shouldBe(updatedRule, "GET возвращает результат PUT")
         }
     }
@@ -131,18 +132,17 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-004-API")
     @Test
-    @DisplayName("TAR-CRUD-004-API: удаление и отсутствие при чтении")
-    fun deletesRule() {
-
+    @DisplayName("Созданное тарифное правило удаляется и становится недоступным для чтения")
+    fun shouldDeleteCreatedTariffRule() {
         val createdRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
-        step("Удаляем созданное правило с ожидаемым HTTP 204") {
+        step("Удаляем тарифное правило ${createdRule.tariffRuleId}, созданное для города $cityId") {
             tariffService.deleteRule(createdRule.tariffRuleId)
             createdRuleIds.remove(createdRule.tariffRuleId)
         }
-        val error = step("Читаем удалённое правило и ожидаем HTTP 404") {
+        val error = step("Запрашиваем тарифное правило ${createdRule.tariffRuleId} после его удаления") {
             tariffService.getRule(createdRule.tariffRuleId, expectedStatus = 404).`as`(ApiError::class.java)
         }
-        step("Проверяем отсутствие удалённого правила") {
+        step("Проверяем, что удалённое тарифное правило ${createdRule.tariffRuleId} больше не доступно: правило не найдено") {
             error.status.shouldBe(404, "Статус ошибки отсутствующей записи")
             error.code.shouldBe("NOT_FOUND", "Причина отказа после удаления")
         }
@@ -154,14 +154,15 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-005-API")
     @Test
-    @DisplayName("TAR-CRUD-005-API: чтение неизвестного UUID")
-    fun rejectsMissingRead() {
-
-        val ruleId = UUID.randomUUID().toString()
-        val error = step("Читаем отсутствующее правило и ожидаем HTTP 404") {
+    @DisplayName("Чтение отсутствующего тарифного правила завершается отказом: правило не найдено")
+    fun shouldRejectReadingMissingTariffRule() {
+        val ruleId = step("Выбираем идентификатор тарифного правила, которое не было создано") {
+            UUID.randomUUID().toString()
+        }
+        val error = step("Запрашиваем тарифное правило $ruleId, которое не было создано") {
             tariffService.getRule(ruleId, expectedStatus = 404).`as`(ApiError::class.java)
         }
-        step("Проверяем статус и причину отказа чтения") {
+        step("Проверяем отказ в чтении тарифного правила $ruleId: правило не найдено") {
             error.status.shouldBe(404, "Статус неизвестной записи")
             error.code.shouldBe("NOT_FOUND", "Причина отказа чтения")
         }
@@ -173,25 +174,26 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-006-API")
     @Test
-    @DisplayName("TAR-CRUD-006-API: замена неизвестного UUID")
-    fun rejectsMissingUpdate() {
-
-        val ruleId = UUID.randomUUID().toString()
+    @DisplayName("Замена условий отсутствующего тарифного правила отклоняется и не создаёт правило")
+    fun shouldRejectReplacingMissingTariffRuleWithoutCreatingIt() {
+        val ruleId = step("Выбираем идентификатор тарифного правила, которое не было создано") {
+            UUID.randomUUID().toString()
+        }
         val replacement = RuleInput(
             productType = "FOOD", cityId = cityId, currency = "RUB",
             lowerBound = "5.00", upperBound = null, markupRate = "0.30",
         )
-        val updateError = step("Заменяем отсутствующее правило допустимыми данными и ожидаем HTTP 404") {
+        val updateError = step("Пытаемся задать отсутствующему тарифному правилу $ruleId наценку 30% для продовольственных товаров с закупочной ценой от 5.00 рублей") {
             tariffService.updateRule(ruleId, replacement, expectedStatus = 404).`as`(ApiError::class.java)
         }
-        step("Проверяем отказ замены отсутствующего правила") {
+        step("Проверяем отказ в замене условий тарифного правила $ruleId: правило не найдено") {
             updateError.status.shouldBe(404, "Статус отказа PUT")
             updateError.code.shouldBe("NOT_FOUND", "Причина отказа PUT")
         }
-        val readError = step("Читаем тот же UUID и проверяем, что PUT не создал правило") {
+        val readError = step("Запрашиваем тарифное правило $ruleId после отклонённой замены условий") {
             tariffService.getRule(ruleId, expectedStatus = 404).`as`(ApiError::class.java)
         }
-        step("Проверяем отсутствие записи после неуспешной замены") {
+        step("Проверяем, что отклонённая замена не создала тарифное правило $ruleId") {
             readError.status.shouldBe(404, "Статус следующего GET")
             readError.code.shouldBe("NOT_FOUND", "Правило по-прежнему отсутствует")
         }
@@ -203,14 +205,15 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-007-API")
     @Test
-    @DisplayName("TAR-CRUD-007-API: удаление неизвестного UUID")
-    fun rejectsMissingDelete() {
-
-        val ruleId = UUID.randomUUID().toString()
-        val error = step("Удаляем отсутствующее правило и ожидаем HTTP 404") {
+    @DisplayName("Удаление отсутствующего тарифного правила завершается отказом: правило не найдено")
+    fun shouldRejectDeletingMissingTariffRule() {
+        val ruleId = step("Выбираем идентификатор тарифного правила, которое не было создано") {
+            UUID.randomUUID().toString()
+        }
+        val error = step("Пытаемся удалить тарифное правило $ruleId, которое не было создано") {
             tariffService.deleteRule(ruleId, expectedStatus = 404).`as`(ApiError::class.java)
         }
-        step("Проверяем статус и причину отказа удаления") {
+        step("Проверяем отказ в удалении тарифного правила $ruleId: правило не найдено") {
             error.status.shouldBe(404, "Статус отказа DELETE")
             error.code.shouldBe("NOT_FOUND", "Удаляемая запись отсутствует")
         }
@@ -222,25 +225,23 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-008-API")
     @Test
-    @DisplayName("TAR-CRUD-008-API: неверное создание ничего не сохраняет")
-    fun rejectsInvalidCreate() {
-
-        val before = step("Читаем правила своего города до неверного создания") {
-            tariffService.getRules().items.filter { it.cityId == cityId }
+    @DisplayName("Тарифное правило с равными границами закупочной цены отклоняется и не появляется в городе")
+    fun shouldRejectCreatingTariffRuleWithEmptyPriceRange() {
+        val before = step("Проверяем исходное состояние: в городе $cityId нет тарифного правила для непродовольственных товаров") {
+            tariffService.getRules().items.filter { it.cityId == cityId }.also { it.shouldBeEmpty() }
         }
         val invalidRequest = creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
-        val error = step("Создаём правило с равными границами 100.00 и ожидаем HTTP 400") {
+        val error = step("Пытаемся создать тарифное правило для непродовольственных товаров города $cityId с наценкой 20% и обеими границами закупочной цены 100.00 рублей") {
             tariffService.createRule(invalidRequest, expectedStatus = 400).`as`(ApiError::class.java)
         }
-        step("Проверяем отказ создания правила с пустым диапазоном") {
+        step("Проверяем отказ в создании тарифного правила города $cityId: равные границы закупочной цены образуют пустой диапазон") {
             error.status.shouldBe(400, "Статус неверного POST")
             error.code.shouldBe("VALIDATION_ERROR", "Причина отказа создания")
         }
-        val after = step("Читаем правила своего города после отклонённого POST") {
+        val after = step("Читаем тарифные правила города $cityId после отказа в создании правила с пустым диапазоном") {
             tariffService.getRules().items.filter { it.cityId == cityId }
         }
-        step("Проверяем отсутствие новых записей") {
-            before.shouldBeEmpty()
+        step("Проверяем, что после отказа тарифное правило с пустым диапазоном не появилось в городе $cityId") {
             after.shouldBe(before, "Список правил города не изменился")
         }
     }
@@ -251,23 +252,22 @@ class TariffCrudApiTest {
      */
     @AllureId("TAR-CRUD-009-API")
     @Test
-    @DisplayName("TAR-CRUD-009-API: неверная замена сохраняет исходное правило")
-    fun rejectsInvalidUpdate() {
-
+    @DisplayName("После отказа в замене на пустой диапазон тарифное правило сохраняет исходные условия и версию 1")
+    fun shouldPreserveTariffRuleAfterRejectedReplacement() {
         val originalRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
         val invalidReplacement = creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
-        val error = step("Заменяем существующее правило пустым диапазоном и ожидаем HTTP 400") {
+        val error = step("Пытаемся заменить диапазон закупочной цены тарифного правила ${originalRule.tariffRuleId} на равные границы 100.00 рублей") {
             tariffService.updateRule(originalRule.tariffRuleId, invalidReplacement, expectedStatus = 400)
                 .`as`(ApiError::class.java)
         }
-        step("Проверяем отказ неверной замены") {
+        step("Проверяем отказ в замене тарифного правила ${originalRule.tariffRuleId}: новый диапазон закупочной цены пустой") {
             error.status.shouldBe(400, "Статус неверного PUT")
             error.code.shouldBe("VALIDATION_ERROR", "Причина отказа замены")
         }
-        val actualRule = step("Читаем исходное правило после отклонённого PUT") {
+        val actualRule = step("Читаем тарифное правило ${originalRule.tariffRuleId} после отказа в замене диапазона закупочной цены") {
             tariffService.getRule(originalRule.tariffRuleId).`as`(TariffRule::class.java)
         }
-        step("Проверяем сохранение всех исходных полей и версии") {
+        step("Проверяем, что тарифное правило ${originalRule.tariffRuleId} осталось в версии 1 с наценкой 20% и исходным диапазоном 0.00–500.00 рублей") {
             actualRule.shouldBe(originalRule, "Неуспешная замена не меняет правило")
         }
     }
@@ -279,7 +279,7 @@ class TariffCrudApiTest {
      * Побочный эффект: создание одной записи через API. Её UUID регистрируется для адресного удаления после теста.
      */
     private fun createRuleTemplate(request: RuleInput): Response {
-        return step("Создаём исходное правило в собственном городе") {
+        return step("Создаём тарифное правило для непродовольственных товаров города ${request.cityId}: закупочная цена 0.00–500.00 рублей, наценка 20%") {
             val response = tariffService.createRule(request)
             val rule = response.`as`(TariffRule::class.java)
             createdRuleIds.add(rule.tariffRuleId)

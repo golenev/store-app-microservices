@@ -26,7 +26,7 @@
 
 UUID создаётся независимо для каждого сценария; неизвестный UUID обозначает отсутствующую запись. В изолированных тестах город PYRAMID, во внешнем API — уникальный PYR-UUID. Это изоляция инфраструктуры: значение cityId не меняет проверяемые правила. Подготовка записи на Mockito-уровне задаёт ответ зависимости; на других уровнях выполняется реальное создание. Действия и ожидаемые бизнес-поля совпадают. Дополнительные проверки вызовов Mockito и HTTP Location относятся к соответствующей границе.
 
-| ID сценария | Исходное состояние, действие и результат | Метод на каждом уровне |
+| ID сценария | Исходное состояние, действие и результат | Метод на уровнях Mockito, WireMock и PostgreSQL |
 | --- | --- | --- |
 | TAR-CRUD-001 | Создать исходное правило. UUID задан сервером, version=1, все поля сохранены | createsRule |
 | TAR-CRUD-002 | Правило версии 1 существует. Прочитать по UUID: все поля совпадают | readsRule |
@@ -38,7 +38,7 @@ UUID создаётся независимо для каждого сценар�
 | TAR-CRUD-008 | Создать правило с равными границами: VALIDATION_ERROR/400, новых правил нет | rejectsInvalidCreate |
 | TAR-CRUD-009 | Заменить существующее правило вводом с равными границами: VALIDATION_ERROR/400, исходные поля и version сохранены | rejectsInvalidUpdate |
 
-Для каждой строки существуют ID с суффиксами `-MOCK`, `-HTTP`, `-DB`, `-API`. Например, TAR-CRUD-003-MOCK, TAR-CRUD-003-HTTP, TAR-CRUD-003-DB и TAR-CRUD-003-API — четыре реализации одного сценария полной замены. ID присутствуют в документации и DisplayName, поэтому доступны в JUnit-отчётах.
+Для каждой строки существуют ID с суффиксами `-MOCK`, `-HTTP`, `-DB`, `-API`. Например, TAR-CRUD-003-MOCK, TAR-CRUD-003-HTTP, TAR-CRUD-003-DB и TAR-CRUD-003-API — четыре реализации одного сценария полной замены. ID присутствуют в документации и DisplayName Java-тестов. API-сценарии сохраняют ID в AllureId; их DisplayName описывает поведение тарифного правила без технического префикса.
 
 | Суффикс ID | Исходный файл | Подготовка и проверка состояния |
 | --- | --- | --- |
@@ -120,3 +120,22 @@ docker compose up -d --build --wait
 `ResponseValidator` нового CRUD-набора совпадает с исходником референса после исключения имени пакета и добавленного KDoc. `BaseSpecification` и `RequestExecutor` перенесены по тому же образцу; адрес адаптирован к TARIFFS и добавлен PUT для полной замены. Существующая обвязка защищённых E2E сохранена; новые транспортные классы расположены в `org.golenev.restapi.crud`. `PyramidResponse`, нетипизированные тела и вспомогательные обёртки проверки удалены. Все девять ID и бизнес-сценарии сохранены.
 
 Команда `.\e2e-tests\gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.TariffCrudApiTest` на JDK 21 — **9/9**, без ошибок и пропусков. Использовано работающее приложение `shop-runtime`, TARIFFS http://localhost:6790. Тесты удалили только собственные правила. Весь Kotlin-модуль скомпилирован; контрактные, Java-тесты и защищённые E2E повторно не запускались.
+
+
+### Маршруты тарифного правила в Allure
+
+В новом API-наборе субъект — тарифное правило для товаров конкретного города. Названия сценариев и бизнес-шаги описывают его исходные условия, изменение либо отказ и наблюдаемый итог. Идентификатор сохранённого правила связывает шаги одной истории. Технические HTTP-операции показаны вложенными шагами DAO; тела запросов и ответов сохранены во вложениях. ID и девять бизнес-сценариев не изменены. Имена API-методов приведены отдельно после перехода на стиль `should...`:
+
+| ID | Метод API-теста |
+| --- | --- |
+| TAR-CRUD-001-API | shouldCreateTariffRuleWithVersionOne |
+| TAR-CRUD-002-API | shouldReadTariffRuleWithOriginalTerms |
+| TAR-CRUD-003-API | shouldReplaceTariffRuleTermsWithVersionTwo |
+| TAR-CRUD-004-API | shouldDeleteCreatedTariffRule |
+| TAR-CRUD-005-API | shouldRejectReadingMissingTariffRule |
+| TAR-CRUD-006-API | shouldRejectReplacingMissingTariffRuleWithoutCreatingIt |
+| TAR-CRUD-007-API | shouldRejectDeletingMissingTariffRule |
+| TAR-CRUD-008-API | shouldRejectCreatingTariffRuleWithEmptyPriceRange |
+| TAR-CRUD-009-API | shouldPreserveTariffRuleAfterRejectedReplacement |
+
+После изменения нейминга: отдельный API-прогон **9/9**. Проверены фактические JSON в `e2e-tests/build/allure-results`: девять успешных результатов с уникальными прежними ID, бизнес-маршруты одного субъекта, вложенные HTTP-шаги DAO и существующие файлы вложений запросов/ответов.
