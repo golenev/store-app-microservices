@@ -275,7 +275,7 @@ CI запускает весь Maven reactor и проверяет конфиг�
 
 ### Kotlin E2E
 
-Текущий Gradle-набор: сохранённый пакет `e2e_tests` и новый `org.golenev.tests.pyramid.TariffCrudApiTest`. Описания прежних серверных классов далее относятся к истории предыдущих PR.
+Текущий Gradle-набор: сохранённый пакет `e2e_tests` и новый `org.golenev.tests.backend.TariffCrudApiTest`. Описания прежних серверных классов далее относятся к истории предыдущих PR.
 
 Нужны JDK 21, Chrome и Docker Compose v2. Wrapper Gradle 8.14.3 содержит закреплённую SHA-256 дистрибутива; checksum wrapper JAR проверяется в CI. Первый запуск требует доступа к Gradle/Maven Central/Docker Hub.
 
@@ -347,3 +347,5 @@ Consumer адаптирован из `KafkaConsumerImpl`: `ConsumerKafkaService`
 ```
 
 Проверено 6 октября 2026 года на JDK 21 и работающем штатном `shop-runtime`: `.\e2e-tests\gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.e2e_tests.UiOrderKafkaE2ETest --tests org.golenev.tests.e2e_tests.HtmlE2ETest` — **13/13** (2 новых и 11 существующих браузерных E2E), без ошибок и пропусков. Проверены Allure JSON, бизнес-шаги и вложения настоящих сообщений Kafka. Backend, JavaScript и 28 серверных E2E в этой задаче не изменялись и повторно не запускались; результат удалённого CI проверяется отдельно.
+
+8 октября 2026 новый `org.golenev.tests.backend.TariffCrudApiTest` переработан по образцу `golenev-xlsx-report-system/e2e-test`: Rest Assured `Response`, типизированные `RuleInput`/`TariffRule`/`ApiError`, проверки Kotest и шаги Allure. `ResponseValidator` перенесён из образца без изменения реализации. Девять сценариев и их ID сохранены. Запуск на JDK 21 в штатном работающем `shop-runtime` — **9/9**, без ошибок и пропусков; весь Kotlin-модуль компилируется. Защищённый E2E-пакет, его существующая обвязка и контрактные тесты не изменены и повторно не запускались.

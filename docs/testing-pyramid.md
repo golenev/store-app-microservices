@@ -45,11 +45,11 @@ UUID создаётся независимо для каждого сценар�
 | MOCK | [TariffCrudMockitoTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudMockitoTest.java) | Явные ответы Mockito; реальная валидация; проверка вызовов репозитория |
 | HTTP | [TariffCrudWireMockTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudWireMockTest.java) | Реальные запросы учебного клиента; ответы и состояние списка заданы WireMock; точная проверка метода, пути и тела |
 | DB | [TariffCrudPostgresTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudPostgresTest.java) | Production Flyway и сервис; отдельный контейнер; чтение после завершения транзакции |
-| API | [TariffCrudApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/pyramid/TariffCrudApiTest.kt) | POST/GET/PUT/DELETE публичного API; собственный город; адресное удаление собственных правил |
+| API | [TariffCrudApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/backend/TariffCrudApiTest.kt) | POST/GET/PUT/DELETE публичного API; собственный город; адресное удаление собственных правил |
 
 В PostgreSQL-наборе Spring создаёт только datasource, JdbcTemplate, репозиторий, Validator и транзакционный сервис. Тест не оборачивается общей откатываемой транзакцией: последующий get проверяет результат уже завершённого вызова. Девять сценариев подтверждают перечисленные результаты; они не доказывают конкурентную безопасность или восстановление после рестарта.
 
-API-набор использует отдельные BaseSpecification, RequestExecutor, ResponseValidator и TariffsServiceDao в `org.golenev.pyramid.restapi`. Каждый запрос получает собственную спецификацию Rest Assured. Защищённые DAO, модели и настройки не изменяются. Систему поднимает оператор или CI; отсутствие HTTP-сервиса завершает тест ошибкой. API-набор не создаёт БД, не выполняет SQL и не сбрасывает общий Redis-кеш.
+API-набор использует структуру golenev-xlsx-report-system/e2e-test: BaseSpecification, RequestExecutor<T>, ResponseValidator и TariffCrudServiceDao в org.golenev.restapi.crud. ResponseValidator перенесён непосредственно из референса; RequestExecutor дополнен PUT по образцу остальных методов. DAO принимает RuleInput и возвращает Response Rest Assured; тест разбирает TariffRule и ApiError через .as(...), список — через отдельный TariffRulesResponse. Проверки Kotest и шаги Allure явно находятся в сценариях. Общая подготовка — createRuleTemplate. Map, JsonNode, PyramidResponse и строковый диспетчер HTTP-методов удалены. Существующие DTO, старые DAO и защищённая обвязка не изменены. Подготовка и очистка данных выполняются только через HTTP, без SQL и сброса общего кеша.
 
 ## Граница WireMock
 
@@ -96,10 +96,10 @@ mvn test
 
 ```powershell
 docker compose up -d --build --wait
-.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.pyramid.TariffCrudApiTest
+.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.backend.TariffCrudApiTest
 ```
 
-На Linux: `bash e2e-tests/gradlew -p e2e-tests test --tests org.golenev.tests.pyramid.TariffCrudApiTest`.
+На Linux: `bash e2e-tests/gradlew -p e2e-tests test --tests org.golenev.tests.backend.TariffCrudApiTest`.
 `PYRAMID_TARIFFS_URL` меняет адрес нового API-набора, по умолчанию http://localhost:6790. У защищённого E2E остаются прежние переменные E2E_*.
 
 Контракты не добавляются в сопоставление CRUD. Проверки Kafka на нижних уровнях не создаются. Полный запуск Gradle включает новый API-набор и сохранённые 13 тестов защищённого пакета; запуск только API-класса не является результатом этих 13 E2E.
@@ -113,4 +113,10 @@ docker compose up -d --build --wait
 - Весь Kotlin-набор, включая сохранённые классы и обвязку, компилируется. Сохранённые 13 E2E в этой задаче не запускались; их успех не выводится из CRUD-прогона.
 - Git diff для contract-tests, production-исходников, защищённого E2E-пакета, прежних src/main/src/test/utils, Gradle-настроек и Compose пустой.
 
-Команды фактического локального прогона: `mvn -o -B -ntp -s target/pyramid-maven-settings.xml clean verify` и `gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.pyramid.TariffCrudApiTest` с PYRAMID_TARIFFS_URL=http://localhost:17690. Локальный Maven settings пустой и использует заполненный кеш зависимостей; он не входит в Git. Обычные воспроизводимые команды приведены выше. Удалённый CI проверяется отдельно.
+Команды фактического локального прогона: `mvn -o -B -ntp -s target/pyramid-maven-settings.xml clean verify` и `gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.TariffCrudApiTest` с PYRAMID_TARIFFS_URL=http://localhost:17690. Локальный Maven settings пустой и использует заполненный кеш зависимостей; он не входит в Git. Обычные воспроизводимые команды приведены выше. Удалённый CI проверяется отдельно.
+
+### Проверка после переработки API-набора, 8 октября 2026
+
+`ResponseValidator` нового CRUD-набора совпадает с исходником референса после исключения имени пакета и добавленного KDoc. `BaseSpecification` и `RequestExecutor` перенесены по тому же образцу; адрес адаптирован к TARIFFS и добавлен PUT для полной замены. Существующая обвязка защищённых E2E сохранена; новые транспортные классы расположены в `org.golenev.restapi.crud`. `PyramidResponse`, нетипизированные тела и вспомогательные обёртки проверки удалены. Все девять ID и бизнес-сценарии сохранены.
+
+Команда `.\e2e-tests\gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.TariffCrudApiTest` на JDK 21 — **9/9**, без ошибок и пропусков. Использовано работающее приложение `shop-runtime`, TARIFFS http://localhost:6790. Тесты удалили только собственные правила. Весь Kotlin-модуль скомпилирован; контрактные, Java-тесты и защищённые E2E повторно не запускались.
