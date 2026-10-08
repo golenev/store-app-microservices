@@ -10,6 +10,7 @@ import org.golenev.restapi.crud.endpoints.TariffCrudServiceDao
 import org.golenev.utils.shouldBe
 import org.golenev.utils.step
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -18,19 +19,24 @@ import java.util.UUID
 /**
  * Девять прежних CRUD-сценариев чёрного ящика по структуре backend-тестов golenev-xlsx-report-system.
  * Субъект каждого сценария — тарифное правило: условия наценки для товаров одного города.
- * Шаги показывают создание, переход условий, чтение состояния и итог принятой либо отклонённой операции.
+ * Шаги показывают подготовку конкретных условий, создание, переход условий, чтение состояния
+ * и итог принятой либо отклонённой операции. Подготовка данных сама по себе не меняет сохранённое правило.
  * Внешнее состояние читается только через HTTP. Каждый сценарий получает собственный город.
  */
 @Tag("api")
 @DisplayName("Тарифные правила: жизненный цикл условий наценки для товаров города")
 class TariffCrudApiTest {
     private val tariffService = TariffCrudServiceDao()
-    private val cityId = "PYR-" + UUID.randomUUID()
+    private lateinit var cityId: String
     private val createdRuleIds = mutableSetOf<String>()
-    private val creationRequest = RuleInput(
-        productType = "NON_FOOD", cityId = cityId, currency = "RUB",
-        lowerBound = "0.00", upperBound = "500.00", markupRate = "0.20",
-    )
+
+    /** Выбирает отдельный город для изоляции тарифного правила; общие данные приложения не изменяются. */
+    @BeforeEach
+    fun prepareCity() {
+        cityId = step("Выбираем отдельный город для тарифного правила, чтобы условия наценки не пересекались с другими сценариями") {
+            "PYR-" + UUID.randomUUID()
+        }
+    }
 
     /**
      * Удаляет только UUID, успешно созданные текущим сценарием, через публичный DELETE.
@@ -54,6 +60,7 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("Тарифное правило для непродовольственных товаров создаётся с наценкой 20% и сохраняется в версии 1")
     fun shouldCreateTariffRuleWithVersionOne() {
+        val creationRequest = prepareRuleTemplate()
         val response = createRuleTemplate(creationRequest)
         val createdRule = response.`as`(TariffRule::class.java)
         step("Проверяем, что тарифное правило ${createdRule.tariffRuleId} получило идентификатор, адрес и версию 1 с заданными условиями наценки") {
@@ -83,6 +90,7 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("Созданное тарифное правило возвращается с исходными условиями наценки и версией 1")
     fun shouldReadTariffRuleWithOriginalTerms() {
+        val creationRequest = prepareRuleTemplate()
         val createdRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
         val actualRule = step("Читаем тарифное правило ${createdRule.tariffRuleId}, созданное для непродовольственных товаров города $cityId") {
             tariffService.getRule(createdRule.tariffRuleId).`as`(TariffRule::class.java)
@@ -100,11 +108,14 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("Тарифное правило меняет условия на наценку 30% для продовольственных товаров и сохраняется в версии 2")
     fun shouldReplaceTariffRuleTermsWithVersionTwo() {
+        val creationRequest = prepareRuleTemplate()
         val originalRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
-        val replacement = RuleInput(
-            productType = "FOOD", cityId = cityId, currency = "RUB",
-            lowerBound = "5.00", upperBound = null, markupRate = "0.30",
-        )
+        val replacement = step("Подготавливаем новые условия тарифного правила: продовольственные товары города $cityId, закупочная цена от 5.00 рублей без верхнего предела, наценка 30%") {
+            RuleInput(
+                productType = "FOOD", cityId = cityId, currency = "RUB",
+                lowerBound = "5.00", upperBound = null, markupRate = "0.30",
+            )
+        }
         val updatedRule = step("Заменяем условия тарифного правила ${originalRule.tariffRuleId}: продовольственные товары, закупочная цена от 5.00 рублей без верхнего предела, наценка 30%") {
             tariffService.updateRule(originalRule.tariffRuleId, replacement).`as`(TariffRule::class.java)
         }
@@ -134,6 +145,7 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("Созданное тарифное правило удаляется и становится недоступным для чтения")
     fun shouldDeleteCreatedTariffRule() {
+        val creationRequest = prepareRuleTemplate()
         val createdRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
         step("Удаляем тарифное правило ${createdRule.tariffRuleId}, созданное для города $cityId") {
             tariffService.deleteRule(createdRule.tariffRuleId)
@@ -179,10 +191,12 @@ class TariffCrudApiTest {
         val ruleId = step("Выбираем идентификатор тарифного правила, которое не было создано") {
             UUID.randomUUID().toString()
         }
-        val replacement = RuleInput(
-            productType = "FOOD", cityId = cityId, currency = "RUB",
-            lowerBound = "5.00", upperBound = null, markupRate = "0.30",
-        )
+        val replacement = step("Подготавливаем новые условия тарифного правила: продовольственные товары города $cityId, закупочная цена от 5.00 рублей без верхнего предела, наценка 30%") {
+            RuleInput(
+                productType = "FOOD", cityId = cityId, currency = "RUB",
+                lowerBound = "5.00", upperBound = null, markupRate = "0.30",
+            )
+        }
         val updateError = step("Пытаемся задать отсутствующему тарифному правилу $ruleId наценку 30% для продовольственных товаров с закупочной ценой от 5.00 рублей") {
             tariffService.updateRule(ruleId, replacement, expectedStatus = 404).`as`(ApiError::class.java)
         }
@@ -227,10 +241,13 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("Тарифное правило с равными границами закупочной цены отклоняется и не появляется в городе")
     fun shouldRejectCreatingTariffRuleWithEmptyPriceRange() {
+        val creationRequest = prepareRuleTemplate()
         val before = step("Проверяем исходное состояние: в городе $cityId нет тарифного правила для непродовольственных товаров") {
             tariffService.getRules().items.filter { it.cityId == cityId }.also { it.shouldBeEmpty() }
         }
-        val invalidRequest = creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
+        val invalidRequest = step("Подготавливаем недопустимые условия создания тарифного правила: обе границы закупочной цены равны 100.00 рублей и образуют пустой диапазон; непродовольственные товары, город $cityId и наценку 20% сохраняем") {
+            creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
+        }
         val error = step("Пытаемся создать тарифное правило для непродовольственных товаров города $cityId с наценкой 20% и обеими границами закупочной цены 100.00 рублей") {
             tariffService.createRule(invalidRequest, expectedStatus = 400).`as`(ApiError::class.java)
         }
@@ -254,8 +271,11 @@ class TariffCrudApiTest {
     @Test
     @DisplayName("После отказа в замене на пустой диапазон тарифное правило сохраняет исходные условия и версию 1")
     fun shouldPreserveTariffRuleAfterRejectedReplacement() {
+        val creationRequest = prepareRuleTemplate()
         val originalRule = createRuleTemplate(creationRequest).`as`(TariffRule::class.java)
-        val invalidReplacement = creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
+        val invalidReplacement = step("Подготавливаем недопустимую замену тарифного правила ${originalRule.tariffRuleId}: обе границы закупочной цены задаём равными 100.00 рублей; остальные условия оставляем исходными, чтобы проверить отказ из-за пустого диапазона") {
+            creationRequest.copy(lowerBound = "100.00", upperBound = "100.00")
+        }
         val error = step("Пытаемся заменить диапазон закупочной цены тарифного правила ${originalRule.tariffRuleId} на равные границы 100.00 рублей") {
             tariffService.updateRule(originalRule.tariffRuleId, invalidReplacement, expectedStatus = 400)
                 .`as`(ApiError::class.java)
@@ -269,6 +289,21 @@ class TariffCrudApiTest {
         }
         step("Проверяем, что тарифное правило ${originalRule.tariffRuleId} осталось в версии 1 с наценкой 20% и исходным диапазоном 0.00–500.00 рублей") {
             actualRule.shouldBe(originalRule, "Неуспешная замена не меняет правило")
+        }
+    }
+
+    /**
+     * Подготавливает исходные условия тарифного правила для сценариев создания и изменения.
+     * Запись ещё не существует: функция только задаёт непродовольственные товары, рубли,
+     * диапазон закупочной цены 0.00–500.00 и наценку 20% для отдельного города текущего теста.
+     * @return типизированные условия создания; обращений к приложению и сохранения данных нет
+     */
+    private fun prepareRuleTemplate(): RuleInput {
+        return step("Подготавливаем условия тарифного правила для непродовольственных товаров города $cityId: закупочная цена 0.00–500.00 рублей, наценка 20%; правило ещё не создано") {
+            RuleInput(
+                productType = "NON_FOOD", cityId = cityId, currency = "RUB",
+                lowerBound = "0.00", upperBound = "500.00", markupRate = "0.20",
+            )
         }
     }
 
