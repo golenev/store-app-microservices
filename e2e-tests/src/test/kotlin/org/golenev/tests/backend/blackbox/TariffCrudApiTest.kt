@@ -1,4 +1,4 @@
-package org.golenev.tests.backend
+package org.golenev.tests.backend.blackbox
 
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.qameta.allure.AllureId

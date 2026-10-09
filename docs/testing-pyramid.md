@@ -45,7 +45,7 @@ UUID создаётся независимо для каждого сценар�
 | MOCK | [TariffCrudMockitoTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudMockitoTest.java) | Явные ответы Mockito; реальная валидация; проверка вызовов репозитория |
 | HTTP | [TariffCrudWireMockTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudWireMockTest.java) | Реальные запросы учебного клиента; ответы и состояние списка заданы WireMock; точная проверка метода, пути и тела |
 | DB | [TariffCrudPostgresTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudPostgresTest.java) | Production Flyway и сервис; отдельный контейнер; чтение после завершения транзакции |
-| API | [TariffCrudApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/backend/TariffCrudApiTest.kt) | POST/GET/PUT/DELETE публичного API; собственный город; адресное удаление собственных правил |
+| API | [TariffCrudApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/backend/blackbox/TariffCrudApiTest.kt) | POST/GET/PUT/DELETE публичного API; собственный город; адресное удаление собственных правил |
 
 В PostgreSQL-наборе Spring создаёт только datasource, JdbcTemplate, репозиторий, Validator и транзакционный сервис. Тест не оборачивается общей откатываемой транзакцией: последующий get проверяет результат уже завершённого вызова. Девять сценариев подтверждают перечисленные результаты; они не доказывают конкурентную безопасность или восстановление после рестарта.
 
@@ -96,13 +96,13 @@ mvn test
 
 ```powershell
 docker compose up -d --build --wait
-.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.backend.TariffCrudApiTest
+.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.backend.blackbox.TariffCrudApiTest
 ```
 
-На Linux: `bash e2e-tests/gradlew -p e2e-tests test --tests org.golenev.tests.backend.TariffCrudApiTest`.
+На Linux: `bash e2e-tests/gradlew -p e2e-tests test --tests org.golenev.tests.backend.blackbox.TariffCrudApiTest`.
 `PYRAMID_TARIFFS_URL` меняет адрес нового API-набора, по умолчанию http://localhost:6790. У защищённого E2E остаются прежние переменные E2E_*.
 
-Контракты не добавляются в сопоставление CRUD. Проверки Kafka на нижних уровнях не создаются. Полный запуск Gradle включает новый API-набор и сохранённые 13 тестов защищённого пакета; запуск только API-класса не является результатом этих 13 E2E.
+Контракты не добавляются в сопоставление CRUD. Проверки Kafka на нижних уровнях не создаются. Полный запуск Gradle включает 9 blackbox, 12 whitebox и сохранённые 13 тестов защищённого пакета; запуск только API-класса не является результатом этих 13 E2E.
 
 ## Результаты проверки
 
@@ -113,13 +113,13 @@ docker compose up -d --build --wait
 - Весь Kotlin-набор, включая сохранённые классы и обвязку, компилируется. Сохранённые 13 E2E в этой задаче не запускались; их успех не выводится из CRUD-прогона.
 - Git diff для contract-tests, production-исходников, защищённого E2E-пакета, прежних src/main/src/test/utils, Gradle-настроек и Compose пустой.
 
-Команды фактического локального прогона: `mvn -o -B -ntp -s target/pyramid-maven-settings.xml clean verify` и `gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.TariffCrudApiTest` с PYRAMID_TARIFFS_URL=http://localhost:17690. Локальный Maven settings пустой и использует заполненный кеш зависимостей; он не входит в Git. Обычные воспроизводимые команды приведены выше. Удалённый CI проверяется отдельно.
+Команды фактического локального прогона: `mvn -o -B -ntp -s target/pyramid-maven-settings.xml clean verify` и `gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.blackbox.TariffCrudApiTest` с PYRAMID_TARIFFS_URL=http://localhost:17690. Локальный Maven settings пустой и использует заполненный кеш зависимостей; он не входит в Git. Обычные воспроизводимые команды приведены выше. Удалённый CI проверяется отдельно.
 
 ### Проверка после переработки API-набора, 8 октября 2026
 
 `ResponseValidator` нового CRUD-набора совпадает с исходником референса после исключения имени пакета и добавленного KDoc. `BaseSpecification` и `RequestExecutor` перенесены по тому же образцу; адрес адаптирован к TARIFFS и добавлен PUT для полной замены. Существующая обвязка защищённых E2E сохранена; новые транспортные классы расположены в `org.golenev.restapi.crud`. `PyramidResponse`, нетипизированные тела и вспомогательные обёртки проверки удалены. Все девять ID и бизнес-сценарии сохранены.
 
-Команда `.\e2e-tests\gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.TariffCrudApiTest` на JDK 21 — **9/9**, без ошибок и пропусков. Использовано работающее приложение `shop-runtime`, TARIFFS http://localhost:6790. Тесты удалили только собственные правила. Весь Kotlin-модуль скомпилирован; контрактные, Java-тесты и защищённые E2E повторно не запускались.
+Команда `.\e2e-tests\gradlew.bat -p e2e-tests --offline test --tests org.golenev.tests.backend.blackbox.TariffCrudApiTest` на JDK 21 — **9/9**, без ошибок и пропусков. Использовано работающее приложение `shop-runtime`, TARIFFS http://localhost:6790. Тесты удалили только собственные правила. Весь Kotlin-модуль скомпилирован; контрактные, Java-тесты и защищённые E2E повторно не запускались.
 
 
 ### Маршруты тарифного правила в Allure
@@ -147,3 +147,47 @@ docker compose up -d --build --wait
 По отдельному запросу на очистку тестового дерева удалены 13 неиспользуемых функций `Shop` и неиспользуемое свойство `Scope.city`, оставшиеся после удаления серверных тестов. Используемые `publish`, `catalog`, `stock`, `put` и `Scope.store` сохранены без изменения реализации; классы защищённого E2E-пакета не изменены. Пустые каталоги прежних пакетов `pyramid` удалены из локального checkout; Git пустые каталоги не хранит.
 
 Проверка очистки: `gradlew.bat -p e2e-tests --offline testClasses` на JDK 21 — успешно; весь Kotlin-модуль компилируется. Тела четырёх сохранённых методов `Shop` сравнены с предыдущим коммитом и совпадают. Повторный запуск сценариев не выполнялся: удалены только недостижимые функции и пустые каталоги.
+
+## Blackbox и whitebox API тарифных правил
+
+Существующие девять HTTP-сценариев перенесены без изменения поведения в `org.golenev.tests.backend.blackbox.TariffCrudApiTest`. Их ID `TAR-CRUD-001-API`–`TAR-CRUD-009-API` сохранены; чтения БД в этом классе нет.
+
+Новый класс [TariffCrudDatabaseApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/backend/whitebox/TariffCrudDatabaseApiTest.kt) расположен рядом в `backend.whitebox`. Он обращается к развёрнутой TARIFFS через тот же сервисный DAO и непосредственно к её PostgreSQL через Exposed: `DbFactory`, `dbTariffsExec`, отдельные `TariffRulesTable`, `TariffRuleRow`, `TariffRulesDao`. Каждый DAO-вызов выполняется в отдельной транзакции; запись фиксируется до запроса, проверка читает результат после завершения HTTP-операции. Бизнес-проверки находятся в тестах.
+
+Оба набора проверяют работающее приложение. Доступ к БД меняет способ подготовки и независимой проверки, а не добавляет новую ступень пирамиды. Первые девять whitebox-сценариев повторяют прежние CRUD-сценарии; ещё три добавлены по запросу для обратного пути и списка. Область этого дополнения — `/tariffs/rules` и `/tariffs/rules/{id}`: GET, POST, PUT, DELETE. Котировки, сброс кеша и Kafka сюда не входят.
+
+| ID | Подготовка, действие, независимый результат | Метод |
+| --- | --- | --- |
+| TAR-CRUD-001-WHITE | Подготовить условия → POST → SQL: одна строка, все поля, версия 1 и соответствие ответу | shouldCreateTariffRuleInDatabase |
+| TAR-CRUD-002-WHITE | Подготовить строку → INSERT → GET по идентификатору: все условия совпадают | shouldReadTariffRulePreparedInDatabase |
+| TAR-CRUD-003-WHITE | INSERT исходной строки → подготовить новые условия → PUT → SQL: новые поля, тот же идентификатор, версия 2 | shouldReplaceTariffRuleInDatabase |
+| TAR-CRUD-004-WHITE | INSERT → DELETE через HTTP → SQL: строки нет → GET: NOT_FOUND | shouldDeleteTariffRuleFromDatabase |
+| TAR-CRUD-005-WHITE | SQL: идентификатора нет → GET: NOT_FOUND → SQL: строки по-прежнему нет | shouldRejectReadingMissingTariffRule |
+| TAR-CRUD-006-WHITE | SQL: идентификатора нет → подготовить допустимую замену → PUT: NOT_FOUND → SQL и GET: правило не создано | shouldRejectReplacingMissingTariffRule |
+| TAR-CRUD-007-WHITE | SQL: идентификатора нет → DELETE: NOT_FOUND → SQL: строки нет | shouldRejectDeletingMissingTariffRule |
+| TAR-CRUD-008-WHITE | SQL: город пуст → подготовить равные границы 100.00 → POST: VALIDATION_ERROR → SQL: город остался пустым | shouldRejectCreatingInvalidTariffRule |
+| TAR-CRUD-009-WHITE | INSERT → подготовить равные границы 100.00 → PUT: VALIDATION_ERROR → SQL: полный снимок не изменился → GET: исходные условия | shouldPreserveTariffRuleAfterRejectedReplacement |
+| TAR-CRUD-010-WHITE | INSERT → подготовить новые условия и версию 2 → SQL UPDATE → GET: новые условия и null верхнего предела | shouldReadTariffRuleAfterDirectDatabaseReplacement |
+| TAR-CRUD-011-WHITE | INSERT → SQL DELETE → GET: NOT_FOUND | shouldRejectReadingTariffRuleDeletedDirectly |
+| TAR-CRUD-012-WHITE | INSERT → GET списка: правило своего города и все его условия | shouldListTariffRulePreparedInDatabase |
+
+Подготовка, сохранение, воздействие и проверка состояния показаны отдельными русскими шагами Allure. Данные совпадают с остальными CRUD-наборами: непродовольственные товары, RUB, 0.00–500.00, наценка 20%; замена — продовольственные товары, от 5.00 без верхнего предела, наценка 30%. У каждого теста отдельный город `WHT-UUID`; очистка через SQL удаляет только строки этого города, включая записи после промежуточного падения. Таблицы и volumes не пересоздаются. Чтение списка ограничено контрактом приложения: при превышении 1000 правил API возвращает ошибку; тесты не обходят это ограничение.
+
+Запуск на JDK 21 из корня:
+
+```powershell
+# Поднять приложение со штатными зависимостями, если оно ещё не работает
+docker compose up -d --build --wait
+# Только независимые API↔БД проверки
+.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.backend.whitebox.TariffCrudDatabaseApiTest
+# Оба набора
+.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.backend.blackbox.TariffCrudApiTest --tests org.golenev.tests.backend.whitebox.TariffCrudDatabaseApiTest
+```
+
+HTTP-адрес задаётся `PYRAMID_TARIFFS_URL` либо `E2E_TARIFFS_URL`; порт PostgreSQL — `E2E_POSTGRES_PORT` (по умолчанию 34567), база `tariffs_db`. Эти адреса должны указывать на один экземпляр TARIFFS и его базу. Подключение использует штатную роль `tariffs_app` существующего DbFactory.
+
+### Проверка дополнения, 9 октября 2026
+
+Совместный `gradlew.bat -p e2e-tests --offline test` с двумя указанными фильтрами — **21/21**, без ошибок и пропусков: 9 blackbox и 12 whitebox. JDK 21, существующие контейнеры `shop-runtime-postgres-1`, `shop-runtime-redis-1`, `shop-runtime-tariffs-service-1`; PostgreSQL 34567, TARIFFS 6790. После отказа соединений в первом запуске остановленные контейнеры запущены без пересоздания данных. TARIFFS и зависимости прошли healthcheck.
+
+Проверены фактические Allure JSON: 21 успешный результат, уникальные стабильные ID, подготовка и маршруты, вложенные HTTP/SQL-операции и файлы вложений. Независимая SQL-проверка подтвердила отсутствие строк всех 12 городов whitebox-прогона после очистки. Blackbox-файл отличается от прежнего только строкой package. Контрактные, Java- и защищённые E2E-тесты не изменены и повторно не запускались; весь Kotlin-модуль компилируется.
