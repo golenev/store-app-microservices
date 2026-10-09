@@ -1,4 +1,4 @@
-package com.shop.warehouse.pyramid;
+package com.shop.warehouse.pyramid.logic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shop.warehouse.delivery.*;

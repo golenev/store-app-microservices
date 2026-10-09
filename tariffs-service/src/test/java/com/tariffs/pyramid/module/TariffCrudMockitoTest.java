@@ -1,4 +1,4 @@
-package com.tariffs.pyramid;
+package com.tariffs.pyramid.module;
 
 import com.tariffs.api.*;
 import com.tariffs.api.TariffModels.*;

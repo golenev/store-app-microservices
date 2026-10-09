@@ -42,9 +42,9 @@ UUID создаётся независимо для каждого сценар�
 
 | Суффикс ID | Исходный файл | Подготовка и проверка состояния |
 | --- | --- | --- |
-| MOCK | [TariffCrudMockitoTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudMockitoTest.java) | Явные ответы Mockito; реальная валидация; проверка вызовов репозитория |
-| HTTP | [TariffCrudWireMockTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudWireMockTest.java) | Реальные запросы учебного клиента; ответы и состояние списка заданы WireMock; точная проверка метода, пути и тела |
-| DB | [TariffCrudPostgresTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffCrudPostgresTest.java) | Production Flyway и сервис; отдельный контейнер; чтение после завершения транзакции |
+| MOCK | [TariffCrudMockitoTest](../tariffs-service/src/test/java/com/tariffs/pyramid/module/TariffCrudMockitoTest.java) | Явные ответы Mockito; реальная валидация; проверка вызовов репозитория |
+| HTTP | [TariffCrudWireMockTest](../tariffs-service/src/test/java/com/tariffs/pyramid/http/TariffCrudWireMockTest.java) | Реальные запросы учебного клиента; ответы и состояние списка заданы WireMock; точная проверка метода, пути и тела |
+| DB | [TariffCrudPostgresTest](../tariffs-service/src/test/java/com/tariffs/pyramid/database/TariffCrudPostgresTest.java) | Production Flyway и сервис; отдельный контейнер; чтение после завершения транзакции |
 | API | [TariffCrudApiTest](../e2e-tests/src/test/kotlin/org/golenev/tests/backend/blackbox/TariffCrudApiTest.kt) | POST/GET/PUT/DELETE публичного API; собственный город; адресное удаление собственных правил |
 
 В PostgreSQL-наборе Spring создаёт только datasource, JdbcTemplate, репозиторий, Validator и транзакционный сервис. Тест не оборачивается общей откатываемой транзакцией: последующий get проверяет результат уже завершённого вызова. Девять сценариев подтверждают перечисленные результаты; они не доказывают конкурентную безопасность или восстановление после рестарта.
@@ -63,13 +63,13 @@ WireMock и PostgreSQL — направления интеграционного
 
 | ID | Вход и ожидаемый результат | Файл и метод |
 | --- | --- | --- |
-| STORE-LOGIC-001 | Цена 100.05 сохраняется без изменения | [StorePureLogicTest](../store-service/src/test/java/com/shop/store/pyramid/StorePureLogicTest.java), preservesExactPrice |
+| STORE-LOGIC-001 | Цена 100.05 сохраняется без изменения | [StorePureLogicTest](../store-service/src/test/java/com/shop/store/pyramid/logic/StorePureLogicTest.java), preservesExactPrice |
 | STORE-LOGIC-002 | Цена 0.00 отклоняется как VALIDATION_ERROR | StorePureLogicTest, rejectsZeroPrice |
 | STORE-LOGIC-003 | Цена 100.005 отклоняется, а не округляется | StorePureLogicTest, rejectsExcessPrecision |
-| WH-LOGIC-001 | Идентификатор D-1 сохраняется | [WarehousePureLogicTest](../warehouse-service/src/test/java/com/shop/warehouse/pyramid/WarehousePureLogicTest.java), acceptsIdentifier |
+| WH-LOGIC-001 | Идентификатор D-1 сохраняется | [WarehousePureLogicTest](../warehouse-service/src/test/java/com/shop/warehouse/pyramid/logic/WarehousePureLogicTest.java), acceptsIdentifier |
 | WH-LOGIC-002 | D 1 отклоняется из-за пробела | WarehousePureLogicTest, rejectsWhitespace |
 | WH-LOGIC-003 | 64 символа принимаются, 65 отклоняются | WarehousePureLogicTest, checksLengthBoundary |
-| TAR-LOGIC-001 | Ставка 0.200000 превращается в 0.20 | [TariffPureLogicTest](../tariffs-service/src/test/java/com/tariffs/pyramid/TariffPureLogicTest.java), removesTrailingZeros |
+| TAR-LOGIC-001 | Ставка 0.200000 превращается в 0.20 | [TariffPureLogicTest](../tariffs-service/src/test/java/com/tariffs/pyramid/logic/TariffPureLogicTest.java), removesTrailingZeros |
 | TAR-LOGIC-002 | Ставка 0.123456 сохраняет все цифры | TariffPureLogicTest, preservesFractionalPrecision |
 | TAR-LOGIC-003 | Нулевая ставка форматируется как 0.00 | TariffPureLogicTest, formatsZero |
 
@@ -191,3 +191,74 @@ HTTP-адрес задаётся `PYRAMID_TARIFFS_URL` либо `E2E_TARIFFS_URL
 Совместный `gradlew.bat -p e2e-tests --offline test` с двумя указанными фильтрами — **21/21**, без ошибок и пропусков: 9 blackbox и 12 whitebox. JDK 21, существующие контейнеры `shop-runtime-postgres-1`, `shop-runtime-redis-1`, `shop-runtime-tariffs-service-1`; PostgreSQL 34567, TARIFFS 6790. После отказа соединений в первом запуске остановленные контейнеры запущены без пересоздания данных. TARIFFS и зависимости прошли healthcheck.
 
 Проверены фактические Allure JSON: 21 успешный результат, уникальные стабильные ID, подготовка и маршруты, вложенные HTTP/SQL-операции и файлы вложений. Независимая SQL-проверка подтвердила отсутствие строк всех 12 городов whitebox-прогона после очистки. Blackbox-файл отличается от прежнего только строкой package. Контрактные, Java- и защищённые E2E-тесты не изменены и повторно не запускались; весь Kotlin-модуль компилируется.
+
+## API и PostgreSQL Testcontainers в каждом сервисном модуле
+
+Существующие Java-тесты разнесены по назначению внутри `pyramid`: `logic` — отдельные функции; `module` — Mockito; `http` — учебный клиент с WireMock; `database` — сервис и SQL без MVC. Перенос меняет только package и путь, ID и сценарии сохраняются. Классы, которых прежде не было в STORE и WAREHOUSE, не объявляются существующими.
+
+В каждом сервисе добавлен `pyramid.api_database`: настоящий Spring MVC, контроллеры и обработчики ошибок, production-сервисы и миграции Flyway, настоящая PostgreSQL в отдельном контейнере `postgres:16-alpine`. MockMvc выполняет маршрутизацию, чтение запроса, сериализацию и обработку ошибок без TCP-порта. Это интеграционные проверки API и БД одного сервиса; отдельный контейнер базы не превращает их в unit-тесты и не заменяет запуск развёрнутого приложения.
+
+Прямые SQL-записи фиксируются до запроса. POST/PUT/DELETE проверяются последующим независимым SELECT. Обратный путь проверяется прямым UPDATE/DELETE и чтением через API. Тест не оборачивается общей откатываемой транзакцией. У каждой проверки свой магазин или город; адресная очистка сохраняет схему и миграционные fixtures. Compose-базы и volumes не используются.
+
+| Сервис | Новый API-класс | Сценариев | Область |
+| --- | --- | --- | --- |
+| STORE | [StoreApiDatabaseTest](../store-service/src/test/java/com/shop/store/pyramid/api_database/StoreApiDatabaseTest.java) | 14 | Каталог, создание/чтение корзины, изменение/удаление позиции, ошибки и конфликт версии, SQL→GET, оформление заявки и повтор ключа |
+| TARIFFS | [TariffApiDatabaseTest](../tariffs-service/src/test/java/com/tariffs/pyramid/api_database/TariffApiDatabaseTest.java) | 12 | Девять прежних CRUD-сценариев через MVC с независимым SQL; прямые UPDATE/DELETE→GET и GET списка |
+| WAREHOUSE | [WarehouseApiDatabaseTest](../warehouse-service/src/test/java/com/shop/warehouse/pyramid/api_database/WarehouseApiDatabaseTest.java) | 9 | Чтение поставки и состава, POST повторного pricing, отсутствующие/чужие записи, конфликт POSTED, сохранение аренды, SQL→GET |
+
+WAREHOUSE не предоставляет PUT/DELETE поставок: обратный путь здесь подготавливается SQL и наблюдается GET. `/technical/deliveries` публикует в Kafka; по сохранённому исключению новые проверки этой ручки не создаются. Kafka, фоновые обработчики и соседние сервисы не запускаются. Неиспользуемая зависимость KafkaTemplate конструктора WAREHOUSE и неиспользуемый сервис котировок TARIFFS заменены Mockito; бизнес-операции тестируемых ручек и SQL остаются настоящими. Присутствие такой зависимости не означает проверку Kafka или Redis.
+
+### ID новых сервисных проверок
+
+| ID | Проверяемое поведение | Метод |
+| --- | --- | --- |
+| STORE-API-DB-001 | созданная корзина сохраняется открытой с версией 0 | createsCart |
+| STORE-API-DB-002 | корзина из SQL читается с позицией и точной суммой | readsPreparedCart |
+| STORE-API-DB-003 | изменение количества позиции фиксируется без резервирования остатка | updatesLine |
+| STORE-API-DB-004 | удаление позиции фиксируется с однократным увеличением версии | deletesLine |
+| STORE-API-DB-005 | чтение отсутствующей корзины не создаёт строку | rejectsMissingCart |
+| STORE-API-DB-006 | изменение отсутствующей корзины отклоняется без записи позиции | rejectsMissingUpdate |
+| STORE-API-DB-007 | удаление отсутствующей позиции сохраняет версию корзины | rejectsMissingDelete |
+| STORE-API-DB-008 | нулевое количество отклоняется без изменения корзины | rejectsInvalidQuantity |
+| STORE-API-DB-009 | устаревшая версия отклоняется без изменения позиции | rejectsStaleVersion |
+| STORE-API-DB-010 | прямое изменение позиции становится видимым при чтении | readsDirectlyUpdatedLine |
+| STORE-API-DB-011 | прямое удаление позиции становится видимым при чтении | readsDirectlyDeletedLine |
+| STORE-API-DB-012 | каталог возвращает все поля подготовленного остатка | readsPreparedCatalog |
+| STORE-API-DB-013 | оформление сохраняет заявку и расход в одной транзакции | acceptsCart |
+| STORE-API-DB-014 | повтор оформления возвращает ту же заявку без нового расхода | replaysAcceptedCart |
+| TAR-CRUD-001-API-DB | создание сохраняет все колонки версии 1 | createsRule |
+| TAR-CRUD-002-API-DB | подготовленная строка читается через контроллер | readsRule |
+| TAR-CRUD-003-API-DB | замена фиксирует новые условия и версию 2 | replacesRule |
+| TAR-CRUD-004-API-DB | удаление убирает строку и делает правило недоступным | deletesRule |
+| TAR-CRUD-005-API-DB | чтение отсутствующего правила отклоняется без создания строки | rejectsMissingRead |
+| TAR-CRUD-006-API-DB | замена отсутствующего правила отклоняется без создания строки | rejectsMissingUpdate |
+| TAR-CRUD-007-API-DB | удаление отсутствующего правила отклоняется без создания строки | rejectsMissingDelete |
+| TAR-CRUD-008-API-DB | пустой диапазон не создаёт правило | rejectsInvalidCreate |
+| TAR-CRUD-009-API-DB | отказ замены сохраняет все исходные колонки | rejectsInvalidUpdate |
+| TAR-CRUD-010-API-DB | прямые изменения SQL становятся видимыми через GET | readsDirectUpdate |
+| TAR-CRUD-011-API-DB | прямое удаление SQL становится видимым через GET | readsDirectDelete |
+| TAR-CRUD-012-API-DB | список содержит все поля подготовленного правила | listsPreparedRule |
+| WH-API-DB-001 | подготовленная поставка читается со всеми исходными полями | readsPreparedDelivery |
+| WH-API-DB-002 | повтор расчёта фиксирует немедленную попытку в базе данных | schedulesRetry |
+| WH-API-DB-003 | чтение отсутствующей поставки не создаёт запись | rejectsMissingRead |
+| WH-API-DB-004 | повтор отсутствующей поставки не создаёт запись | rejectsMissingRetry |
+| WH-API-DB-005 | повтор уже оприходованной поставки отклоняется без изменения | rejectsPostedRetry |
+| WH-API-DB-006 | повтор расчёта сохраняет действующую аренду попытки | preservesLeaseOnRetry |
+| WH-API-DB-007 | прямое изменение строки поставки видно при чтении | readsDirectUpdate |
+| WH-API-DB-008 | прямое удаление поставки делает её недоступной | rejectsDirectDelete |
+| WH-API-DB-009 | поставка чужого магазина не раскрывается | rejectsOtherStore |
+
+Все новые тесты и явно объявленные методы сопровождаются Javadoc: исходное состояние, действие и инвариант. Это Java-интеграционные тесты JUnit; Allure-обвязка Kotlin E2E в них не переносится.
+
+Запуск из корня на JDK 21 при работающем Docker:
+
+```shell
+# Только новые API↔БД проверки всех трёх сервисов
+mvn -pl store-service,tariffs-service,warehouse-service -Dgroups=api-database test
+# Весь Java-набор, включая контрактный модуль и прежние уровни
+mvn clean verify
+```
+
+Суммарное число исходных тестов после дополнения: контракты 62; STORE 3 logic + 14 API↔БД; TARIFFS 3 logic + 9 Mockito + 9 WireMock + 9 service/SQL + 12 API↔БД; WAREHOUSE 3 logic + 9 API↔БД. Состав определяется исходниками; результат запуска указывается отдельно.
+
+Проверка сервисного дополнения 9 октября: полный `mvn clean verify` на JDK 21 — **133/133**, без ошибок и пропусков. В том числе 35 новых API↔PostgreSQL проверок (STORE 14, TARIFFS 12, WAREHOUSE 9), 62 неизменённых контракта и 36 прежних сервисных проверок. Для шести перенесённых классов подтверждено, что изменилась только строка package. Production и Kotlin E2E не изменены; Kotlin-прогон повторно не запускался. Фактическая команда использовала `-o -B -ntp -s target/service-api-maven-settings.xml` и заполненный кеш; локальный пустой settings не входит в Git.

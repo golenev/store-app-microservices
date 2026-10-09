@@ -1,4 +1,4 @@
-package com.shop.store.pyramid;
+package com.shop.store.pyramid.logic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shop.store.shop.ShopCodec;

@@ -1,4 +1,4 @@
-package com.tariffs.pyramid;
+package com.tariffs.pyramid.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;

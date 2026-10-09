@@ -1,4 +1,4 @@
-package com.tariffs.pyramid;
+package com.tariffs.pyramid.logic;
 
 import com.tariffs.repository.TariffRuleRepository;
 import org.junit.jupiter.api.*;
