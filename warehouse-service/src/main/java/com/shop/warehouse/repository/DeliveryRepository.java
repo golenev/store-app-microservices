@@ -12,67 +12,70 @@ import java.sql.*;
 import java.time.Instant;
 import java.util.*;
 
-/** Выполняет SQL для DeliveryRepository; блокировки и записи входят в транзакцию вызывающего сервиса. */
+/**
+ * Читает и сохраняет поставки, их строки и очередь исходящих событий в PostgreSQL. Все записи и блокировки
+ * входят в транзакцию вызывающего сервиса.
+ */
 @Repository
 public class DeliveryRepository {
     private final JdbcTemplate jdbc;
     private final DeliveryCodec codec;
 
     /**
-     * Получает JDBC и средство восстановления сохранённых JSON; конструктор не обращается к БД.
+     * Подключает выполнение SQL и восстановление сохранённых JSON-данных поставки.
      *
-     * @param jdbc JDBC-адаптер с участием в текущей транзакции Spring
-     * @param codec строгий разбор и сериализация протокола
+     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+     * @param codec проверка событий поставок и преобразование сохранённых моделей
      */
     public DeliveryRepository(JdbcTemplate jdbc, DeliveryCodec codec) { this.jdbc = jdbc; this.codec = codec; }
 
     /**
-     * Сериализует приёмку транзакционной advisory-блокировкой для проверки дублей события и поставки.
-     * Транзакцией управляет вызывающий сервис.
+     * Получает общую блокировку приёмки до завершения транзакции. Одновременные сообщения обрабатываются
+     * последовательно, чтобы проверка повторов и запись новой поставки не расходились.
      */
     public void lockIngress() {
         jdbc.execute("SELECT pg_advisory_xact_lock(731004)");
     }
 
     /**
-     * Проверяет существование магазина через количество строк, не создавая новые магазины. Транзакцией
-     * управляет вызывающий сервис.
+     * Возвращает число магазинов с указанным идентификатором. Ноль означает, что магазин не зарегистрирован.
      *
      * @param store идентификатор магазина
+     * @return число найденных магазинов; 0 для неизвестного идентификатора
      */
     public Integer storeCount(String store) {
         return jdbc.queryForObject("SELECT count(*) FROM stores WHERE store_id=?", Integer.class, store);
     }
 
     /**
-     * Читает сохранённое событие для проверки идентичности повторного входа. Транзакцией управляет вызывающий
-     * сервис.
+     * Читает сведения об уже обработанном событии для сравнения магазина, поставки и контрольной суммы. Пустой
+     * список означает, что событие ещё не зарегистрировано.
      *
-     * @param eventId идентификатор события для защиты повторов
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param eventId идентификатор события для распознавания повторного сообщения
+     * @return сохранённые сведения об обработанном событии или пустой список
      */
     public List<Map<String,Object>> receivedEvents(UUID eventId) {
         return jdbc.queryForList("SELECT * FROM received_events WHERE event_id=?", eventId);
     }
 
     /**
-     * Читает отпечаток поставки в пределах магазина для проверки конфликтующего повтора. Транзакцией управляет
-     * вызывающий сервис.
+     * Возвращает контрольную сумму сохранённой поставки этого магазина. Пустой список означает отсутствие
+     * поставки; найденное значение нужно для сравнения повторного содержимого.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param delivery идентификатор поставки внутри магазина
+     * @return контрольная сумма сохранённой поставки или пустой список, если её нет
      */
     public List<String> deliveryFingerprints(String store, String delivery) {
         return jdbc.queryForList("SELECT fingerprint FROM deliveries WHERE store_id=? AND delivery_id=?", String.class, store, delivery);
     }
 
     /**
-     * Атомарно увеличивает порядок первой приёмки; пустой список означает исчерпание допустимого значения.
-     * Транзакцией управляет вызывающий сервис.
+     * Увеличивает счётчик поставок магазина на один и возвращает новый порядковый номер. Пустой список
+     * означает отсутствие магазина или достижение предельного номера; изменение входит в транзакцию приёмки.
      *
      * @param store идентификатор магазина
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @return новый номер поставки или пустой список при отсутствии магазина или исчерпанном счётчике
      */
     public List<Long> nextSequence(String store) {
         return jdbc.queryForList("""
@@ -82,19 +85,19 @@ public class DeliveryRepository {
     }
 
     /**
-     * Сохраняет поставку с исходным содержимым и состоянием в общей транзакции приёмки. Транзакцией управляет
-     * вызывающий сервис.
+     * Сохраняет поставку, порядок первой приёмки, состояние, даты и исходное содержимое. Для отклонённой
+     * поставки сохраняет также причину отказа; запись входит в транзакцию приёмки.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param sequence неизменяемый порядок первой приёмки поставки в WAREHOUSE
-     * @param fingerprint канонический отпечаток бизнес-содержимого для проверки повтора
-     * @param state сохраняемое состояние поставки
-     * @param receivedAt UTC-время первой приёмки поставки
-     * @param nextAttemptAt UTC-время следующей попытки
-     * @param failure ошибка текущей попытки или её сериализованное описание
-     * @param payload сериализованное содержимое события или проверенный объект согласно типу
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param sequence неизменяемый номер первой приёмки поставки в WAREHOUSE для магазина
+     * @param fingerprint контрольная сумма содержимого поставки для сравнения повторов
+     * @param state состояние поставки: {@code WAITING_PRICING}, {@code POSTED} или {@code REJECTED}
+     * @param receivedAt время первой приёмки поставки в WAREHOUSE
+     * @param nextAttemptAt время, начиная с которого разрешена следующая попытка
+     * @param failure JSON с кодом и пояснением ошибки расчёта или {@code null}, если ошибки нет
+     * @param payload JSON события для очереди отправки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertDelivery(String store, String delivery, long sequence, String fingerprint, String state, Timestamp receivedAt, Timestamp nextAttemptAt, String failure, String payload) {
         return jdbc.update("""
@@ -104,20 +107,20 @@ public class DeliveryRepository {
     }
 
     /**
-     * Сохраняет валидную строку поставки; частичная запись отменяется при откате приёмки. Транзакцией управляет
-     * вызывающий сервис.
+     * Сохраняет проверенную строку поставки с количеством и закупочной ценой. Продажная цена и тариф будут
+     * записаны после расчёта.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param lineId идентификатор строки поставки
+     * @param delivery идентификатор поставки внутри магазина
+     * @param lineId идентификатор строки внутри поставки
      * @param product идентификатор продукта
-     * @param productType тип продукта FOOD или NON_FOOD
-     * @param shortName короткое название продукта
-     * @param description описание продукта
-     * @param quantity итоговое количество позиции или величина движения согласно операции
-     * @param price точная денежная цена без floating point
-     * @param currency валюта денежного значения
-     * @return число изменённых строк
+     * @param productType тип товара: {@code FOOD} или {@code NON_FOOD}
+     * @param shortName краткое название товара
+     * @param description описание товара
+     * @param quantity количество единиц товара
+     * @param price закупочная цена как точное десятичное число
+     * @param currency код валюты; в текущем контракте разрешён {@code RUB}
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertInputLine(String store, String delivery, String lineId, String product, String productType, String shortName, String description, int quantity, BigDecimal price, String currency) {
         return jdbc.update("""
@@ -127,31 +130,30 @@ public class DeliveryRepository {
     }
 
     /**
-     * Регистрирует входное событие вместе с поставкой; повтор UUID ограничивается БД. Транзакцией управляет
-     * вызывающий сервис.
+     * Сохраняет отметку об обработанном событии. БД запрещает повторную регистрацию того же идентификатора.
      *
-     * @param eventId идентификатор события для защиты повторов
+     * @param eventId идентификатор события для распознавания повторного сообщения
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param fingerprint канонический отпечаток бизнес-содержимого для проверки повтора
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param fingerprint контрольная сумма содержимого поставки для сравнения повторов
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int rememberEvent(UUID eventId, String store, String delivery, String fingerprint) {
         return jdbc.update("INSERT INTO received_events(event_id,store_id,delivery_id,fingerprint) VALUES(?,?,?,?)", eventId, store, delivery, fingerprint);
     }
 
     /**
-     * Записывает диагностику один раз на координаты Kafka; сбой записи распространяется потребителю.
-     * Транзакцией управляет вызывающий сервис.
+     * Сохраняет исходное сообщение и причину отказа по его координатам в Kafka. Повтор этих координат не
+     * создаёт новую запись; ошибка БД передаётся потребителю.
      *
-     * @param topic имя топика входного сообщения
-     * @param partition номер раздела Kafka
-     * @param offset смещение сообщения Kafka
-     * @param recordedAt UTC-время записи диагностики
-     * @param code стабильный код ошибки контракта
-     * @param message безопасное пояснение без секретов
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
-     * @return число изменённых строк
+     * @param topic имя канала Kafka, из которого получено сообщение
+     * @param partition номер раздела канала Kafka
+     * @param offset позиция сообщения внутри раздела Kafka
+     * @param recordedAt время сохранения сообщения для диагностики
+     * @param code код, по которому клиент различает причину ошибки
+     * @param message пояснение для клиента без секретов и внутренних подробностей
+     * @param raw исходный текст JSON-сообщения
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertDiagnostic(String topic, int partition, long offset, Timestamp recordedAt, String code, String message, String raw) {
         return jdbc.update("""
@@ -161,12 +163,12 @@ public class DeliveryRepository {
     }
 
     /**
-     * Читает поставку и её строки; REJECTED сохраняет исходное содержимое вместо вымышленных валидных строк.
-     * Транзакцией управляет вызывающий сервис.
+     * Возвращает состояние поставки и её строки. Для состояния {@code REJECTED} добавляет исходное содержимое,
+     * чтобы показать причину отказа без вымышленных правильных строк.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param delivery идентификатор поставки внутри магазина
+     * @return состояние найденной поставки или пустой список, если записи нет
      */
     public List<View> views(String store, String delivery) {
         return jdbc.query("SELECT * FROM deliveries WHERE store_id=? AND delivery_id=?", (row, number) ->
@@ -177,12 +179,12 @@ public class DeliveryRepository {
     }
 
     /**
-     * Читает строки в порядке lineId с точными денежными значениями и nullable-полями незавершённого расчёта.
-     * Транзакцией управляет вызывающий сервис.
+     * Читает строки поставки в порядке {@code lineId}. Цены возвращает точными строками; пока расчёт не
+     * выполнен, его поля содержат {@code null}.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param delivery идентификатор поставки внутри магазина
+     * @return строки поставки в порядке их идентификаторов; при отсутствии строк список пуст
      */
     public List<Line> lines(String store, String delivery) {
         return jdbc.query("SELECT * FROM delivery_items WHERE store_id=? AND delivery_id=? ORDER BY line_id", (row, number) -> {
@@ -196,37 +198,37 @@ public class DeliveryRepository {
     }
 
     /**
-     * Блокирует поставку до конца диагностического повтора; отсутствующую поставку отклоняет сервис.
-     * Транзакцией управляет вызывающий сервис.
+     * Читает состояние и блокирует поставку до конца транзакции. Пустой список означает отсутствие поставки;
+     * решение об ошибке принимает сервис.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param delivery идентификатор поставки внутри магазина
+     * @return состояние заблокированной поставки или пустой список, если записи нет
      */
     public List<Map<String,Object>> lockDelivery(String store, String delivery) {
         return jdbc.queryForList("SELECT state FROM deliveries WHERE store_id=? AND delivery_id=? FOR UPDATE", store, delivery);
     }
 
     /**
-     * Ускоряет следующую попытку, сохраняя токен уже работающего обработчика. Транзакцией управляет вызывающий
-     * сервис.
+     * Меняет время следующего расчёта, сохраняя владельца и срок уже выполняемой попытки. Сервис должен
+     * заранее проверить состояние поставки.
      *
-     * @param nextAttemptAt UTC-время следующей попытки
+     * @param nextAttemptAt время, начиная с которого разрешена следующая попытка
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int schedulePricing(Timestamp nextAttemptAt, String store, String delivery) {
         return jdbc.update("UPDATE deliveries SET next_attempt_at=? WHERE store_id=? AND delivery_id=?", nextAttemptAt, store, delivery);
     }
 
     /**
-     * Выбирает одну ожидающую поставку с истёкшим или свободным захватом через SKIP LOCKED. Транзакцией
-     * управляет вызывающий сервис.
+     * Выбирает одну поставку, ожидающую расчёта, с наступившим временем попытки и без действующего владельца.
+     * Блокирует её до конца транзакции, пропуская занятые строки без ожидания.
      *
-     * @param dueAt UTC-граница наступившей попытки
-     * @param expiredAt UTC-граница просроченного захвата
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param dueAt момент, до которого включительно время попытки считается наступившим
+     * @param expiredAt момент, до которого включительно срок владения считается истёкшим
+     * @return одна заблокированная поставка с городом и номером попытки или пустой список
      */
     public List<Map<String,Object>> lockDuePricing(Timestamp dueAt, Timestamp expiredAt) {
         return jdbc.queryForList("""
@@ -237,57 +239,57 @@ public class DeliveryRepository {
     }
 
     /**
-     * Записывает владельца и увеличивает число попыток до HTTP-запроса тарифов. Транзакцией управляет
-     * вызывающий сервис.
+     * Назначает владельца и срок расчёта и увеличивает номер попытки. Сервис сохраняет эту транзакцию до
+     * HTTP-запроса тарифов.
      *
-     * @param token токен текущего владельца захвата
-     * @param leaseUntil UTC-время окончания захвата
+     * @param token UUID текущего владельца фоновой попытки
+     * @param leaseUntil время окончания права текущего владельца обрабатывать запись
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int claimPricing(UUID token, Timestamp leaseUntil, String store, String delivery) {
         return jdbc.update("UPDATE deliveries SET lease_token=?,lease_until=?,attempt_count=attempt_count+1 WHERE store_id=? AND delivery_id=?", token, leaseUntil, store, delivery);
     }
 
     /**
-     * Продлевает захват только для текущего владельца WAITING_PRICING; ноль означает потерю владения.
-     * Транзакцией управляет вызывающий сервис.
+     * Продлевает срок расчёта, только если поставка всё ещё в {@code WAITING_PRICING} и принадлежит указанному
+     * владельцу. Ноль означает, что продление не выполнено.
      *
-     * @param leaseUntil UTC-время окончания захвата
+     * @param leaseUntil время окончания права текущего владельца обрабатывать запись
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param token токен текущего владельца захвата
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param token UUID текущего владельца фоновой попытки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int renewPricing(Timestamp leaseUntil, String store, String delivery, UUID token) {
         return jdbc.update("UPDATE deliveries SET lease_until=? WHERE store_id=? AND delivery_id=? AND lease_token=? AND state='WAITING_PRICING'", leaseUntil, store, delivery, token);
     }
 
     /**
-     * Блокирует поставку и читает токен перед фиксацией результата расчёта. Транзакцией управляет вызывающий
-     * сервис.
+     * Блокирует поставку и читает идентификатор текущего владельца. Сервис сравнивает его перед сохранением
+     * рассчитанных цен.
      *
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param delivery идентификатор поставки внутри магазина
+     * @return идентификатор владельца поставки или пустой список, если записи нет
      */
     public List<String> lockPricingToken(String store, String delivery) {
         return jdbc.queryForList("SELECT lease_token::text FROM deliveries WHERE store_id=? AND delivery_id=? FOR UPDATE", String.class, store, delivery);
     }
 
     /**
-     * Сохраняет расчёт строки внутри общей транзакции оприходования; частичный результат не фиксируется.
-     * Транзакцией управляет вызывающий сервис.
+     * Сохраняет наценку, UUID и версию правила и продажную цену одной строки. Запись входит в общую транзакцию
+     * оприходования всей поставки.
      *
-     * @param rate дробная наценка
-     * @param rule UUID тарифного правила
-     * @param version версия правила или корзины согласно операции
-     * @param price точная денежная цена без floating point
+     * @param rate наценка как точное десятичное число
+     * @param rule UUID применённого тарифного правила
+     * @param version версия применённого тарифного правила
+     * @param price рассчитанная продажная цена
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param lineId идентификатор строки поставки
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param lineId идентификатор строки внутри поставки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int updatePricedLine(BigDecimal rate, UUID rule, long version, BigDecimal price, String store, String delivery, String lineId) {
         return jdbc.update("""
@@ -297,28 +299,28 @@ public class DeliveryRepository {
     }
 
     /**
-     * Сохраняет единственное неизменяемое GoodsPosted в общей транзакции с POSTED. Транзакцией управляет
-     * вызывающий сервис.
+     * Сохраняет событие {@code GoodsPosted} в очереди отправки {@code outbox}. Событие и переход поставки в
+     * {@code POSTED} должны быть сохранены в одной транзакции.
      *
-     * @param eventId идентификатор события для защиты повторов
+     * @param eventId идентификатор события для распознавания повторного сообщения
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param payload сериализованное содержимое события или проверенный объект согласно типу
-     * @param nextAttemptAt UTC-время следующей попытки
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param payload JSON события для очереди отправки
+     * @param nextAttemptAt время, начиная с которого разрешена следующая попытка
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertOutbox(UUID eventId, String store, String delivery, String payload, Timestamp nextAttemptAt) {
         return jdbc.update("INSERT INTO warehouse_outbox(event_id,store_id,delivery_id,payload,next_attempt_at) VALUES(?,?,?,?,?)", eventId, store, delivery, payload, nextAttemptAt);
     }
 
     /**
-     * Переводит поставку в POSTED и освобождает захват вместе с записью outbox. Транзакцией управляет
-     * вызывающий сервис.
+     * Отмечает поставку как оприходованную, сохраняет время и очищает ожидание, ошибку и владельца. Сервис
+     * выполняет это вместе с записью события в очередь отправки.
      *
-     * @param postedAt UTC-время завершения расчёта поставки
+     * @param postedAt время завершения расчёта и оприходования поставки в WAREHOUSE
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int markPosted(Timestamp postedAt, String store, String delivery) {
         return jdbc.update("""
@@ -328,15 +330,15 @@ public class DeliveryRepository {
     }
 
     /**
-     * Сохраняет ошибку и повтор только для текущего владельца WAITING_PRICING. Транзакцией управляет вызывающий
-     * сервис.
+     * Сохраняет ошибку расчёта, назначает повтор и освобождает поставку, только если она ещё ожидает расчёта и
+     * принадлежит указанному владельцу.
      *
-     * @param failure ошибка текущей попытки или её сериализованное описание
-     * @param nextAttemptAt UTC-время следующей попытки
+     * @param failure JSON с кодом и пояснением ошибки расчёта или {@code null}, если ошибки нет
+     * @param nextAttemptAt время, начиная с которого разрешена следующая попытка
      * @param store идентификатор магазина
-     * @param delivery идентификатор поставки
-     * @param token токен текущего владельца захвата
-     * @return число изменённых строк
+     * @param delivery идентификатор поставки внутри магазина
+     * @param token UUID текущего владельца фоновой попытки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int schedulePricingRetry(String failure, Timestamp nextAttemptAt, String store, String delivery, UUID token) {
         return jdbc.update("""
@@ -346,12 +348,12 @@ public class DeliveryRepository {
     }
 
     /**
-     * Выбирает наступившее PENDING-событие с SKIP LOCKED, восстанавливая просроченный захват. Транзакцией
-     * управляет вызывающий сервис.
+     * Выбирает одно ожидающее событие, для которого наступило время отправки и нет действующего владельца.
+     * Блокирует его до конца транзакции, пропуская занятые строки без ожидания.
      *
-     * @param dueAt UTC-граница наступившей попытки
-     * @param expiredAt UTC-граница просроченного захвата
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param dueAt момент, до которого включительно время попытки считается наступившим
+     * @param expiredAt момент, до которого включительно срок владения считается истёкшим
+     * @return одно заблокированное событие с данными отправки или пустой список, если подходящего события нет
      */
     public List<Map<String,Object>> lockDueOutbox(Timestamp dueAt, Timestamp expiredAt) {
         return jdbc.queryForList("""
@@ -362,26 +364,26 @@ public class DeliveryRepository {
     }
 
     /**
-     * Фиксирует владельца и число попыток перед публикацией события за пределами SQL-транзакции. Транзакцией
-     * управляет вызывающий сервис.
+     * Назначает владельца и срок отправки и увеличивает номер попытки. Сервис сохраняет эту транзакцию до
+     * обращения к Kafka.
      *
-     * @param token токен текущего владельца захвата
-     * @param leaseUntil UTC-время окончания захвата
-     * @param eventId идентификатор события для защиты повторов
-     * @return число изменённых строк
+     * @param token UUID текущего владельца фоновой попытки
+     * @param leaseUntil время окончания права текущего владельца обрабатывать запись
+     * @param eventId идентификатор события для распознавания повторного сообщения
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int claimOutbox(UUID token, Timestamp leaseUntil, UUID eventId) {
         return jdbc.update("UPDATE warehouse_outbox SET lease_token=?,lease_until=?,attempt_count=attempt_count+1 WHERE event_id=?", token, leaseUntil, eventId);
     }
 
     /**
-     * Записывает подтверждение брокера только для текущего владельца PENDING-события. Транзакцией управляет
-     * вызывающий сервис.
+     * Отмечает подтверждённую Kafka публикацию, только если событие ещё ожидает отправки и принадлежит
+     * указанному владельцу. Возвращает 0, если условие уже не выполнено.
      *
-     * @param publishedAt UTC-время подтверждения публикации
-     * @param eventId идентификатор события для защиты повторов
-     * @param token токен текущего владельца захвата
-     * @return число изменённых строк
+     * @param publishedAt время подтверждения отправки события в Kafka; до отправки может отсутствовать
+     * @param eventId идентификатор события для распознавания повторного сообщения
+     * @param token UUID текущего владельца фоновой попытки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int markPublished(Timestamp publishedAt, UUID eventId, UUID token) {
         return jdbc.update("""
@@ -391,13 +393,13 @@ public class DeliveryRepository {
     }
 
     /**
-     * Сохраняет ожидание повторной публикации того же события, освобождая захват текущего владельца.
-     * Транзакцией управляет вызывающий сервис.
+     * Сохраняет причину сбоя отправки, назначает повтор и освобождает событие, только если оно принадлежит
+     * указанному владельцу и ещё ожидает публикации.
      *
-     * @param nextAttemptAt UTC-время следующей попытки
-     * @param eventId идентификатор события для защиты повторов
-     * @param token токен текущего владельца захвата
-     * @return число изменённых строк
+     * @param nextAttemptAt время, начиная с которого разрешена следующая попытка
+     * @param eventId идентификатор события для распознавания повторного сообщения
+     * @param token UUID текущего владельца фоновой попытки
+     * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int scheduleSendRetry(Timestamp nextAttemptAt, UUID eventId, UUID token) {
         return jdbc.update("""
@@ -406,10 +408,12 @@ public class DeliveryRepository {
                 """, nextAttemptAt, eventId, token);
     }
     /**
-     * Преобразует nullable-время строки БД в UTC; отсутствие значения сохраняет null.
+     * Читает дату из колонки SQL-результата и возвращает тот же момент как {@code Instant}. Отсутствующую дату
+     * сохраняет как {@code null}; ошибку чтения передаёт как {@code SQLException}.
      *
-     * @param row строка результата JDBC
+     * @param row текущая строка результата SQL-запроса
      * @param field имя читаемого поля
+     * @return момент времени; для отсутствующей даты в БД {@code null}
      */
     private Instant instant(ResultSet row, String field) throws SQLException {
         Timestamp value = row.getTimestamp(field);

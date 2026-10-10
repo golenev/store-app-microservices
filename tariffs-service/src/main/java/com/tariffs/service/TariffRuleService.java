@@ -17,17 +17,20 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** Управляет правилами PostgreSQL и бизнес-проверками; CRUD не сбрасывает заполненный кеш расчётов. */
+/**
+ * Создаёт, читает, заменяет и удаляет тарифные правила в PostgreSQL и выбирает правило для расчёта
+ * наценки. Изменение правил не очищает ранее сохранённые расчёты в Redis.
+ */
 @Service
 public class TariffRuleService {
     private final TariffRuleRepository repository;
     private final Validator validator;
 
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает хранение правил и проверку обязательных полей и форматов входных данных.
      *
-     * @param repository репозиторий, участвующий в транзакциях сервиса
-     * @param validator Bean Validation для публичных параметров контракта
+     * @param repository чтение и запись тарифных правил
+     * @param validator проверка ограничений, объявленных на полях входных моделей
      */
     public TariffRuleService(TariffRuleRepository repository, Validator validator) {
         this.repository = repository;
@@ -35,7 +38,10 @@ public class TariffRuleService {
     }
 
     /**
-     * Возвращает правила PostgreSQL в транзакции чтения; превышение 1000 строк вызывает DEPENDENCY_UNAVAILABLE.
+     * Возвращает текущие правила из PostgreSQL. Если их больше 1000, выдаёт {@code DEPENDENCY_UNAVAILABLE},
+     * поскольку список превышает лимит ответа API.
+     *
+     * @return список текущих тарифных правил
      */
     @Transactional(readOnly = true)
     public RulesResponse list() {
@@ -45,18 +51,22 @@ public class TariffRuleService {
     }
 
     /**
-     * Читает правило id в транзакции чтения без обращения к кешу; отсутствие вызывает NOT_FOUND.
+     * Возвращает правило по UUID из PostgreSQL. Если записи нет, выдаёт {@code NOT_FOUND}; кеш расчётов не
+     * используется.
      *
-     * @param id UUID запрашиваемого объекта
+     * @param id UUID тарифного правила
+     * @return правило с UUID, версией и полным набором условий
      */
     @Transactional(readOnly = true)
     public Rule get(UUID id) { return repository.find(id).orElseThrow(this::notFound); }
 
     /**
-     * Проверяет request и создаёт правило версии 1 под общей блокировкой каталога в одной транзакции;
-     * пересечения интервалов разрешены и выявляются при расчёте.
+     * Проверяет условия и создаёт правило версии 1 с новым UUID. Общая блокировка создания не позволяет
+     * одновременным запросам превысить лимит в 1000 правил. Запись и чтение результата выполняет в одной
+     * транзакции. Пересечения диапазонов допустимы при создании и считаются ошибкой при выборе тарифа.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request полный набор условий тарифного правила
+     * @return правило с UUID, версией и полным набором условий
      */
     @Transactional
     public Rule create(RuleRequest request) {
@@ -69,11 +79,13 @@ public class TariffRuleService {
     }
 
     /**
-     * В одной транзакции блокирует id и заменяет его данными request с увеличением версии; заполненный кеш не
-     * сбрасывает.
+     * Проверяет новые условия и полностью заменяет существующее правило, увеличивая версию на один. До записи
+     * блокирует правило до конца транзакции. Отсутствие вызывает {@code NOT_FOUND}, исчерпанная версия —
+     * {@code VALIDATION_ERROR}; ранее сохранённые расчёты в Redis остаются прежними.
      *
-     * @param id UUID запрашиваемого объекта
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param id UUID тарифного правила
+     * @param request полный набор условий тарифного правила
+     * @return правило с UUID, версией и полным набором условий
      */
     @Transactional
     public Rule update(UUID id, RuleRequest request) {
@@ -85,10 +97,10 @@ public class TariffRuleService {
     }
 
     /**
-     * Удаляет только правило id в транзакции; отсутствие вызывает NOT_FOUND, прежний кешированный результат
-     * сохраняется.
+     * Удаляет правило в транзакции. Отсутствие записи вызывает {@code NOT_FOUND}; сохранённый расчёт по этому
+     * правилу остаётся в Redis до сброса кеша.
      *
-     * @param id UUID запрашиваемого объекта
+     * @param id UUID тарифного правила
      */
     @Transactional
     public void delete(UUID id) {
@@ -96,10 +108,13 @@ public class TariffRuleService {
     }
 
     /**
-     * Выбирает ровно одно правило для request на интервале [lowerBound, upperBound). Отсутствие вызывает
-     * TARIFF_NOT_FOUND, пересечение — TARIFF_AMBIGUOUS; нулевую наценку вместо ошибки не возвращает.
+     * Выбирает единственное правило для проверенных параметров расчёта. Закупочная цена должна быть не меньше
+     * нижней границы и строго меньше верхней, если она задана. Возвращает наценку, UUID и версию правила.
+     * Отсутствие совпадения вызывает {@code TARIFF_NOT_FOUND}, несколько совпадений — {@code
+     * TARIFF_AMBIGUOUS}.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
+     * @return наценка, UUID и версия выбранного тарифного правила
      */
     @Transactional(readOnly = true)
     public QuoteResponse calculate(QuoteRequest request) {
@@ -111,9 +126,10 @@ public class TariffRuleService {
     }
 
     /**
-     * Проверяет request и положительную цену до Redis или SQL; нарушение вызывает VALIDATION_ERROR.
+     * Проверяет обязательные поля, форматы и положительную закупочную цену до обращения к Redis или
+     * PostgreSQL. Ошибку данных сообщает как {@code VALIDATION_ERROR}.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
      */
     public void validateQuote(QuoteRequest request) {
         validate(request);
@@ -122,9 +138,10 @@ public class TariffRuleService {
     }
 
     /**
-     * Проверяет поля request и lowerBound < upperBound при заданном верхнем пределе до записи в БД.
+     * Проверяет поля правила и порядок ценовых границ. Если верхняя граница задана, нижняя должна быть строго
+     * меньше неё; нарушение вызывает {@code VALIDATION_ERROR} до записи в БД.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request полный набор условий тарифного правила
      */
     private void validateRule(RuleRequest request) {
         validate(request);
@@ -133,10 +150,11 @@ public class TariffRuleService {
     }
 
     /**
-     * Проверяет request через Bean Validation и формирует упорядоченные безопасные ошибки полей; null и
-     * нарушения вызывают VALIDATION_ERROR.
+     * Проверяет ограничения, объявленные на полях запроса. Отсутствующий запрос или нарушения вызывают {@code
+     * VALIDATION_ERROR}; список нарушений сортирует по имени поля и сообщению, не включая отклонённые
+     * значения.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request модель запроса для проверки объявленных на её полях ограничений
      */
     private void validate(Object request) {
         if (request == null) throw new TariffApiException(400, "VALIDATION_ERROR", "Request is required");
@@ -147,7 +165,9 @@ public class TariffRuleService {
     }
 
     /**
-     * Возвращает безопасную ошибку NOT_FOUND без SQL и входного идентификатора в пояснении.
+     * Создаёт ошибку HTTP 404 с кодом {@code NOT_FOUND} для отсутствующего правила.
+     *
+     * @return исключение тарифов с подготовленными статусом, кодом и пояснением
      */
     private TariffApiException notFound() { return new TariffApiException(404, "NOT_FOUND", "Tariff rule not found"); }
 }

@@ -9,7 +9,9 @@ import org.springframework.http.*;
 import com.shop.warehouse.service.SupplierDeliveryService;
 import org.springframework.web.bind.annotation.*;
 
-/** Предоставляет диагностику поставок магазина и HTTP-вход учебного поставщика. */
+/**
+ * Принимает HTTP-запросы чтения поставок, ручного повтора расчёта и отправки учебной поставки в Kafka.
+ */
 @RestController
 public class DeliveryController {
     private final DeliveryService store;
@@ -17,11 +19,11 @@ public class DeliveryController {
     private final SupplierDeliveryService supplier;
 
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает чтение и изменение поставок, проверку идентификаторов и отправку поставщиком.
      *
-     * @param store сервис транзакций поставок и outbox
-     * @param codec строгий разбор и сериализация протокола
-     * @param supplier сервис проверки и публикации учебной поставки
+     * @param store транзакции приёмки, расчёта и очереди событий поставок
+     * @param codec проверка событий поставок и преобразование сохранённых моделей
+     * @param supplier проверка и отправка события поставщика
      */
     public DeliveryController(DeliveryService store, DeliveryCodec codec, SupplierDeliveryService supplier) {
         this.store = store;
@@ -30,11 +32,12 @@ public class DeliveryController {
     }
 
     /**
-     * Возвращает поставку deliveryId магазина storeId; отсутствующая или принадлежащая другому магазину запись
-     * вызывает NOT_FOUND.
+     * Возвращает состояние поставки указанного магазина. Неизвестная поставка или обращение через другой
+     * магазин вызывает {@code NOT_FOUND}.
      *
      * @param storeId идентификатор магазина
-     * @param deliveryId идентификатор поставки из HTTP-маршрута
+     * @param deliveryId идентификатор поставки внутри магазина
+     * @return состояние поставки с датами, попытками и строками
      */
     @GetMapping("/stores/{storeId}/deliveries/{deliveryId}")
     public View get(@PathVariable String storeId, @PathVariable String deliveryId) {
@@ -42,12 +45,12 @@ public class DeliveryController {
     }
 
     /**
-     * Возвращает 202 после ускорения фонового расчёта deliveryId магазина storeId; токен активной попытки
-     * сохраняется.
+     * Назначает ближайший фоновый расчёт поставки и возвращает HTTP 202 с её состоянием. Если расчёт уже
+     * выполняется, его владелец сохраняется; сам HTTP-запрос цены не рассчитывает.
      *
      * @param storeId идентификатор магазина
-     * @param deliveryId идентификатор поставки из HTTP-маршрута
-     * @return HTTP-ответ с описанным статусом и телом
+     * @param deliveryId идентификатор поставки внутри магазина
+     * @return HTTP 202 с состоянием поставки после назначения повтора
      */
     @PostMapping("/stores/{storeId}/deliveries/{deliveryId}/retry-pricing")
     public ResponseEntity<View> retry(@PathVariable String storeId, @PathVariable String deliveryId) {
@@ -55,11 +58,11 @@ public class DeliveryController {
     }
 
     /**
-     * Передаёт исходный raw сервису поставщика; возвращает 202 после подтверждения Kafka без обещания приёмки
-     * или POSTED.
+     * Проверяет и отправляет исходное событие поставщика. Возвращает HTTP 202 после подтверждения Kafka;
+     * сохранение поставки и её оприходование выполняются потребителем позднее.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
-     * @return HTTP-ответ с описанным статусом и телом
+     * @param raw исходный JSON события поставщика без изменения идентификаторов и содержимого
+     * @return HTTP 202 с подтверждением отправки события поставщика
      */
     @PostMapping(value="/technical/deliveries", consumes=MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Published> publish(@RequestBody String raw) {

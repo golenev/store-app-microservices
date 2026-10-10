@@ -13,7 +13,9 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 
-/** Обслуживает HTTP-контракт каталога, корзин и оформления в пределах магазина. */
+/**
+ * Принимает HTTP-запросы каталога, корзин и оформления в пределах указанного магазина.
+ */
 @RestController
 @RequestMapping("/stores/{storeId}")
 public class ShopController {
@@ -22,25 +24,26 @@ public class ShopController {
     private final SubmissionService submissions;
     private final SubmissionTransactionService submissionStore;
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает операции с корзинами, проверку запросов, оформление и чтение принятых заявок.
      *
-     * @param carts сервис независимых корзин
-     * @param codec строгий разбор и сериализация протокола
-     * @param submissions фасад идемпотентного оформления
-     * @param submissionStore сервис транзакций оформления и outbox
+     * @param carts создание, чтение и изменение корзин
+     * @param codec проверка входного JSON магазина и преобразование его моделей
+     * @param submissions оформление и восстановление результата повторного запроса
+     * @param submissionStore транзакции оформления и операции с очередью событий
      */
     public ShopController(CartService carts,ShopCodec codec,SubmissionService submissions,SubmissionTransactionService submissionStore) {
         this.carts=carts; this.codec=codec; this.submissions=submissions; this.submissionStore=submissionStore;
     }
     /**
-     * Принимает raw и ключ key для cartId магазина storeId; возвращает 202 и Location после атомарного
-     * оформления либо идемпотентного повтора.
+     * Оформляет корзину по ожидаемой версии и ключу повтора. После сохранения всех изменений возвращает HTTP
+     * 202, принятую операцию и её адрес в {@code Location}. Повтор того же запроса возвращает ту же операцию
+     * без нового списания.
      *
      * @param storeId идентификатор магазина
-     * @param cartId идентификатор корзины из HTTP-маршрута
-     * @param key регистрозависимый ключ операции внутри магазина
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
-     * @return HTTP-ответ с описанным статусом и телом
+     * @param cartId идентификатор корзины
+     * @param key ключ распознавания повторного оформления из заголовка {@code Idempotency-Key}
+     * @param raw JSON с ожидаемой версией оформляемой корзины
+     * @return HTTP 202 с принятой заявкой и её адресом в {@code Location}
      */
     @PostMapping(value="/carts/{cartId}/submit",consumes=MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Submission> submit(@PathVariable String storeId,@PathVariable String cartId,
@@ -49,31 +52,33 @@ public class ShopController {
         return ResponseEntity.accepted().location(URI.create("/stores/"+result.storeId()+"/submissions/"+result.submissionId())).body(result);
     }
     /**
-     * Возвращает состояние операции submissionId магазина storeId без повторного оформления или запуска
-     * отправителя.
+     * Возвращает состояние принятой операции указанного магазина. Чтение не оформляет корзину повторно и не
+     * запускает отправку в Kafka.
      *
      * @param storeId идентификатор магазина
-     * @param submissionId идентификатор заявки из HTTP-маршрута
+     * @param submissionId идентификатор принятой заявки
+     * @return принятая заявка и состояние отправки её события
      */
     @GetMapping("/submissions/{submissionId}")
     public Submission submission(@PathVariable String storeId,@PathVariable String submissionId) {
         return submissionStore.view(codec.identifier(storeId),codec.uuid(submissionId));
     }
     /**
-     * Возвращает каталог storeId: одна позиция на продукт, включая нулевой остаток и последнюю применённую
-     * цену.
+     * Возвращает каталог магазина: одну позицию на продукт с доступным количеством и последней применённой
+     * ценой. Товары с нулевым остатком также входят в ответ.
      *
      * @param storeId идентификатор магазина
+     * @return каталог указанного магазина с текущими ценами и остатками
      */
     @GetMapping("/catalog")
     public Catalog catalog(@PathVariable String storeId) { return carts.catalog(codec.identifier(storeId)); }
     /**
-     * Создаёт независимую корзину storeId и возвращает 201 с Location; непустое raw отклоняет, чтобы клиент не
-     * назначал состав или цены.
+     * Создаёт отдельную пустую корзину и возвращает HTTP 201 с её состоянием и адресом в {@code Location}.
+     * Непустое тело запроса отклоняет с {@code VALIDATION_ERROR}: начальные поля назначает сервер.
      *
      * @param storeId идентификатор магазина
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
-     * @return HTTP-ответ с описанным статусом и телом
+     * @param raw тело запроса создания; должно отсутствовать или содержать только пробелы
+     * @return HTTP 201 с новой корзиной и её адресом в {@code Location}
      */
     @PostMapping("/carts")
     public ResponseEntity<Cart> create(@PathVariable String storeId,@RequestBody(required=false) String raw) {
@@ -82,36 +87,41 @@ public class ShopController {
         return ResponseEntity.created(URI.create("/stores/"+cart.storeId()+"/carts/"+cart.cartId())).body(cart);
     }
     /**
-     * Возвращает корзину cartId магазина storeId с согласованными составом, версией и ценами.
+     * Возвращает состав, версию, цены и сумму корзины указанного магазина. Идентификаторы проверяет до вызова
+     * сервиса.
      *
      * @param storeId идентификатор магазина
-     * @param cartId идентификатор корзины из HTTP-маршрута
+     * @param cartId идентификатор корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @GetMapping("/carts/{cartId}")
     public Cart get(@PathVariable String storeId,@PathVariable String cartId) {
         return carts.get(codec.identifier(storeId),codec.uuid(cartId));
     }
     /**
-     * Заменяет итоговое количество stockItemId из raw с проверкой версии и остатка; возвращает результат
-     * зафиксированной операции.
+     * Устанавливает итоговое количество товара из тела запроса. Проверяет ожидаемую версию и доступный
+     * остаток; возвращает корзину после сохранения изменения. Переданное количество заменяет прежнее, а не
+     * прибавляется к нему.
      *
      * @param storeId идентификатор магазина
-     * @param cartId идентификатор корзины из HTTP-маршрута
-     * @param stockItemId идентификатор позиции из HTTP-маршрута
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param cartId идентификатор корзины
+     * @param stockItemId идентификатор позиции остатка магазина
+     * @param raw JSON с новым итоговым количеством и ожидаемой версией корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @PutMapping(value="/carts/{cartId}/items/{stockItemId}",consumes=MediaType.APPLICATION_JSON_VALUE)
     public Cart put(@PathVariable String storeId,@PathVariable String cartId,@PathVariable String stockItemId,@RequestBody String raw) {
         return carts.put(codec.identifier(storeId),codec.uuid(cartId),codec.uuid(stockItemId),codec.put(raw));
     }
     /**
-     * Удаляет существующую позицию stockItemId с обязательной expectedCartVersion; успешная операция
-     * увеличивает версию один раз.
+     * Удаляет существующую позицию с проверкой обязательной ожидаемой версии корзины. Возвращает обновлённую
+     * корзину; успешное удаление увеличивает её версию на один.
      *
      * @param storeId идентификатор магазина
-     * @param cartId идентификатор корзины из HTTP-маршрута
-     * @param stockItemId идентификатор позиции из HTTP-маршрута
-     * @param expectedCartVersion ожидаемая версия корзины
+     * @param cartId идентификатор корзины
+     * @param stockItemId идентификатор позиции остатка магазина
+     * @param expectedCartVersion версия корзины, которую клиент ожидает перед изменением
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @DeleteMapping("/carts/{cartId}/items/{stockItemId}")
     public Cart delete(@PathVariable String storeId,@PathVariable String cartId,@PathVariable String stockItemId,

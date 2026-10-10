@@ -8,7 +8,9 @@ import com.shop.warehouse.model.Accepted;
 import org.springframework.stereotype.Service;
 import java.time.Clock;
 
-/** Проверяет учебную поставку и координирует её публикацию без SQL-транзакции. */
+/**
+ * Проверяет учебную поставку и отправляет её событие в Kafka. Сам не сохраняет поставку в БД WAREHOUSE.
+ */
 @Service
 public class SupplierDeliveryService {
     private final DeliveryCodec codec;
@@ -16,11 +18,11 @@ public class SupplierDeliveryService {
     private final Clock clock;
 
     /**
-     * Получает проверку контракта, publisher и UTC-часы; конструктор не выполняет внешних запросов.
+     * Подключает проверку события, отправку в Kafka и часы для времени ответа поставщику.
      *
-     * @param codec строгий разбор и сериализация протокола
-     * @param publisher адаптер публикации исходного события
-     * @param clock общие UTC-часы приложения
+     * @param codec проверка событий поставок и преобразование сохранённых моделей
+     * @param publisher отправка исходного события поставщика в Kafka
+     * @param clock часы для дат операций и сроков фоновых попыток
      */
     public SupplierDeliveryService(DeliveryCodec codec, DeliveryPublisher publisher, Clock clock) {
         this.codec = codec;
@@ -29,11 +31,12 @@ public class SupplierDeliveryService {
     }
 
     /**
-     * Проверяет исходный JSON и публикует его без изменений. Невалидная поставка отклоняется с 400. Возвращает
-     * PUBLISHED только после подтверждения брокера; приёмка и POSTED выполняются позднее. Повтор raw сохраняет
-     * идентификаторы для защиты от повторного прихода на стороне потребителя.
+     * Проверяет событие поставщика и отправляет исходный JSON без изменений. Неверные данные отклоняет с HTTP
+     * 400. После подтверждения Kafka возвращает {@code PUBLISHED}; приёмка и расчёт поставки выполняются
+     * позднее. Повтор с прежними идентификаторами позволяет потребителю распознать уже обработанную поставку.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw исходный JSON события поставщика без изменения идентификаторов и содержимого
+     * @return подтверждение отправки поставщиком с идентификаторами и временем
      */
     public Published publish(String raw) {
         Accepted input = codec.decode(raw);

@@ -22,7 +22,10 @@ import javax.sql.DataSource;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
-/** Те же девять CRUD-сценариев на отдельной PostgreSQL: реальные миграции, репозиторий и транзакционный сервис. */
+/**
+ * Проверяет девять сценариев создания, чтения, замены и удаления тарифных правил в отдельном PostgreSQL в
+ * контейнере. Использует миграции, репозиторий и транзакционный сервис приложения.
+ */
 @Tag("database") @Testcontainers @SpringJUnitConfig(TariffCrudPostgresTest.Database.class)
 class TariffCrudPostgresTest {
     @Container static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -30,36 +33,74 @@ class TariffCrudPostgresTest {
     @Autowired private JdbcTemplate jdbc;
     private final Set<UUID> created = new HashSet<>();
 
-    /** Поднимает только компоненты CRUD: Redis, web server и другие микросервисы не нужны. */
+    /**
+     * Собирает только компоненты работы с правилами и проверки полей. HTTP-сервер, Redis и другие сервисы не
+     * запускает.
+     */
     @org.springframework.context.annotation.Configuration @EnableTransactionManagement
     static class Database {
-        /** Создаёт datasource отдельного контейнера и применяет production-миграции без очистки пользовательских баз. */
+        /**
+         * Подключает отдельный PostgreSQL в контейнере и применяет миграции сервиса. Пользовательские базы не
+         * используются.
+         *
+         * @return подключение к подготовленной тестовой БД с применёнными миграциями
+         */
         @Bean DataSource dataSource() {
             var source = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
             Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
             return source;
         }
-        /** Связывает JDBC с тестовой PostgreSQL; SQL выполняется на её движке. */
+        /**
+         * Создаёт выполнение SQL в тестовой PostgreSQL. Запросы обрабатывает движок БД, а не подставная
+         * зависимость.
+         *
+         * @param source подключение к отдельной тестовой PostgreSQL
+         * @return выполнение SQL через переданное подключение к БД
+         */
         @Bean JdbcTemplate jdbcTemplate(DataSource source) { return new JdbcTemplate(source); }
-        /** Предоставляет настоящие транзакции для аннотаций production-сервиса. */
+        /**
+         * Подключает управление транзакциями к тестовой БД для методов сервиса.
+         *
+         * @param source подключение к отдельной тестовой PostgreSQL
+         * @return управление транзакциями через переданное подключение к БД
+         */
         @Bean PlatformTransactionManager transactionManager(DataSource source) { return new DataSourceTransactionManager(source); }
-        /** Создаёт production-репозиторий, выполняющий SQL вместо ответов Mockito. */
+        /**
+         * Создаёт репозиторий приложения, который выполняет SQL в тестовой БД.
+         *
+         * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+         * @return репозиторий приложения с доступом к тестовой БД
+         */
         @Bean TariffRuleRepository repository(JdbcTemplate jdbc) { return new TariffRuleRepository(jdbc); }
-        /** Создаёт Bean Validation и закрывает её фабрику при завершении контекста. */
+        /**
+         * Создаёт фабрику проверки ограничений полей. Spring закроет её при завершении контекста.
+         *
+         * @return фабрика проверки ограничений полей
+         */
         @Bean(destroyMethod="close") ValidatorFactory validation() { return Validation.buildDefaultValidatorFactory(); }
-        /** Собирает production-сервис; Spring оборачивает его транзакционным прокси. */
+        /**
+         * Создаёт сервис правил с репозиторием и проверкой полей. Spring подключает транзакции к вызовам его
+         * методов.
+         *
+         * @param repository чтение и запись тарифных правил
+         * @param validation фабрика проверки ограничений полей
+         * @return сервис правил с подключёнными зависимостями
+         */
         @Bean TariffRuleService service(TariffRuleRepository repository, ValidatorFactory validation) {
             return new TariffRuleService(repository, validation.getValidator());
         }
     }
 
-    /** Удаляет только UUID, созданные текущим тестом; миграционные fixtures и чужие записи не затрагиваются. */
+    /**
+     * Удаляет только правила с UUID, созданными текущим тестом. Начальные данные миграций и чужие записи
+     * сохраняются.
+     */
     @AfterEach void cleanup() { created.forEach(id -> jdbc.update("DELETE FROM tariff_rules WHERE tariff_rule_id=?", id)); }
 
     /**
-     * TAR-CRUD-001-DB. Создаём NON_FOOD/RUB, границы 0.00–500.00, ставку 0.20.
-     * Проверяем все поля/version=1 и повторное чтение. Production SQL должен сохранить запись в PostgreSQL.
-     * Вызов сервиса завершает собственную транзакцию до чтения; тест не скрывает запись общим rollback.
+     * TAR-CRUD-001-DB. Создаёт правило: {@code NON_FOOD}, {@code RUB}, границы 0.00–500.00, наценка 0.20.
+     * Проверяет все поля и версию 1, затем читает правило снова после сохранения транзакции сервиса. Общей
+     * транзакции теста с последующей отменой нет.
      */
     @Test @DisplayName("TAR-CRUD-001-DB: создание правила версии 1")
     void createsRule() {
@@ -69,8 +110,8 @@ class TariffCrudPostgresTest {
     }
 
     /**
-     * TAR-CRUD-002-DB. Создаём правило версии 1; читаем по возвращённому UUID.
-     * Все поля совпадают с результатом создания: проверяется настоящий SELECT на подготовленной схеме.
+     * TAR-CRUD-002-DB. Создаёт правило версии 1 и читает его по полученному UUID. Проверяет совпадение всех
+     * полей; чтение выполняет SQL-запрос в тестовой БД.
      */
     @Test @DisplayName("TAR-CRUD-002-DB: чтение созданного правила")
     void readsRule() {
@@ -79,9 +120,9 @@ class TariffCrudPostgresTest {
     }
 
     /**
-     * TAR-CRUD-003-DB. Правило версии 1 заменяем: FOOD, границы 5.00–без верхнего предела, ставка 0.30.
-     * UUID сохраняется, version=2 и все новые поля доступны после commit при повторном чтении.
-     * Проверка исполняет блокировку и UPDATE PostgreSQL; Redis в этом наборе отсутствует.
+     * TAR-CRUD-003-DB. Заменяет правило версии 1: {@code FOOD}, нижняя граница 5.00, верхнего предела нет,
+     * наценка 0.30. После сохранения транзакции проверяет прежний UUID, версию 2 и все новые поля повторным
+     * чтением. Выполняются блокировка и UPDATE в PostgreSQL; Redis не используется.
      */
     @Test @DisplayName("TAR-CRUD-003-DB: полная замена и версия 2")
     void replacesRule() {
@@ -93,8 +134,8 @@ class TariffCrudPostgresTest {
     }
 
     /**
-     * TAR-CRUD-004-DB. Создаём и удаляем правило. После commit чтение того же UUID возвращает NOT_FOUND/404.
-     * Это проверяет физическое удаление строк через production-репозиторий, а не ответ подменённой зависимости.
+     * TAR-CRUD-004-DB. Создаёт и удаляет правило. После сохранения удаления проверяет {@code NOT_FOUND} и HTTP
+     * 404 при чтении того же UUID через репозиторий приложения.
      */
     @Test @DisplayName("TAR-CRUD-004-DB: удаление и отсутствие при чтении")
     void deletesRule() {
@@ -103,13 +144,16 @@ class TariffCrudPostgresTest {
         assertError(() -> service.get(id), 404, "NOT_FOUND");
     }
 
-    /** TAR-CRUD-005-DB. Для нового отсутствующего UUID чтение возвращает NOT_FOUND/404 без создания записи. */
+    /**
+     * TAR-CRUD-005-DB. Читает неизвестный UUID и проверяет {@code NOT_FOUND} и HTTP 404. Запись не должна
+     * создаваться.
+     */
     @Test @DisplayName("TAR-CRUD-005-DB: чтение неизвестного UUID")
     void rejectsMissingRead() { assertError(() -> service.get(UUID.randomUUID()), 404, "NOT_FOUND"); }
 
     /**
-     * TAR-CRUD-006-DB. Для отсутствующего UUID отправляем допустимую замену.
-     * UPDATE-сценарий возвращает NOT_FOUND/404; последующее чтение подтверждает, что запись не создана.
+     * TAR-CRUD-006-DB. Передаёт допустимую замену для отсутствующего UUID. Проверяет {@code NOT_FOUND} и HTTP
+     * 404; повторное чтение также должно сообщить об отсутствии правила.
      */
     @Test @DisplayName("TAR-CRUD-006-DB: замена неизвестного UUID")
     void rejectsMissingUpdate() {
@@ -118,13 +162,15 @@ class TariffCrudPostgresTest {
         assertError(() -> service.get(id), 404, "NOT_FOUND");
     }
 
-    /** TAR-CRUD-007-DB. Удаление неизвестного UUID возвращает NOT_FOUND/404 вместо успешного пустого удаления. */
+    /**
+     * TAR-CRUD-007-DB. Удаляет отсутствующий UUID и проверяет {@code NOT_FOUND} и HTTP 404.
+     */
     @Test @DisplayName("TAR-CRUD-007-DB: удаление неизвестного UUID")
     void rejectsMissingDelete() { assertError(() -> service.delete(UUID.randomUUID()), 404, "NOT_FOUND"); }
 
     /**
-     * TAR-CRUD-008-DB. Создаём правило с границами 100.00 и 100.00.
-     * Получаем VALIDATION_ERROR/400; количество правил собственного города не меняется.
+     * TAR-CRUD-008-DB. Пытается создать правило с равными границами 100.00. Проверяет {@code VALIDATION_ERROR}
+     * и HTTP 400; число правил собственного города остаётся прежним.
      */
     @Test @DisplayName("TAR-CRUD-008-DB: неверное создание ничего не сохраняет")
     void rejectsInvalidCreate() {
@@ -134,8 +180,9 @@ class TariffCrudPostgresTest {
     }
 
     /**
-     * TAR-CRUD-009-DB. Создаём правило версии 1, затем отправляем замену с одинаковыми границами.
-     * Проверяем VALIDATION_ERROR/400 и сохранение всех исходных полей/version после завершения ошибочного вызова.
+     * TAR-CRUD-009-DB. Создаёт правило версии 1 и пытается заменить его условиями с равными границами.
+     * Проверяет {@code VALIDATION_ERROR} и HTTP 400, затем повторным чтением сверяет все прежние поля и
+     * версию.
      */
     @Test @DisplayName("TAR-CRUD-009-DB: неверная замена сохраняет исходное правило")
     void rejectsInvalidUpdate() {
@@ -144,23 +191,59 @@ class TariffCrudPostgresTest {
         assertThat(service.get(existing.tariffRuleId())).isEqualTo(existing);
     }
 
-    /** Создаёт исходное правило через production-сервис и запоминает UUID для адресной очистки после проверки. */
+    /**
+     * Создаёт исходное правило через сервис приложения и запоминает UUID для удаления только этой записи после
+     * теста.
+     *
+     * @return правило с UUID, версией и полным набором условий
+     */
     private Rule create() { Rule result = service.create(input()); created.add(result.tariffRuleId()); return result; }
-    /** Возвращает те же исходные бизнес-поля, что и Mockito/API-наборы. */
+    /**
+     * Возвращает исходные условия правила, совпадающие с условиями сценариев Mockito и HTTP.
+     *
+     * @return допустимые исходные условия правила
+     */
     private RuleRequest input() { return new RuleRequest("NON_FOOD", "PYRAMID", "RUB", "0.00", "500.00", "0.20"); }
-    /** Возвращает ту же полную замену, что и остальные уровни; null означает отсутствие верхнего предела. */
+    /**
+     * Возвращает полный набор новых условий для замены. Значение {@code null} верхней границы означает
+     * отсутствие предела цены.
+     *
+     * @return новые условия полной замены правила
+     */
     private RuleRequest replacement() { return new RuleRequest("FOOD", "PYRAMID", "RUB", "5.00", null, "0.30"); }
-    /** Возвращает одинаковые границы для проверки отказа до сохранения. */
+    /**
+     * Возвращает равные границы цены для проверки отказа до записи в БД.
+     *
+     * @return неверные условия с равными границами цены
+     */
     private RuleRequest invalid() { return new RuleRequest("NON_FOOD", "PYRAMID", "RUB", "100.00", "100.00", "0.20"); }
-    /** Считает только учебный город; фиксированные правила MOSCOW/SPB не служат результатом этой проверки. */
+    /**
+     * Считает только правила города текущего теста. Начальные правила {@code MOSCOW} и {@code SPB} в результат
+     * не входят.
+     *
+     * @return число правил города текущего теста
+     */
     private int countOwnRules() { return jdbc.queryForObject("SELECT count(*) FROM tariff_rules WHERE city_id='PYRAMID'", Integer.class); }
-    /** Проверяет каждое поле ответа, UUID и заданную версию; ошибка частичной замены должна быть обнаружена. */
+    /**
+     * Сравнивает UUID, версию и каждое поле правила с заданными ожиданиями, чтобы обнаружить неполную замену.
+     *
+     * @param result фактически полученное правило для сравнения с ожиданием
+     * @param version версия тарифного правила
+     * @param expected ожидаемые условия правила
+     */
     private void assertRule(Rule result, long version, RuleRequest expected) {
         assertThat(result.tariffRuleId()).isNotNull();
         assertThat(result).isEqualTo(new Rule(result.tariffRuleId(), version, expected.productType(), expected.cityId(),
                 expected.currency(), expected.lowerBound(), expected.upperBound(), expected.markupRate()));
     }
-    /** Проверяет одновременно статус и код production-ошибки, сохраняя различие неверного ввода и отсутствующей записи. */
+    /**
+     * Вызывает операцию, которая должна завершиться ошибкой, и сравнивает HTTP-статус и код исключения с
+     * ожидаемыми.
+     *
+     * @param action операция, которая должна вызвать проверяемое исключение
+     * @param status HTTP-статус ответа
+     * @param code код, по которому клиент различает причину ошибки
+     */
     private void assertError(Runnable action, int status, String code) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(TariffApiException.class, error -> {
             assertThat(error.status()).isEqualTo(status); assertThat(error.code()).isEqualTo(code);

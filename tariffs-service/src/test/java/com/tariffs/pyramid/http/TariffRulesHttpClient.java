@@ -11,42 +11,74 @@ import org.springframework.web.client.RestClient;
 import java.util.UUID;
 
 /**
- * Учебный CRUD-клиент, существующий только в src/test: production WAREHOUSE не выполняет CRUD тарифов.
- * Позволяет повторить девять сценариев на границе HTTP с WireMock. Не содержит бизнес-логики сервиса или хранилища.
+ * Тестовый HTTP-клиент создания, чтения, замены и удаления тарифных правил. Используется с WireMock для
+ * проверки сетевого запроса и ответа; бизнес-операции сервиса и хранение данных не реализует.
  */
 public final class TariffRulesHttpClient {
     private final RestClient http;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
-     * Создаёт клиент отдельного HTTP-стенда; не запускает Spring-контекст или приложение.
-     * @param baseUrl адрес WireMock, назначенный текущему тесту
+     * Создаёт клиент для адреса WireMock текущего теста. Приложение TARIFFS и Spring не запускает.
+     *
+     * @param baseUrl HTTP-адрес WireMock, выделенный текущему тесту
      */
     public TariffRulesHttpClient(String baseUrl) { http = RestClient.builder().baseUrl(baseUrl).build(); }
 
-    /** Передаёт все исходные поля POST и читает ответ версии 1; проверяет HTTP 201, а не факт записи в БД. */
+    /**
+     * Отправляет все условия создания через POST, ожидает HTTP 201 и возвращает прочитанное правило. Запись в
+     * БД этим вызовом не проверяется.
+     *
+     * @param request полный набор условий тарифного правила
+     * @return правило с UUID, версией и полным набором условий
+     */
     public Rule create(RuleRequest request) { return exchange(HttpMethod.POST, "/tariffs/rules", request, 201, Rule.class); }
 
-    /** Читает правило GET по UUID; ошибка HTTP преобразуется в тот же статус и код, что на остальных уровнях. */
+    /**
+     * Читает правило через GET по UUID, ожидая HTTP 200. При ошибочном ответе передаёт его статус и код в
+     * исключении.
+     *
+     * @param id UUID тарифного правила
+     * @return правило с UUID, версией и полным набором условий
+     */
     public Rule get(UUID id) { return exchange(HttpMethod.GET, "/tariffs/rules/" + id, null, 200, Rule.class); }
 
-    /** Отправляет полную замену PUT, включая upperBound=null; ожидает HTTP 200 и полную модель ответа. */
+    /**
+     * Отправляет полную замену через PUT, включая поле {@code upperBound} со значением {@code null}. Ожидает
+     * HTTP 200 и возвращает прочитанное правило.
+     *
+     * @param id UUID тарифного правила
+     * @param request полный набор условий тарифного правила
+     * @return правило с UUID, версией и полным набором условий
+     */
     public Rule update(UUID id, RuleRequest request) { return exchange(HttpMethod.PUT, "/tariffs/rules/" + id, request, 200, Rule.class); }
 
-    /** Отправляет DELETE конкретного UUID; успешный ответ должен быть HTTP 204 без тела. */
+    /**
+     * Отправляет DELETE по UUID и ожидает HTTP 204. Возвращаемого результата нет.
+     *
+     * @param id UUID тарифного правила
+     */
     public void delete(UUID id) { exchange(HttpMethod.DELETE, "/tariffs/rules/" + id, null, 204, Void.class); }
 
-    /** Читает публичный список для сравнения состояния до и после ошибочного создания. */
+    /**
+     * Читает список правил через GET, ожидая HTTP 200. Сценарий может сравнить его до и после отказа создания.
+     *
+     * @return список текущих тарифных правил
+     */
     public RulesResponse list() { return exchange(HttpMethod.GET, "/tariffs/rules", null, 200, RulesResponse.class); }
 
     /**
-     * Выполняет один HTTP-запрос, читает исходное тело и проверяет ожидаемый статус.
-     * @param method HTTP-метод
-     * @param path путь API
-     * @param body исходные поля либо null, если тело не нужно
-     * @param expected ожидаемый успешный HTTP-статус
-     * @param type тип модели ответа
-     * @return разобранный ответ или null для DELETE
+     * Выполняет один HTTP-запрос и сравнивает статус с ожидаемым. При совпадении читает модель ответа или
+     * возвращает {@code null} для удаления. При другом статусе читает код и пояснение ошибки и выбрасывает
+     * {@code TariffApiException} с тем же статусом.
+     *
+     * @param <T> тип модели, которую нужно прочитать из JSON
+     * @param method HTTP-метод запроса
+     * @param path путь HTTP-запроса
+     * @param body условия правила для тела запроса или {@code null}, если тело не требуется
+     * @param expected ожидаемый HTTP-статус
+     * @param type Java-класс модели, в которую нужно прочитать JSON
+     * @return модель ответа указанного типа или {@code null} для DELETE
      * @throws TariffApiException если сервер вернул ошибку; статус и машинный код сохраняются
      */
     private <T> T exchange(HttpMethod method, String path, RuleRequest body, int expected, Class<T> type) {

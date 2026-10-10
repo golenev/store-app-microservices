@@ -17,7 +17,10 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.*;
 
-/** Управляет атомарным приходом, защитой повторов и порядком изменения цены; SQL выполняют репозитории. */
+/**
+ * Принимает оприходованные поставки в магазин. Сохраняет остатки и движения вместе, распознаёт повторы и
+ * выбирает цену по порядку приёмки поставок в WAREHOUSE.
+ */
 @Service
 public class GoodsReceiptService {
     private final GoodsReceiptRepository repository;
@@ -25,26 +28,28 @@ public class GoodsReceiptService {
     private final ShopCodec codec;
     private final Clock clock;
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает хранение приходов, доступ к остаткам, проверку событий и часы для приёмки поставок.
      *
-     * @param repository репозиторий, участвующий в транзакциях сервиса
-     * @param inventory доступ к общим остаткам магазина
-     * @param codec строгий разбор и сериализация протокола
-     * @param clock общие UTC-часы приложения
+     * @param repository запись приходов, движений и обработанных событий
+     * @param inventory чтение каталога и блокировка остатков магазина
+     * @param codec проверка входного JSON магазина и преобразование его моделей
+     * @param clock часы для дат операций и сроков фоновых попыток
      */
     public GoodsReceiptService(GoodsReceiptRepository repository,InventoryRepository inventory,ShopCodec codec,Clock clock) {
         this.repository=repository; this.inventory=inventory; this.codec=codec; this.clock=clock;
     }
     /**
-     * В одной транзакции сохраняет приход или диагностику входного raw. Сначала блокирует eventId, затем
-     * магазин; одинаковый повтор не меняет остаток. Цена обновляется только по более новому порядку поставки.
-     * Сбой записи распространяется потребителю до подтверждения Kafka.
+     * Обрабатывает сообщение о поставке в одной транзакции. Сначала блокирует идентификатор события, затем
+     * магазин и нужные остатки. Новая поставка увеличивает количество; одинаковый повтор ничего не списывает и
+     * не добавляет. Цену меняет только поставка с более поздним порядком первой приёмки в WAREHOUSE. Неверные
+     * данные и конфликты сохраняет для диагностики без изменения остатков. Если запись в БД не удалась,
+     * передаёт ошибку потребителю Kafka для повторной обработки.
      *
-     * @param topic имя топика входного сообщения
-     * @param partition номер раздела Kafka
-     * @param offset смещение сообщения Kafka
-     * @param key ключ Kafka, обязанный совпадать с storeId
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param topic имя канала Kafka, из которого получено сообщение
+     * @param partition номер раздела канала Kafka
+     * @param offset позиция сообщения внутри раздела Kafka
+     * @param key ключ сообщения Kafka, который должен совпадать с идентификатором магазина
+     * @param raw исходный текст JSON-сообщения
      */
     @Transactional
     public void receive(String topic,int partition,long offset,String key,String raw) {
@@ -101,25 +106,26 @@ public class GoodsReceiptService {
         remember(event,decoded.fingerprint());
     }
     /**
-     * Регистрирует event с fingerprint внутри транзакции прихода; дополнительное транспортное событие не
-     * создаёт второе движение.
+     * Сохраняет идентификатор обработанного события и контрольную сумму поставки в текущей транзакции. Это
+     * позволяет распознать следующее сообщение, даже если поставка уже была принята под другим идентификатором
+     * события.
      *
-     * @param event событие приёмки с проверенным содержимым
-     * @param fingerprint канонический отпечаток бизнес-содержимого для проверки повтора
+     * @param event событие оприходованной поставки
+     * @param fingerprint контрольная сумма содержимого поставки для сравнения повторов
      */
     private void remember(GoodsEvent event,String fingerprint) {
         repository.rememberEvent(event.eventId(), event.storeId(), event.payload().deliveryId(), fingerprint);
     }
     /**
-     * Сохраняет raw и безопасную ошибку один раз на координаты topic/partition/offset; сбой записи требует
-     * повторной обработки сообщения.
+     * Сохраняет исходное сообщение и причину отказа. Координаты сообщения в Kafka не позволяют создать вторую
+     * запись при повторе; ошибка записи передаётся потребителю, чтобы сообщение не было потеряно.
      *
-     * @param topic имя топика входного сообщения
-     * @param partition номер раздела Kafka
-     * @param offset смещение сообщения Kafka
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
-     * @param code стабильный код ошибки контракта
-     * @param message безопасное пояснение без секретов
+     * @param topic имя канала Kafka, из которого получено сообщение
+     * @param partition номер раздела канала Kafka
+     * @param offset позиция сообщения внутри раздела Kafka
+     * @param raw исходный текст JSON-сообщения
+     * @param code код, по которому клиент различает причину ошибки
+     * @param message пояснение для клиента без секретов и внутренних подробностей
      */
     private void diagnostic(String topic,int partition,long offset,String raw,String code,String message) {
         repository.insertDiagnostic(topic, partition, offset, Timestamp.from(clock.instant()), code, message, raw);

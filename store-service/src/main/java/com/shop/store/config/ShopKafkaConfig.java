@@ -6,13 +6,17 @@ import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
 
-/** Настраивает топики и повторы Kafka; обработку сообщений выполняет отдельный listener. */
+/**
+ * Задаёт каналы сообщений Kafka и повторы при ошибке хранения. Приёмку сообщений выполняет отдельный
+ * обработчик.
+ */
 @Configuration
 public class ShopKafkaConfig {
     /**
-     * Объявляет входящий и исходящий топики с согласованным лимитом размера сообщений.
-     * Поддерживает запуск приложений из IDEA и Compose.
-     * @return определения топиков сервиса
+     * Объявляет входящий и исходящий каналы Kafka и устанавливает лимит размера сообщения для каждого. Эти
+     * настройки применяются при запуске сервиса из IDE или Docker Compose.
+     *
+     * @return определения входящего и исходящего каналов Kafka
      */
     @Bean
     public KafkaAdmin.NewTopics goodsTopics() {
@@ -21,8 +25,11 @@ public class ShopKafkaConfig {
                 TopicBuilder.name("store.order-submitted").partitions(1).replicas(1).config("max.message.bytes","16777216").build());
     }
     /**
-     * Возвращает обработчик с неограниченными повторами ошибок хранения; невалидный ввод предварительно
-     * сохраняется как диагностика.
+     * Создаёт обработчик, повторяющий сообщение при ошибке БД без ограничения числа попыток. Неверные входные
+     * данные сервис приёмки сначала сохраняет для диагностики; без сохранённого результата сообщение не
+     * считается обработанным.
+     *
+     * @return повтор обработки сообщений при ошибке хранения
      */
     @Bean
     public DefaultErrorHandler shopKafkaErrorHandler() {

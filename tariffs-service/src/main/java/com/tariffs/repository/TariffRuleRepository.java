@@ -12,27 +12,31 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Работает с версионными правилами через JDBC; транзакциями управляет TariffRuleService. */
+/**
+ * Читает и сохраняет тарифные правила в PostgreSQL. Записи и блокировки входят в транзакции {@code
+ * TariffRuleService}.
+ */
 @Repository
 public class TariffRuleRepository {
     private final JdbcTemplate jdbc;
 
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает выполнение SQL к текущей транзакции Spring.
      *
-     * @param jdbc JDBC-адаптер с участием в текущей транзакции Spring
+     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
      */
     public TariffRuleRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     /**
-     * Возвращает до двух правил по типу продукта, городу, валюте и price; сервис различает отсутствие,
-     * единственное правило и неоднозначность.
+     * Находит правила по типу товара, городу, валюте и закупочной цене. Нижнюю границу включает, верхнюю
+     * исключает. Возвращает не более двух правил: этого достаточно, чтобы сервис различил отсутствие,
+     * единственное совпадение и неоднозначный выбор.
      *
-     * @param productType тип продукта FOOD или NON_FOOD
-     * @param cityId идентификатор города выбора тарифа
-     * @param currency валюта денежного значения
-     * @param price точная денежная цена без floating point
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @param productType тип товара: {@code FOOD} или {@code NON_FOOD}
+     * @param cityId идентификатор города, для которого выбирается тариф
+     * @param currency код валюты; в текущем контракте разрешён {@code RUB}
+     * @param price закупочная цена как точное десятичное число
+     * @return найденные тарифные правила; при отсутствии совпадений список пуст
      */
     public List<Rule> matching(String productType, String cityId, String currency, BigDecimal price) {
         return jdbc.query("""
@@ -43,54 +47,58 @@ public class TariffRuleRepository {
     }
 
     /**
-     * Читает правило id без блокировки записи; отсутствие возвращает Optional.empty.
+     * Читает правило по UUID без блокировки. Если записи нет, возвращает пустой {@code Optional}.
      *
-     * @param id UUID запрашиваемого объекта
-     * @return найденное значение или пустой результат при отсутствии
+     * @param id UUID тарифного правила
+     * @return найденное правило или пустой результат, если записи нет
      */
     public Optional<Rule> find(UUID id) {
         return jdbc.query("SELECT * FROM tariff_rules WHERE tariff_rule_id=?", this::map, id).stream().findFirst();
     }
 
     /**
-     * Блокирует правило id до конца транзакции сервиса для последовательного увеличения версии; отсутствие
-     * возвращает Optional.empty.
+     * Читает и блокирует правило до конца транзакции сервиса. Это позволяет последовательно увеличивать
+     * версию; отсутствие записи возвращает как пустой {@code Optional}.
      *
-     * @param id UUID запрашиваемого объекта
-     * @return найденное значение или пустой результат при отсутствии
+     * @param id UUID тарифного правила
+     * @return найденное правило или пустой результат, если записи нет
      */
     public Optional<Rule> lock(UUID id) {
         return jdbc.query("SELECT * FROM tariff_rules WHERE tariff_rule_id=? FOR UPDATE", this::map, id).stream().findFirst();
     }
 
     /**
-     * Возвращает упорядоченные правила и дополнительную строку для выявления превышения лимита без молчаливого
-     * усечения.
+     * Возвращает правила в порядке UUID, не более 1001 записи. Дополнительная запись нужна сервису для
+     * обнаружения превышения лимита в 1000 правил.
      *
-     * @return строки выборки; пустой список означает отсутствие совпадений
+     * @return найденные тарифные правила; при отсутствии совпадений список пуст
      */
     public List<Rule> list() {
         return jdbc.query("SELECT * FROM tariff_rules ORDER BY tariff_rule_id LIMIT 1001", this::map);
     }
 
     /**
-     * Сериализует создание правил advisory-блокировкой до конца транзакции сервиса для соблюдения лимита
-     * каталога.
+     * Получает общую блокировку создания правил до конца транзакции. Другой запрос создания ждёт её
+     * освобождения, чтобы проверка количества и новая запись не превысили лимит каталога.
      */
     public void lockCatalog() {
         jdbc.execute("SELECT pg_advisory_xact_lock(731003)");
     }
 
     /**
-     * Возвращает число сохранённых правил в текущей транзакции после блокировки создания каталога.
+     * Возвращает число правил в текущей транзакции. При создании сервис вызывает метод после получения общей
+     * блокировки каталога.
+     *
+     * @return число сохранённых тарифных правил
      */
     public long count() { return jdbc.queryForObject("SELECT count(*) FROM tariff_rules", Long.class); }
 
     /**
-     * Записывает id с версией 1 и проверенными сервисом данными request; ошибка отменяет транзакцию создания.
+     * Сохраняет правило с указанным UUID и версией 1. Условия должны быть заранее проверены сервисом; ошибка
+     * БД отменяет транзакцию создания.
      *
-     * @param id UUID запрашиваемого объекта
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param id UUID тарифного правила
+     * @param request полный набор условий тарифного правила
      */
     public void insert(UUID id, RuleRequest request) {
         jdbc.update("""
@@ -101,10 +109,11 @@ public class TariffRuleRepository {
     }
 
     /**
-     * Заменяет заблокированное правило id данными request и увеличивает версию один раз; Redis не изменяет.
+     * Полностью заменяет поля правила и увеличивает версию на один. Сервис должен заранее заблокировать
+     * правило; сохранённые расчёты в Redis метод не меняет.
      *
-     * @param id UUID запрашиваемого объекта
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param id UUID тарифного правила
+     * @param request полный набор условий тарифного правила
      */
     public void replace(UUID id, RuleRequest request) {
         jdbc.update("""
@@ -115,26 +124,29 @@ public class TariffRuleRepository {
     }
 
     /**
-     * Удаляет правило id и возвращает наличие удалённой строки в текущей транзакции.
+     * Удаляет правило по UUID. Возвращает {@code true}, если строка удалена, и {@code false}, если её не было.
      *
-     * @param id UUID запрашиваемого объекта
-     * @return признак успешной операции согласно проверке выше
+     * @param id UUID тарифного правила
+     * @return {@code true}, если правило удалено; {@code false}, если его не было
      */
     public boolean delete(UUID id) { return jdbc.update("DELETE FROM tariff_rules WHERE tariff_rule_id=?", id) == 1; }
 
     /**
-     * Преобразует денежную строку value в BigDecimal, сохраняя null как отсутствие верхнего предела.
+     * Переводит строковую границу цены в точное десятичное число. Для {@code null} возвращает {@code null},
+     * сохраняя отсутствие верхней границы.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value строковая граница цены или {@code null} для отсутствующей верхней границы
+     * @return точное десятичное значение границы или {@code null}
      */
     private BigDecimal decimalOrNull(String value) { return value == null ? null : new BigDecimal(value); }
 
     /**
-     * Преобразует строку row в версионное правило с точными строковыми денежными значениями; ошибка чтения
-     * распространяется как SQLException.
+     * Преобразует строку SQL-результата в правило с UUID, версией и строковыми ценами. Ошибку чтения колонки
+     * передаёт как {@code SQLException}.
      *
-     * @param row строка результата JDBC
-     * @param rowNumber номер строки JDBC, не влияющий на отображение
+     * @param row текущая строка результата SQL-запроса
+     * @param rowNumber номер строки SQL-результата; на преобразование не влияет
+     * @return правило с UUID, версией и полным набором условий
      */
     private Rule map(ResultSet row, int rowNumber) throws SQLException {
         BigDecimal upper = row.getBigDecimal("upper_bound");
@@ -145,9 +157,11 @@ public class TariffRuleRepository {
     }
 
     /**
-     * Возвращает строку value с дробной наценкой без изменения численного значения.
+     * Записывает наценку строкой без изменения значения. Удаляет лишние нули после точки, но оставляет не
+     * менее двух десятичных знаков.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value наценка как точное десятичное число
+     * @return наценка строкой без лишних нулей, минимум с двумя знаками после точки
      */
     private String formatRate(BigDecimal value) {
         BigDecimal stripped = value.stripTrailingZeros();

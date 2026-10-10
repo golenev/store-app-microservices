@@ -13,7 +13,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.time.Clock;
 
-/** Координирует кеш и чтение зафиксированных правил без SQL-транзакции вокруг Redis. */
+/**
+ * Возвращает сохранённую наценку или рассчитывает её по текущим правилам PostgreSQL. Обращения к Redis
+ * выполняет вне транзакции чтения правил.
+ */
 @Service
 public class TariffQuoteService {
     private static final Logger log = LoggerFactory.getLogger(TariffQuoteService.class);
@@ -22,11 +25,11 @@ public class TariffQuoteService {
     private final Clock clock;
 
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает выбор тарифного правила, кеш расчётов и часы для времени сброса.
      *
-     * @param rules сервис транзакционных операций тарифных правил
-     * @param cache репозиторий снимков Redis
-     * @param clock общие UTC-часы приложения
+     * @param rules управление тарифными правилами и выбор правила для расчёта
+     * @param cache чтение и сохранение расчётов в Redis
+     * @param clock часы для дат операций и сроков фоновых попыток
      */
     public TariffQuoteService(TariffRuleService rules, TariffQuoteCache cache, Clock clock) {
         this.rules = rules;
@@ -35,10 +38,12 @@ public class TariffQuoteService {
     }
 
     /**
-     * Проверяет request, возвращает снимок кеша либо единственный результат PostgreSQL. Бизнес-ошибки не
-     * кеширует; Redis выполняется вне SQL-транзакции.
+     * Проверяет параметры расчёта, затем ищет результат в Redis. Если результата нет, выбирает правило в
+     * PostgreSQL и пытается сохранить успешный расчёт. Ошибки выбора правила в кеш не записывает;
+     * недоступность Redis не мешает получить результат из БД.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
+     * @return наценка, UUID и версия выбранного тарифного правила
      */
     public QuoteResponse quote(QuoteRequest request) {
         rules.validateQuote(request);
@@ -50,8 +55,10 @@ public class TariffQuoteService {
     }
 
     /**
-     * Атомарно сбрасывает только пространство кеша расчётов и возвращает UTC-время; ошибка Redis
-     * распространяется вместо ложного успеха.
+     * Удаляет сохранённые расчёты и возвращает имя кеша и время успешного сброса в UTC. При ошибке Redis
+     * передаёт её вызывающему коду вместо сообщения об успехе.
+     *
+     * @return имя кеша и время успешного сброса
      */
     public CacheResetResponse reset() {
         cache.reset();
@@ -59,7 +66,8 @@ public class TariffQuoteService {
     }
 
     /**
-     * В полночь Europe/Moscow выполняет тот же сброс, что HTTP; недоступный Redis записывает в журнал.
+     * Каждый день в полночь по времени Москвы сбрасывает кеш тем же способом, что ручной запрос API. При сбое
+     * Redis пишет ошибку в журнал.
      */
     @Scheduled(cron = "0 0 0 * * *", zone = "Europe/Moscow")
     public void scheduledReset() {

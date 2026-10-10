@@ -17,7 +17,10 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.*;
 
-/** Управляет независимыми версионными корзинами и транзакциями; добавление не резервирует и не списывает товар. */
+/**
+ * Создаёт и изменяет отдельные корзины покупателей. Проверяет версии корзин и доступное количество товара;
+ * добавление в корзину не резервирует остаток.
+ */
 @Service
 public class CartService {
     private final CartRepository repository;
@@ -25,27 +28,29 @@ public class CartService {
     private final Clock clock;
     private final ShopCodec codec;
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает хранение корзин, чтение остатков, часы и преобразование JSON для операций с корзинами.
      *
-     * @param repository репозиторий, участвующий в транзакциях сервиса
-     * @param inventory доступ к общим остаткам магазина
-     * @param clock общие UTC-часы приложения
-     * @param codec строгий разбор и сериализация протокола
+     * @param repository чтение и запись корзин в PostgreSQL
+     * @param inventory чтение каталога и блокировка остатков магазина
+     * @param clock часы для дат операций и сроков фоновых попыток
+     * @param codec проверка входного JSON магазина и преобразование его моделей
      */
     public CartService(CartRepository repository,InventoryRepository inventory,Clock clock,ShopCodec codec) { this.repository=repository; this.inventory=inventory; this.clock=clock; this.codec=codec; }
     /**
-     * Возвращает каталог магазина store со стабильными идентификаторами и нулевыми остатками в транзакции
-     * чтения.
+     * Возвращает каталог указанного магазина, включая товары с нулевым остатком. Читает данные в транзакции
+     * без записей.
      *
      * @param store идентификатор магазина
+     * @return каталог указанного магазина с текущими ценами и остатками
      */
     @Transactional(readOnly=true)
     public Catalog catalog(String store) { return inventory.catalog(store); }
     /**
-     * Создаёт независимую пустую OPEN-корзину магазина store с версией 0 и возвращает её после записи;
-     * неизвестный магазин отклоняет.
+     * Создаёт пустую корзину со статусом {@code OPEN} и версией 0 и возвращает её состояние. Запись
+     * выполняется в одной транзакции; неизвестный магазин отклоняет с {@code NOT_FOUND}.
      *
      * @param store идентификатор магазина
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @Transactional
     public Cart create(String store) {
@@ -54,11 +59,14 @@ public class CartService {
         return get(store,cart);
     }
     /**
-     * Читает корзину cart магазина store в REPEATABLE_READ. OPEN использует текущие цены; SUBMITTED возвращает
-     * неизменяемый снимок оформления.
+     * Возвращает корзину и её сумму. Для открытой корзины берёт текущие цены; для оформленной — сохранённый
+     * при оформлении снимок. Повторяемое чтение в одной транзакции сохраняет согласованность данных.
+     * Отсутствие корзины вызывает {@code NOT_FOUND}, недоступный снимок или превышение лимита ответа — {@code
+     * DEPENDENCY_UNAVAILABLE}.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Cart get(String store,UUID cart) {
@@ -75,13 +83,16 @@ public class CartService {
         return new Cart(store,cart,((Number)header.get("version")).longValue(),"OPEN",lines,total.toPlainString(),"RUB",null);
     }
     /**
-     * В одной транзакции блокирует корзину, затем остаток stock. Проверяет ожидаемую версию и заменяет итоговое
-     * количество из input; товар не резервирует. Ошибка откатывает состав и версию.
+     * Заменяет итоговое количество выбранного товара и возвращает обновлённую корзину. До записи блокирует
+     * корзину, проверяет её версию и блокирует остаток. Нехватка товара вызывает {@code INSUFFICIENT_STOCK};
+     * количество на складе не меняется. Изменение позиции и версии сохраняется вместе, а при ошибке отменяется
+     * целиком.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
-     * @param stock UUID позиции остатка
-     * @param input проверяемые параметры операции
+     * @param stock UUID позиции остатка магазина
+     * @param input новое итоговое количество товара и ожидаемая версия корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @Transactional
     public Cart put(String store,UUID cart,UUID stock,PutItem input) {
@@ -95,13 +106,15 @@ public class CartService {
         return mutationView(store,cart);
     }
     /**
-     * Удаляет существующую позицию stock под блокировкой корзины и проверкой expected. Возвращает обновлённую
-     * корзину; ошибка сохраняет прежние состав и версию.
+     * Удаляет позицию и возвращает обновлённую корзину. До удаления блокирует корзину и проверяет ожидаемую
+     * версию. Отсутствующая позиция вызывает {@code NOT_FOUND}; при любой ошибке состав и версия остаются
+     * прежними.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
-     * @param stock UUID позиции остатка
+     * @param stock UUID позиции остатка магазина
      * @param expected ожидаемая версия корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     @Transactional
     public Cart delete(String store,UUID cart,UUID stock,long expected) {
@@ -111,20 +124,22 @@ public class CartService {
         advance(store,cart); return mutationView(store,cart);
     }
     /**
-     * Читает состояние и версию корзины магазина; lock включает блокировку до конца текущей транзакции.
-     * Отсутствие корзины вызывает NOT_FOUND.
+     * Читает состояние и версию корзины указанного магазина. По запросу удерживает блокировку строки до
+     * завершения текущей транзакции; отсутствие корзины вызывает {@code NOT_FOUND}.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
-     * @param lock нужна ли блокировка строки до конца текущей транзакции
+     * @param lock нужно ли заблокировать строку до завершения текущей транзакции
+     * @return состояние и версия найденной корзины
      */
     private Map<String,Object> header(String store,UUID cart,boolean lock) {
         List<Map<String,Object>> rows=repository.headers(store, cart, lock);
         if(rows.isEmpty()) throw new ShopException(404,"NOT_FOUND","Cart not found"); return rows.getFirst();
     }
     /**
-     * Требует OPEN и совпадение версии header с expected. Закрытая, изменённая или исчерпавшая версию корзина
-     * отклоняется до записи.
+     * Проверяет, что корзина открыта и её версия совпадает с ожидаемой. Закрытая корзина вызывает {@code
+     * CART_ALREADY_SUBMITTED}, изменённая версия — {@code CART_VERSION_CONFLICT}, неверная или исчерпанная
+     * версия — {@code VALIDATION_ERROR}.
      *
      * @param header состояние и версия прочитанной корзины
      * @param expected ожидаемая версия корзины
@@ -137,19 +152,21 @@ public class CartService {
         if(version==ShopCodec.MAX_VERSION) throw new ShopException(400,"VALIDATION_ERROR","Cart version is exhausted");
     }
     /**
-     * Увеличивает версию корзины магазина один раз, включая повтор PUT с тем же количеством; откат транзакции
-     * отменяет изменение.
+     * Увеличивает версию корзины на один в текущей транзакции. Это происходит и при повторной установке того
+     * же количества; отмена транзакции отменяет увеличение.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
      */
     private void advance(String store,UUID cart) { repository.advance(store, cart); }
     /**
-     * Строит изменённую корзину внутри текущей транзакции; непредставимую сумму превращает в VALIDATION_ERROR
-     * для отката всей операции.
+     * Читает корзину после изменения, пока транзакция ещё открыта. Если ответ нельзя представить в допустимом
+     * формате, заменяет ошибку HTTP 503 на {@code VALIDATION_ERROR}, чтобы отменить изменение. Остальные
+     * ошибки передаёт вызывающему методу.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     private Cart mutationView(String store,UUID cart) {
         try { return get(store,cart); }

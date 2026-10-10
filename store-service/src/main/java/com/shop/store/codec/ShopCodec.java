@@ -19,26 +19,32 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.*;
 
-/** Строго проверяет и сериализует протокол STORE; финансовые значения не преобразуются в floating point. */
+/**
+ * Проверяет JSON-запросы и события магазина и переводит их в Java-объекты. Цены и суммы обрабатывает как
+ * точные десятичные значения.
+ */
 @Component
 public class ShopCodec {
     public static final long MAX_VERSION=9007199254740991L;
     private static final String MONEY="(0|[1-9][0-9]{0,25})\\.[0-9]{2}";
     private final ObjectMapper mapper;
     /**
-     * Копирует ObjectMapper и включает строгий разбор одного документа без неизвестных или повторных ключей.
+     * Создаёт отдельную настройку чтения JSON: повторные поля, неизвестные поля при чтении Java-модели и
+     * данные после первого документа считаются ошибкой.
      *
-     * @param mapper ObjectMapper приложения для согласованного JSON
+     * @param mapper настройки преобразования Java-объектов и JSON
      */
     public ShopCodec(ObjectMapper mapper) {
         this.mapper=mapper.copy().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
     /**
-     * Разбирает raw как GoodsPosted, проверяет финансовые поля и нормализует порядок строк, наценку и время.
-     * Возвращает событие с отпечатком без eventId; неверный ввод вызывает VALIDATION_ERROR.
+     * Читает событие оприходования {@code GoodsPosted} и проверяет строки, цены и даты. Приводит наценку к
+     * шести знакам после точки и сортирует строки по {@code lineId}. Возвращает событие и контрольную сумму
+     * содержимого поставки для сравнения повторов; неверные данные отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw JSON-событие {@code GoodsPosted} из Kafka
+     * @return проверенное событие и контрольная сумма содержимого поставки
      */
     public Decoded goods(String raw) {
         JsonNode root=read(raw);
@@ -83,137 +89,157 @@ public class ShopCodec {
         return new Decoded(event,fingerprint(data));
     }
     /**
-     * Разбирает raw как полную замену количества с ожидаемой версией; цены и неизвестные поля отклоняет с
-     * VALIDATION_ERROR.
+     * Читает новое итоговое количество товара и ожидаемую версию корзины. Разрешает только эти два поля;
+     * неверные значения или лишние поля отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw JSON с полями {@code quantity} и {@code expectedCartVersion}
+     * @return проверенное количество товара и ожидаемая версия корзины
      */
     public PutItem put(String raw) {
         JsonNode node=read(raw); fields(node,Set.of("quantity","expectedCartVersion"));
         return new PutItem((int)integer(node.get("quantity"),1,Integer.MAX_VALUE),integer(node.get("expectedCartVersion"),0,MAX_VERSION));
     }
     /**
-     * Разбирает raw с единственной ожидаемой версией корзины; состав и цены определяет сервер.
+     * Читает ожидаемую версию корзины для оформления. Состав корзины и цены клиент передать не может:
+     * дополнительные поля отклоняются.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw JSON с единственным полем {@code expectedCartVersion}
+     * @return проверенная ожидаемая версия оформления
      */
     public SubmitInput submit(String raw) {
         JsonNode node=read(raw); fields(node,Set.of("expectedCartVersion"));
         return new SubmitInput(integer(node.get("expectedCartVersion"),0,MAX_VERSION));
     }
     /**
-     * Проверяет регистрозависимый ключ операции магазина и возвращает его без изменений; неверный формат
-     * вызывает VALIDATION_ERROR.
+     * Проверяет ключ, по которому магазин распознаёт повтор оформления. Допускает от 1 до 128 латинских букв,
+     * цифр и символов {@code . _ : -}; регистр сохраняет. При нарушении формата выдаёт {@code
+     * VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value ключ повтора оформления из заголовка {@code Idempotency-Key}
+     * @return проверенный ключ повтора без изменения регистра и символов
      */
     public String idempotencyKey(String value) {
         require(value!=null && value.matches("[A-Za-z0-9._:-]{1,128}"),"Invalid Idempotency-Key"); return value;
     }
     /**
-     * Возвращает SHA-256 канонической комбинации магазина, корзины и ожидаемой версии; состав и цены не входят
-     * в запрос.
+     * Вычисляет контрольную сумму SHA-256 магазина, корзины и ожидаемой версии. По ней можно отличить повтор
+     * того же запроса от другого запроса с прежним ключом; цены и состав корзины в расчёт не входят.
      *
      * @param store идентификатор магазина
      * @param cart UUID корзины
-     * @param version версия правила или корзины согласно операции
+     * @param version версия корзины
+     * @return контрольная сумма параметров оформления в шестнадцатеричной записи
      */
     public String submissionFingerprint(String store,UUID cart,long version) {
         return hash(json(List.of(store,cart.toString(),version)));
     }
     /**
-     * Восстанавливает принятую корзину из сохранённого raw; повреждённый снимок вызывает
-     * DEPENDENCY_UNAVAILABLE.
+     * Читает сохранённый при оформлении снимок корзины. Если JSON нельзя восстановить, выдаёт {@code
+     * DEPENDENCY_UNAVAILABLE}, поскольку принятый заказ нельзя достоверно показать клиенту.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw JSON-снимок оформленной корзины из БД
+     * @return состояние корзины с позицией каждой строки, версией и итоговой суммой
      */
     public Cart cartSnapshot(String raw) {
         try { return mapper.readValue(raw,Cart.class); }
         catch(Exception failure) { throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart snapshot unavailable"); }
     }
     /**
-     * Проверяет строку версии без переполнения или дробного преобразования и возвращает допустимый long.
+     * Преобразует строку версии в целое число от 0 до {@code MAX_VERSION}. Дроби, знаки, ведущие нули у
+     * ненулевого числа и значения за пределами диапазона отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value ожидаемая версия корзины из параметра HTTP-запроса
+     * @return проверенная версия корзины от 0 до {@code MAX_VERSION}
      */
     public long version(String value) {
         require(value!=null && value.matches("(0|[1-9][0-9]{0,15})"),"Invalid expectedCartVersion");
         long number=Long.parseLong(value); require(number<=MAX_VERSION,"Invalid expectedCartVersion"); return number;
     }
     /**
-     * Проверяет регистрозависимый идентификатор протокола и возвращает его без исправления; неверный формат
-     * вызывает VALIDATION_ERROR.
+     * Проверяет идентификатор длиной от 1 до 64 символов. Первый символ должен быть латинской буквой или
+     * цифрой; далее разрешены также {@code . _ : -}. Возвращает исходную строку, а нарушение формата отклоняет
+     * с {@code VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value проверяемый идентификатор магазина, продукта или строки
+     * @return допустимый идентификатор без изменений
      */
     public String identifier(String value) {
         require(value!=null && value.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}"),"Invalid identifier"); return value;
     }
     /**
-     * Проверяет полный формат UUID перед разбором; сокращённые представления отклоняет с VALIDATION_ERROR.
+     * Преобразует строку в UUID только в полном формате из пяти групп: 8, 4, 4, 4 и 12 шестнадцатеричных цифр.
+     * Сокращённую или неверную запись отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value строковая запись UUID
+     * @return UUID, прочитанный из полной строковой записи
      */
     public UUID uuid(String value) {
         require(value!=null && value.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),"Invalid UUID");
         return UUID.fromString(value);
     }
     /**
-     * Возвращает положительную денежную строку с двумя знаками после точки; неверный масштаб или предел
-     * вызывает VALIDATION_ERROR.
+     * Проверяет положительную цену с ровно двумя цифрами после точки и не более чем 26 цифрами до неё.
+     * Возвращает исходную строку без округления; неверный формат или ноль отклоняет с {@code
+     * VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value проверяемая строковая цена
+     * @return проверенная положительная цена без округления
      */
     private String price(String value) {
         require(value.matches(MONEY) && new BigDecimal(value).signum()>0,"Invalid price"); return value;
     }
     /**
-     * Разбирает UTC-время и возвращает Instant; отсутствие Z или неверный формат вызывает VALIDATION_ERROR.
+     * Преобразует строку даты в {@code Instant}. Требует окончание {@code Z}, обозначающее время UTC; неверную
+     * дату отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value строковая дата с окончанием {@code Z}
+     * @return момент времени; для отсутствующей даты в БД {@code null}
      */
     private Instant utc(String value) {
         require(value.endsWith("Z"),"Timestamp must be UTC");
         try { return Instant.parse(value); } catch(RuntimeException failure) { throw invalid("Invalid timestamp"); }
     }
     /**
-     * Читает целое JSON-значение в пределах lower и upper, включая границы; null, дробь и переполнение
-     * отклоняет.
+     * Читает целое число из JSON и проверяет заданные границы включительно. Отсутствие значения, {@code null},
+     * дробь, переполнение или выход за границы вызывают {@code VALIDATION_ERROR}.
      *
-     * @param node проверяемый узел JSON
-     * @param lower включённая нижняя граница целого значения
-     * @param upper включённая верхняя граница целого значения
+     * @param node JSON-значение, которое нужно проверить или преобразовать
+     * @param lower минимальное допустимое целое число, включительно
+     * @param upper максимальное допустимое целое число, включительно
+     * @return целое число внутри заданных границ
      */
     private long integer(JsonNode node,long lower,long upper) {
         require(node!=null && node.isIntegralNumber() && node.canConvertToLong(),"Invalid integer");
         long value=node.longValue(); require(value>=lower && value<=upper,"Integer out of range"); return value;
     }
     /**
-     * Читает обязательную строку field из node; числа, boolean, null и отсутствие поля отклоняет без
-     * преобразования.
+     * Читает обязательное строковое поле JSON. Отсутствие поля, {@code null}, число или логическое значение
+     * вызывают {@code VALIDATION_ERROR}; автоматического преобразования в строку нет.
      *
-     * @param node проверяемый узел JSON
+     * @param node JSON-значение, которое нужно проверить или преобразовать
      * @param field имя читаемого поля
+     * @return строковое значение обязательного поля
      */
     private String text(JsonNode node,String field) {
         require(node.path(field).isTextual(),"Invalid or missing "+field); return node.get(field).textValue();
     }
     /**
-     * Проверяет объект node и разрешённые имена allowed; неизвестные поля отклоняет без отражения входных имён
-     * в ошибке.
+     * Проверяет, что передан JSON-объект и все его поля входят в разрешённый набор. При лишнем поле выдаёт
+     * {@code VALIDATION_ERROR}, не включая его имя в сообщение.
      *
-     * @param node проверяемый узел JSON
-     * @param allowed разрешённые имена полей объекта
+     * @param node JSON-значение, которое нужно проверить или преобразовать
+     * @param allowed разрешённые имена полей JSON-объекта
      */
     private void fields(JsonNode node,Set<String> allowed) {
         require(node!=null && node.isObject(),"Expected JSON object");
         node.fieldNames().forEachRemaining(field -> require(allowed.contains(field),"Unknown field"));
     }
     /**
-     * Читает один JSON-документ raw; пустой ввод, повторные ключи и повреждённый JSON вызывают
-     * VALIDATION_ERROR.
+     * Читает ровно один JSON-документ. Пустое тело, повторные имена полей, повреждённый JSON или данные после
+     * документа отклоняет с {@code VALIDATION_ERROR}.
      *
-     * @param raw исходный JSON без изменения содержимого и идентификаторов
+     * @param raw исходный текст JSON-документа
+     * @return прочитанное или упорядоченное JSON-значение
      */
     public JsonNode read(String raw) {
         try {
@@ -223,43 +249,51 @@ public class ShopCodec {
         } catch(Exception failure) { throw invalid("Malformed JSON"); }
     }
     /**
-     * Сериализует value в согласованный JSON для хранения; сбой сериализации прерывает текущую операцию.
+     * Преобразует объект в JSON для сохранения или отправки. Если преобразование невозможно, выбрасывает
+     * {@code IllegalStateException} и прерывает текущую операцию.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value Java-объект для преобразования в JSON
+     * @return JSON-запись переданного объекта
      */
     public String json(Object value) {
         try { return mapper.writeValueAsString(value); }
         catch(Exception failure) { throw new IllegalStateException("Cannot serialize stock receipt",failure); }
     }
     /**
-     * Возвращает отпечаток нормализованного payload с устойчивым порядком полей и строк.
+     * Вычисляет контрольную сумму уже упорядоченного содержимого поставки. Одинаковые цены, даты и строки дают
+     * одинаковую сумму для проверки повторного прихода.
      *
-     * @param payload сериализованное содержимое события или проверенный объект согласно типу
+     * @param payload проверенное содержимое оприходованной поставки с упорядоченными строками
+     * @return контрольная сумма содержимого поставки в шестнадцатеричной записи
      */
     private String fingerprint(PostedPayload payload) {
         return hash(json(payload));
     }
     /**
-     * Возвращает детерминированный SHA-256 строки value в UTF-8; недоступный алгоритм вызывает
-     * IllegalStateException.
+     * Вычисляет SHA-256 строки в кодировке UTF-8 и возвращает шестнадцатеричную запись. Если алгоритм
+     * недоступен, выбрасывает {@code IllegalStateException}.
      *
-     * @param value исходное значение, формат и ограничения которого описаны выше
+     * @param value текст, для которого вычисляется контрольная сумма
+     * @return контрольная сумма SHA-256 в шестнадцатеричной записи
      */
     private String hash(String value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
     /**
-     * Создаёт безопасную ошибку VALIDATION_ERROR с переданным пояснением message.
+     * Создаёт ошибку HTTP 400 с кодом {@code VALIDATION_ERROR} и переданным пояснением. Сам метод ошибку не
+     * выбрасывает.
      *
-     * @param message безопасное пояснение без секретов
+     * @param message пояснение для клиента без секретов и внутренних подробностей
+     * @return исключение магазина с подготовленными статусом, кодом и пояснением
      */
     private ShopException invalid(String message) { return new ShopException(400,"VALIDATION_ERROR",message); }
     /**
-     * Проверяет condition; при нарушении выбрасывает VALIDATION_ERROR с безопасным message.
+     * Продолжает проверку, если условие выполнено. Иначе выбрасывает ошибку HTTP 400 с кодом {@code
+     * VALIDATION_ERROR} и переданным пояснением.
      *
-     * @param condition проверяемый инвариант протокола
-     * @param message безопасное пояснение без секретов
+     * @param condition условие, которое должно выполняться для допустимых данных
+     * @param message пояснение для клиента без секретов и внутренних подробностей
      */
     private void require(boolean condition,String message) { if(!condition) throw invalid(message); }
 }

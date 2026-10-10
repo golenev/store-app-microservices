@@ -13,18 +13,21 @@ import java.math.*;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
-/** Выполняет ограниченные по времени запросы TARIFFS вне SQL-транзакции и проверяет финансовый ответ. */
+/**
+ * Запрашивает наценку у TARIFFS по HTTP и вычисляет продажную цену строки поставки. Сеть вызывается вне
+ * транзакции PostgreSQL, ответ сервиса проверяется перед использованием.
+ */
 @Component
 public class TariffClient {
     private final RestClient http;
     private final DeliveryCodec codec;
 
     /**
-     * Создаёт клиент baseUrl с тайм-аутом соединения 1 секунда и чтения 2 секунды; конструктор не отправляет
-     * запросов.
+     * Создаёт HTTP-клиент для заданного адреса TARIFFS. Ожидание подключения ограничивает одной секундой,
+     * ожидание ответа — двумя; запрос при создании не отправляет.
      *
-     * @param codec строгий разбор и сериализация протокола
-     * @param baseUrl внутренний HTTP-адрес TARIFFS
+     * @param codec проверка событий поставок и преобразование сохранённых моделей
+     * @param baseUrl базовый HTTP-адрес сервиса
      */
     public TariffClient(DeliveryCodec codec, @Value("${tariffs.base-url:http://localhost:6790}") String baseUrl) {
         this.codec = codec;
@@ -35,11 +38,15 @@ public class TariffClient {
     }
 
     /**
-     * Получает тариф строки line для cityId вне SQL-транзакции, проверяет три поля ответа и вычисляет цену
-     * HALF_UP. 404/409 сохраняет как ошибки выбора; неверный ответ или сеть вызывает DEPENDENCY_UNAVAILABLE.
+     * Запрашивает тариф по строке поставки и городу. Проверяет наценку, UUID и версию правила, затем вычисляет
+     * закупочную цену, умноженную на один плюс наценка. Округляет до копеек по {@code HALF_UP}: при половине
+     * копейки округляет вверх. Возвращает строку с расчётом. HTTP 404 и 409 преобразует в ошибки отсутствия
+     * или неоднозначности тарифа, сбой сети или неверный ответ — в {@code DEPENDENCY_UNAVAILABLE}. Превышение
+     * допустимого размера цены вызывает {@code VALIDATION_ERROR}.
      *
-     * @param line строка поставки для расчёта тарифа
-     * @param cityId идентификатор города выбора тарифа
+     * @param line строка поставки с закупочной ценой для расчёта тарифа
+     * @param cityId идентификатор города, для которого выбирается тариф
+     * @return строка поставки с рассчитанными наценкой и продажной ценой
      */
     public Line price(Line line, String cityId) {
         try {
@@ -75,7 +82,10 @@ public class TariffClient {
     }
 
     /**
-     * Возвращает безопасную ошибку недоступного или неверного тарифа без URL и сетевых подробностей.
+     * Создаёт ошибку HTTP 503 с кодом {@code DEPENDENCY_UNAVAILABLE} для недоступного сервиса или неверного
+     * ответа тарифа. Адрес сервиса и сетевые подробности в пояснение не входят.
+     *
+     * @return исключение поставки с подготовленными статусом, кодом и пояснением
      */
     private DeliveryException unavailable() {
         return new DeliveryException(503, "DEPENDENCY_UNAVAILABLE", "Tariff quote unavailable or invalid");

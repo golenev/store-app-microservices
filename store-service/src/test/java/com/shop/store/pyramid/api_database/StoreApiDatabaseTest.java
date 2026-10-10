@@ -34,10 +34,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Проверяет настоящие MVC-контроллеры и зафиксированные записи PostgreSQL своего сервиса.
- * MockMvc выполняет маршрутизацию, преобразование тела и обработку ошибок без TCP-сервера.
- * Схему создаёт production Flyway в отдельном Testcontainers; Compose и пользовательские базы не используются.
- * Общего rollback теста нет: SQL-подготовка и HTTP-транзакции завершаются до независимого чтения.
+ * Проверяет запросы API магазина и сохранённые строки в отдельном PostgreSQL в контейнере. MockMvc
+ * выполняет контроллеры и обработку ошибок без сетевого HTTP-сервера. Миграции сервиса создают схему;
+ * подготовка данных и операции сервиса завершают свои транзакции до независимого чтения результата. Kafka
+ * и базы Docker Compose не используются.
  */
 @Tag("api-database")
 @Testcontainers
@@ -53,7 +53,10 @@ class StoreApiDatabaseTest {
     private String storeId;
     private UUID cartId;
     private UUID stockId;
-    /** Подготавливает отдельный магазин, поставку и десять единиц товара по 120.00 рублей без Kafka. */
+    /**
+     * Создаёт отдельный магазин, принятую поставку и остаток: 10 единиц товара по 120.00 рублей.
+     * Подготавливает данные через SQL без сообщений Kafka.
+     */
     @BeforeEach void prepare() {
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
         storeId = "S-" + UUID.randomUUID(); cartId = UUID.randomUUID(); stockId = UUID.randomUUID();
@@ -63,15 +66,18 @@ class StoreApiDatabaseTest {
                 storeId, "a".repeat(64), now, now, now, "{}");
         jdbc.update("INSERT INTO inventory(stock_item_id,store_id,product_id,product_type,short_name,description,unit_price,currency,available_quantity,last_delivery_sequence) VALUES(?,?,'P-1','NON_FOOD','Мыло','Описание',120.00,'RUB',10,1)", stockId, storeId);
     }
-    /** Удаляет только свой магазин в порядке внешних ключей; схема и миграционные fixtures сохраняются. */
+    /**
+     * Удаляет данные только своего магазина, сначала зависимые строки, затем магазин. Схема и начальные данные
+     * миграций сохраняются.
+     */
     @AfterEach void cleanup() {
         for (String table : List.of("store_outbox", "stock_expenses", "submissions", "cart_items", "carts", "stock_movements", "inventory", "processed_events", "stock_receipts", "store_scopes"))
             jdbc.update("DELETE FROM " + table + " WHERE store_id=?", storeId);
     }
 
     /**
-     * STORE-API-DB-001. В магазине есть остаток. POST создаёт одну независимую пустую корзину; SQL и GET подтверждают сохранённое состояние.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-001. При подготовленном остатке отправляет POST создания корзины. Проверяет, что сохранена
+     * одна пустая открытая корзина; её поля совпадают в ответе, SQL и последующем GET.
      */
     @Test @DisplayName("STORE-API-DB-001: созданная корзина сохраняется открытой с версией 0")
     void createsCart() throws Exception {
@@ -87,8 +93,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-002. SQL фиксирует корзину и две единицы товара. GET должен вернуть все поля позиции и сумму 240.00.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-002. Через SQL создаёт корзину с двумя единицами товара по 120.00 рублей. Запрашивает её
+     * через GET и проверяет поля позиции и сумму 240.00 рублей.
      */
     @Test @DisplayName("STORE-API-DB-002: корзина из SQL читается с позицией и точной суммой")
     void readsPreparedCart() throws Exception {
@@ -101,8 +107,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-003. PUT добавляет три единицы в корзину версии 0. SQL подтверждает количество, версию 1 и прежний остаток 10.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-003. Для корзины версии 0 отправляет PUT с количеством 3. Проверяет ответ и БД: в корзине
+     * три единицы, версия стала 1, доступный остаток остался 10.
      */
     @Test @DisplayName("STORE-API-DB-003: изменение количества позиции фиксируется без резервирования остатка")
     void updatesLine() throws Exception {
@@ -114,8 +120,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-004. DELETE удаляет подготовленную позицию. Проверяем пустой ответ корзины, отсутствие строки и неизменный остаток.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-004. Для корзины с подготовленной позицией отправляет DELETE. Проверяет пустой состав
+     * ответа, удаление строки из БД и сохранение прежнего остатка товара.
      */
     @Test @DisplayName("STORE-API-DB-004: удаление позиции фиксируется с однократным увеличением версии")
     void deletesLine() throws Exception {
@@ -126,8 +132,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-005. GET неизвестного идентификатора возвращает NOT_FOUND. SQL подтверждает отсутствие новой корзины.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-005. Запрашивает неизвестную корзину через GET. Проверяет {@code NOT_FOUND} и отсутствие
+     * новой строки корзины в БД.
      */
     @Test @DisplayName("STORE-API-DB-005: чтение отсутствующей корзины не создаёт строку")
     void rejectsMissingCart() throws Exception {
@@ -136,8 +142,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-006. PUT для неизвестной корзины возвращает NOT_FOUND и не создаёт позицию.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-006. Отправляет PUT для неизвестной корзины. Проверяет {@code NOT_FOUND} и отсутствие
+     * созданных позиций корзины.
      */
     @Test @DisplayName("STORE-API-DB-006: изменение отсутствующей корзины отклоняется без записи позиции")
     void rejectsMissingUpdate() throws Exception {
@@ -146,8 +152,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-007. Корзина существует без позиции. DELETE возвращает NOT_FOUND; версия остаётся нулевой.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-007. Из существующей пустой корзины пытается удалить отсутствующую позицию. Проверяет
+     * {@code NOT_FOUND} и сохранение версии 0.
      */
     @Test @DisplayName("STORE-API-DB-007: удаление отсутствующей позиции сохраняет версию корзины")
     void rejectsMissingDelete() throws Exception {
@@ -157,8 +163,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-008. PUT с количеством 0 возвращает VALIDATION_ERROR; строки, версия и остаток не меняются.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-008. Отправляет PUT с количеством 0. Проверяет {@code VALIDATION_ERROR}: позиция не
+     * создаётся, версия корзины и остаток товара не меняются.
      */
     @Test @DisplayName("STORE-API-DB-008: нулевое количество отклоняется без изменения корзины")
     void rejectsInvalidQuantity() throws Exception {
@@ -168,8 +174,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-009. SQL фиксирует две единицы и версию 1. PUT с ожидаемой версией 0 возвращает конфликт, сохраняя оба значения.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-009. Через SQL задаёт две единицы товара и версию корзины 1. Отправляет PUT с ожидаемой
+     * версией 0 и проверяет конфликт; количество и версия остаются прежними.
      */
     @Test @DisplayName("STORE-API-DB-009: устаревшая версия отклоняется без изменения позиции")
     void rejectsStaleVersion() throws Exception {
@@ -180,8 +186,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-010. SQL меняет количество с 2 на 3 и версию на 1. GET должен увидеть новую композицию и сумму.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-010. Через SQL меняет количество товара в корзине с 2 на 3 и устанавливает версию 1. GET
+     * должен вернуть новый состав и соответствующую сумму.
      */
     @Test @DisplayName("STORE-API-DB-010: прямое изменение позиции становится видимым при чтении")
     void readsDirectlyUpdatedLine() throws Exception {
@@ -193,8 +199,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-011. После удаления позиции через SQL GET возвращает пустую композицию и нулевую сумму.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-011. Удаляет позицию корзины через SQL. GET должен вернуть пустой список позиций и нулевую
+     * сумму.
      */
     @Test @DisplayName("STORE-API-DB-011: прямое удаление позиции становится видимым при чтении")
     void readsDirectlyDeletedLine() throws Exception {
@@ -204,8 +210,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-012. Поставка и остаток подготовлены SQL. GET каталога возвращает свой товар с количеством 10 и ценой 120.00.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-012. При подготовленных поставке и остатке запрашивает каталог. Проверяет свой товар:
+     * доступно 10 единиц, цена 120.00 рублей.
      */
     @Test @DisplayName("STORE-API-DB-012: каталог возвращает все поля подготовленного остатка")
     void readsPreparedCatalog() throws Exception {
@@ -215,8 +221,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-013. POST оформления списывает три единицы, закрывает корзину и сохраняет читаемую заявку. Публикация Kafka не запускается.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-013. Оформляет корзину с тремя единицами через POST. Проверяет списание товара, закрытие
+     * корзины и сохранение заявки, доступной для чтения. Kafka в этом тесте не отправляет событие.
      */
     @Test @DisplayName("STORE-API-DB-013: оформление сохраняет заявку и расход в одной транзакции")
     void acceptsCart() throws Exception {
@@ -231,8 +237,8 @@ class StoreApiDatabaseTest {
     }
 
     /**
-     * STORE-API-DB-014. Повторяем исходные тело и ключ. Проверяем одинаковую заявку, один расход и однократное списание.
-     * Действие проходит через настоящий контроллер; состояние проверяется после фиксации транзакции.
+     * STORE-API-DB-014. Повторяет оформление с теми же телом и ключом. Проверяет совпадение принятой заявки,
+     * одно движение расхода и однократное уменьшение остатка.
      */
     @Test @DisplayName("STORE-API-DB-014: повтор оформления возвращает ту же заявку без нового расхода")
     void replaysAcceptedCart() throws Exception {
@@ -247,23 +253,54 @@ class StoreApiDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT quantity FROM stock_expenses WHERE submission_id=?",Integer.class,accepted.submissionId())).isEqualTo(3);
         assertThat(read(mvc.perform(get("/stores/"+storeId+"/submissions/"+accepted.submissionId())).andExpect(status().isOk()).andReturn(),Submission.class)).isEqualTo(accepted);
     }
-    /** Создаёт исходную корзину версии 0 напрямую; композиция добавляется отдельной операцией в конкретном тесте. */
+    /**
+     * Сохраняет через SQL пустую корзину версии 0. Позиции добавляет сам сценарий отдельным вызовом.
+     */
     private void insertCart() {
         jdbc.update("INSERT INTO carts(cart_id,store_id,created_at) VALUES(?,?,?)", cartId, storeId, Timestamp.from(clock.instant()));
     }
-    /** Подготавливает одну позицию в своей корзине; количество явно задаётся сценарием. */
+    /**
+     * Сохраняет через SQL одну позицию своей корзины с указанным количеством.
+     *
+     * @param quantity количество единиц товара
+     */
     private void insertLine(int quantity) {
         jdbc.update("INSERT INTO cart_items(store_id,cart_id,stock_item_id,quantity) VALUES(?,?,?,?)", storeId, cartId, stockId, quantity);
     }
-    /** Возвращает путь своей корзины; маршрут не выбирается скрытыми флагами. */
+    /**
+     * Возвращает адрес API для собственной корзины теста.
+     *
+     * @return адрес API собственной корзины
+     */
     private String cartPath() { return "/stores/" + storeId + "/carts/" + cartId; }
-    /** Разбирает JSON в production-модель без проверки бизнес-полей; инварианты остаются в тесте. */
+    /**
+     * Читает JSON-ответ в модель указанного типа. Проверки полей и бизнес-ожиданий остаются в сценарии.
+     *
+     * @param <T> тип модели, которую нужно прочитать из JSON
+     * @param result результат обработки запроса MockMvc с JSON-телом ответа
+     * @param type Java-класс модели, в которую нужно прочитать JSON
+     * @return объект указанного типа, прочитанный из JSON
+     */
     private <T> T read(MvcResult result, Class<T> type) throws Exception { return mapper.readValue(result.getResponse().getContentAsString(StandardCharsets.UTF_8), type); }
-    /** Читает текущую версию корзины отдельным SELECT после завершения изменения. */
+    /**
+     * Читает версию корзины отдельным SQL-запросом после завершения операции сервиса.
+     *
+     * @return текущая версия собственной корзины
+     */
     private long cartVersion() { return jdbc.queryForObject("SELECT version FROM carts WHERE cart_id=?", Long.class, cartId); }
-    /** Возвращает число позиций своей корзины, включая ноль после отказа или удаления. */
+    /**
+     * Считает строки позиций своей корзины в БД. Ноль позволяет проверить отсутствие записи после отказа или
+     * удаления.
+     *
+     * @return число позиций собственной корзины
+     */
     private int lineCount() { return jdbc.queryForObject("SELECT count(*) FROM cart_items WHERE cart_id=?", Integer.class, cartId); }
-    /** Читает количество своей складской позиции; добавление в корзину не должно его менять. */
+    /**
+     * Читает доступное количество своего товара из БД для проверки, что операция с корзиной не списала
+     * остаток.
+     *
+     * @return текущее доступное количество своего товара
+     */
     private int stockQuantity() { return jdbc.queryForObject("SELECT available_quantity FROM inventory WHERE stock_item_id=?", Integer.class, stockId); }
 
 }

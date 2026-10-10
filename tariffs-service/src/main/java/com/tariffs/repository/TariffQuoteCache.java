@@ -16,7 +16,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-/** Хранит снимки расчётов без TTL; Lua защищает от заполнения прежним результатом после сброса. */
+/**
+ * Хранит результаты расчёта наценки в Redis до явного или планового сброса. Идентификатор поколения
+ * меняется при сбросе и не позволяет сохранить расчёт, начатый до него.
+ */
 @Component
 public class TariffQuoteCache {
     public static final String ENTRIES_KEY = "tariff-quotes:v1:entries";
@@ -38,10 +41,10 @@ public class TariffQuoteCache {
     private final ObjectMapper mapper;
 
     /**
-     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     * Подключает Redis и преобразование результатов расчёта в JSON.
      *
-     * @param redis подключение Redis для хранения снимков расчётов
-     * @param mapper ObjectMapper приложения для согласованного JSON
+     * @param redis выполнение операций Redis с сохранёнными расчётами
+     * @param mapper настройки преобразования Java-объектов и JSON
      */
     public TariffQuoteCache(StringRedisTemplate redis, ObjectMapper mapper) {
         this.redis = redis;
@@ -49,10 +52,12 @@ public class TariffQuoteCache {
     }
 
     /**
-     * Атомарно читает поколение и снимок request из Redis. Недоступность или повреждённый JSON возвращает
-     * промах; null generation запрещает заполнение.
+     * Одной операцией Redis читает результат для заданных условий и идентификатор поколения кеша. Если записи
+     * нет или её JSON повреждён, возвращает отсутствие расчёта. При недоступном Redis возвращает также
+     * отсутствие поколения: такой результат нельзя записать обратно в кеш.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
+     * @return результат чтения расчёта и поколение кеша
      */
     public QuoteCacheLookup read(QuoteRequest request) {
         try {
@@ -73,12 +78,13 @@ public class TariffQuoteCache {
     }
 
     /**
-     * Сохраняет успешный quote только в поколении исходного lookup; ошибка Redis не отменяет расчёт, ошибка
-     * сериализации вызывает IllegalStateException.
+     * Сохраняет успешный расчёт, только если поколение кеша со времени чтения не изменилось. Если поколение
+     * неизвестно, ничего не записывает. Сбой Redis оставляет вычисленный результат доступным клиенту;
+     * невозможность записать JSON вызывает {@code IllegalStateException}.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
-     * @param lookup результат чтения кеша с поколением сброса
-     * @param quote успешный результат расчёта тарифа
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
+     * @param lookup результат предыдущего чтения и поколение кеша
+     * @param quote рассчитанная наценка, UUID и версия выбранного правила
      */
     public void write(QuoteRequest request, QuoteCacheLookup lookup, QuoteResponse quote) {
         if (lookup.generation() == null) return;
@@ -92,16 +98,18 @@ public class TariffQuoteCache {
     }
 
     /**
-     * Атомарно меняет поколение и удаляет только записи расчётов; недоступность Redis распространяется для HTTP
-     * 503.
+     * Одной операцией Redis меняет поколение кеша и удаляет все сохранённые расчёты этого сервиса. Правила
+     * PostgreSQL не меняет. Ошибка Redis передаётся вызывающему коду, поэтому API не сообщит об успешном
+     * сбросе.
      */
     public void reset() { redis.execute(RESET, List.of(EPOCH_KEY, ENTRIES_KEY), UUID.randomUUID().toString()); }
 
     /**
-     * Строит однозначный ключ из проверенных измерений request и нормализованной цены; cityId не допускает
-     * символ |.
+     * Собирает ключ кеша из проверенных типа товара, города, валюты и цены с двумя знаками после точки. Символ
+     * {@code |} разделяет поля; проверка идентификатора города должна исключать этот символ.
      *
-     * @param request HTTP-запрос или параметры контракта согласно типу
+     * @param request тип товара, город, валюта и закупочная цена для выбора тарифа
+     * @return ключ кеша для заданных условий расчёта
      */
     private String key(QuoteRequest request) {
         return request.productType() + "|" + request.cityId() + "|" + request.currency() + "|"

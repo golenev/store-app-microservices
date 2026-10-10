@@ -8,37 +8,41 @@ import java.math.BigDecimal;
 import java.util.Objects;
 import static org.assertj.core.api.Assertions.*;
 
-/** Форматирование ставки TARIFFS без БД: проверяемый метод работает только с переданным BigDecimal. */
+/**
+ * Проверяет строковую запись наценки прямым вызовом кода репозитория. Метод работает с переданным
+ * десятичным числом и не обращается к БД.
+ */
 @Tag("logic")
 class TariffPureLogicTest {
     private final TariffRuleRepository repository = new TariffRuleRepository(null);
 
     /**
-     * TAR-LOGIC-001. Ставка 0.200000 приходит с точностью SQL-колонки.
-     * Проверяем строку 0.20: лишние нули убраны, два десятичных знака сохранены.
+     * TAR-LOGIC-001. Передаёт наценку {@code 0.200000}, как она хранится в SQL-колонке. Ожидает {@code 0.20}:
+     * лишние нули удалены, минимум два знака после точки сохранён.
      */
     @Test @DisplayName("TAR-LOGIC-001: лишние нули ставки удаляются")
     void removesTrailingZeros() { assertThat(format("0.200000")).isEqualTo("0.20"); }
 
     /**
-     * TAR-LOGIC-002. Ставка 0.123456 содержит шесть значимых десятичных цифр.
-     * Проверяем их сохранение без округления: форматирование не должно менять размер наценки.
+     * TAR-LOGIC-002. Передаёт наценку {@code 0.123456}. Ожидает ту же строку со всеми шестью значимыми цифрами
+     * без округления.
      */
     @Test @DisplayName("TAR-LOGIC-002: значимая точность ставки сохраняется")
     void preservesFractionalPrecision() { assertThat(format("0.123456")).isEqualTo("0.123456"); }
 
     /**
-     * TAR-LOGIC-003. Нулевая ставка разрешена и должна передаваться как 0.00.
-     * Проверяем два знака после точки, чтобы формат нуля совпадал с форматом остальных ставок.
+     * TAR-LOGIC-003. Передаёт нулевую наценку {@code 0.000000}. Ожидает строку {@code 0.00}, сохраняющую
+     * минимум два десятичных знака.
      */
     @Test @DisplayName("TAR-LOGIC-003: нулевая ставка имеет два знака")
     void formatsZero() { assertThat(format("0.000000")).isEqualTo("0.00"); }
 
     /**
-     * Вызывает непубличный formatRate через ReflectionUtils.
-     * JdbcTemplate намеренно отсутствует: выбранная функция не читает поля репозитория и не выполняет SQL.
-     * @param value точное десятичное значение ставки
-     * @return строка без лишних нулей, минимум с двумя десятичными знаками
+     * Находит и вызывает непубличный метод {@code formatRate} через {@code ReflectionUtils}. Подключение к БД
+     * не передаётся: выбранный метод использует только аргумент и не выполняет SQL.
+     *
+     * @param value строковая наценка для проверки форматирования
+     * @return наценка строкой без лишних нулей, минимум с двумя знаками после точки
      */
     private String format(String value) {
         Method method = Objects.requireNonNull(ReflectionUtils.findMethod(TariffRuleRepository.class, "formatRate", BigDecimal.class));

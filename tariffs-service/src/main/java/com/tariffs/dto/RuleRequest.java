@@ -5,7 +5,17 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import static com.tariffs.validation.TariffPatterns.*;
 
-/** Полная замена правила; явный null upperBound означает неограниченный верхний предел. */
+/**
+ * Полный набор условий для создания или замены правила. Нижняя граница цены включается, верхняя
+ * исключается; явно переданный {@code upperBound = null} снимает верхний предел.
+ *
+ * @param productType тип товара: {@code FOOD} или {@code NON_FOOD}
+ * @param cityId идентификатор города, для которого выбирается тариф
+ * @param currency код валюты; в текущем контракте разрешён {@code RUB}
+ * @param lowerBound нижняя граница закупочной цены, включительно
+ * @param upperBound верхняя граница закупочной цены, не включается; {@code null} снимает предел
+ * @param markupRate наценка как доля закупочной цены; {@code 0.20} означает 20 процентов
+ */
 public record RuleRequest(
             @NotBlank @Pattern(regexp = "FOOD|NON_FOOD") String productType,
             @NotBlank @Pattern(regexp = IDENTIFIER) String cityId,

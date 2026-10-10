@@ -5,15 +5,17 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.Map;
 
-/** Предоставляет браузеру публичную конфигурацию подключения к WAREHOUSE. */
+/**
+ * Возвращает браузеру адрес WAREHOUSE, по которому интерфейс отправляет и читает поставки.
+ */
 @RestController
 public class UiSettingsController {
     private final String warehouseUrl;
     /**
-     * Проверяет warehouseUrl как публичный HTTP(S) URL без credentials, query или fragment; неверная настройка
-     * прерывает запуск.
+     * Проверяет настроенный адрес WAREHOUSE: разрешены HTTP и HTTPS, запрещены имя пользователя, пароль,
+     * параметры запроса и фрагмент адреса. Неверная настройка вызывает ошибку при создании контроллера.
      *
-     * @param warehouseUrl публичный URL WAREHOUSE для браузера
+     * @param warehouseUrl HTTP-адрес WAREHOUSE для браузерного интерфейса
      */
     public UiSettingsController(@Value("${shop.warehouse-public-url:http://localhost:6791}") String warehouseUrl) {
         URI uri=URI.create(warehouseUrl);
@@ -23,8 +25,10 @@ public class UiSettingsController {
         this.warehouseUrl=warehouseUrl.replaceAll("/+$","");
     }
     /**
-     * Возвращает только публичный warehouseBaseUrl для браузера; адреса БД и учётные данные в ответ не
-     * включаются.
+     * Возвращает поле {@code warehouseBaseUrl} для браузерного интерфейса. Другие настройки приложения,
+     * включая подключения к БД, в ответ не входят.
+     *
+     * @return публичный адрес WAREHOUSE для браузерного интерфейса
      */
     @GetMapping("/ui/config")
     public Map<String,String> config() { return Map.of("warehouseBaseUrl",warehouseUrl); }

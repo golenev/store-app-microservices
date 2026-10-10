@@ -6,15 +6,19 @@ import org.springframework.web.servlet.config.annotation.*;
 import java.net.URI;
 import java.util.Arrays;
 
-/** Разрешает заданным origins браузера публикацию и чтение учебных поставок без credentials. */
+/**
+ * Разрешает браузерному интерфейсу с заданных адресов отправлять учебные поставки и читать их состояние.
+ * Настраивает разрешённые межсайтовые запросы CORS.
+ */
 @Configuration
 public class WarehouseUiCors implements WebMvcConfigurer {
     private final String[] origins;
     /**
-     * Разбирает configured как список точных HTTP(S) origins; wildcards, credentials, path и query отклоняет
-     * при запуске.
+     * Читает разрешённые адреса интерфейса через запятую. Каждый адрес должен содержать только HTTP или HTTPS,
+     * имя хоста и при необходимости порт. Имя пользователя, пароль, путь, параметры запроса и фрагмент адреса
+     * отклоняет при запуске.
      *
-     * @param configured список точных origins через запятую
+     * @param configured разрешённые адреса браузерного интерфейса через запятую
      */
     public WarehouseUiCors(@Value("${shop.ui-origins:http://localhost:6789,http://127.0.0.1:6789}") String configured) {
         origins=Arrays.stream(configured.split(",")).map(String::trim).toArray(String[]::new);
@@ -26,10 +30,10 @@ public class WarehouseUiCors implements WebMvcConfigurer {
         }
     }
     /**
-     * Настраивает registry для POST поставщика и GET диагностики только с разрешённых origins; диагностические
-     * POST браузеру не разрешает.
+     * Разрешает заданным адресам интерфейса POST для отправки поставки и GET для чтения её состояния.
+     * Браузерный POST ручного повтора расчёта этими правилами не разрешён.
      *
-     * @param registry реестр правил CORS Spring MVC
+     * @param registry реестр правил межсайтовых запросов Spring MVC
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {

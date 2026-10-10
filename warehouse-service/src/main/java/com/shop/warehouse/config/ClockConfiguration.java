@@ -5,11 +5,16 @@ import java.time.ZoneOffset;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Общие часы приложения для событий, сроков захвата и HTTP-ошибок. */
+/**
+ * Задаёт единые часы приложения для дат событий, сроков фоновых попыток и времени ошибок.
+ */
 @Configuration
 public class ClockConfiguration {
     /**
-     * Возвращает UTC-часы с точностью миллисекунд, согласованной с сохранёнными датами PostgreSQL.
+     * Возвращает системные часы UTC с точностью до миллисекунды, совпадающей с точностью сохраняемых дат
+     * PostgreSQL.
+     *
+     * @return системные или фиксированные часы, заданные этой конфигурацией
      */
     @Bean
     public static Clock warehouseClock() { return Clock.tickMillis(ZoneOffset.UTC); }

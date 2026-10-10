@@ -5,21 +5,24 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-/** Передаёт входное Kafka-событие сервису; успешный возврат следует после фиксации результата в БД. */
+/**
+ * Получает сообщения Kafka и передаёт их сервису приёмки. Завершает обработку только после сохранения
+ * результата или причины отказа в БД.
+ */
 @Component
 public class DeliveryReceivedListener {
     private final DeliveryService store;
 
     /**
-     * Получает транзакционный сервис приёмки; конструктор не обращается к Kafka или БД.
+     * Подключает сервис приёмки, который сохраняет результат обработки сообщения в транзакции.
      *
-     * @param store сервис транзакций поставок и outbox
+     * @param store транзакции приёмки, расчёта и очереди событий поставок
      */
     public DeliveryReceivedListener(DeliveryService store) { this.store = store; }
 
     /**
-     * Передаёт исходный record с ключом и координатами сервису приёмки. Успешный возврат следует после фиксации
-     * результата; сбой БД требует повтора Kafka.
+     * Передаёт сервису исходное сообщение, ключ и координаты в Kafka. Успешно возвращается после сохранения
+     * результата в БД. Если БД недоступна, ошибка выходит из метода и Kafka повторяет обработку.
      *
      * @param record исходное сообщение Kafka с ключом, содержимым и координатами
      */

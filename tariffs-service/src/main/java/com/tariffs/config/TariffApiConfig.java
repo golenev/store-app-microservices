@@ -10,18 +10,25 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.time.Clock;
 
-/** Настраивает строгий разбор JSON и общие UTC-часы HTTP-контракта тарифов. */
+/**
+ * Задаёт часы и правила чтения JSON для HTTP API тарифов.
+ */
 @Configuration
 public class TariffApiConfig {
     /**
-     * Возвращает production-часы UTC; тест может заменить их фиксированным временем.
+     * Возвращает системные часы UTC для времени ошибок и сброса кеша. В тестах вместо них можно подключить
+     * часы с фиксированным временем.
+     *
+     * @return системные или фиксированные часы, заданные этой конфигурацией
      */
     @Bean
     public Clock tariffClock() { return Clock.systemUTC(); }
 
     /**
-     * Возвращает настройку JSON, отклоняющую неизвестные и повторные поля, отсутствующие параметры records и
-     * преобразования числа/boolean в строку.
+     * Настраивает чтение JSON: неизвестные и повторные поля, отсутствующие поля моделей {@code record}, лишние
+     * данные после документа и преобразование чисел или логических значений в строки считаются ошибкой.
+     *
+     * @return правила строгого чтения входного JSON
      */
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer strictTariffJson() {

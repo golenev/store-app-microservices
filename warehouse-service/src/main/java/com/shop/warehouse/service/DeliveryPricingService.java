@@ -14,7 +14,10 @@ import com.shop.warehouse.client.TariffClient;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Координирует расчёт поставки; HTTP выполняется между короткими транзакциями захвата и фиксации. */
+/**
+ * По расписанию выбирает ожидающие поставки и запрашивает тарифы для их строк. HTTP-запросы выполняет
+ * между транзакциями назначения владельца и сохранения результата.
+ */
 @Service
 @ConditionalOnProperty(name="warehouse.workers.enabled", havingValue="true", matchIfMissing=true)
 public class DeliveryPricingService {
@@ -23,10 +26,10 @@ public class DeliveryPricingService {
     private final TariffClient tariffs;
 
     /**
-     * Получает транзакционный сервис и внешний адаптер; конструктор не выполняет запросов.
+     * Подключает операции с поставками и HTTP-клиент тарифов.
      *
-     * @param store сервис транзакций поставок и outbox
-     * @param tariffs HTTP-клиент выбора тарифа
+     * @param store транзакции приёмки, расчёта и очереди событий поставок
+     * @param tariffs HTTP-запрос наценки и вычисление продажной цены
      */
     public DeliveryPricingService(DeliveryService store, TariffClient tariffs) {
         this.store = store;
@@ -34,7 +37,8 @@ public class DeliveryPricingService {
     }
 
     /**
-     * Запускает наступившие попытки расчёта. Сохранённый захват позволяет восстановиться без ручного повтора.
+     * Запускает обработку одной готовой к расчёту поставки по расписанию. Неожиданную ошибку пишет в журнал;
+     * после истечения срока владения сохранённую поставку можно обработать снова.
      */
     @Scheduled(fixedDelayString="${warehouse.pricing-poll-ms:500}")
     public void pricingTick() {
@@ -43,8 +47,9 @@ public class DeliveryPricingService {
     }
 
     /**
-     * Захватывает одну поставку и продлевает владение перед каждой строкой. Результаты фиксируются одной
-     * транзакцией; потерявшая владение попытка прекращает обработку.
+     * Берёт одну поставку и перед каждым запросом тарифа продлевает срок владения. Если владелец сменился,
+     * прекращает попытку. Все рассчитанные строки передаёт на сохранение одной транзакцией; ошибку тарифа
+     * сохраняет как причину ожидания следующей попытки.
      */
     public void priceOne() {
         Optional<PricingWork> pending = store.claimPricing();

@@ -11,7 +11,10 @@ import java.util.Optional;
 import org.springframework.kafka.core.KafkaTemplate;
 import java.util.concurrent.TimeUnit;
 
-/** Публикует сохранённые GoodsPosted вне SQL-транзакции и фиксирует результат по токену владельца. */
+/**
+ * Отправляет сохранённые события {@code GoodsPosted} в Kafka после завершения транзакции БД. При повторной
+ * отправке сохраняет идентификатор и содержимое события.
+ */
 @Component
 @ConditionalOnProperty(name="warehouse.workers.enabled", havingValue="true", matchIfMissing=true)
 public class GoodsPostedPublisher {
@@ -20,10 +23,10 @@ public class GoodsPostedPublisher {
     private final KafkaTemplate<String, String> kafka;
 
     /**
-     * Получает транзакционный сервис и внешний адаптер; конструктор не выполняет запросов.
+     * Подключает операции с очередью событий в БД и отправку сообщений Kafka.
      *
-     * @param store сервис транзакций поставок и outbox
-     * @param kafka producer для отправки сообщений Kafka
+     * @param store транзакции приёмки, расчёта и очереди событий поставок
+     * @param kafka отправка строковых сообщений Kafka с ключом магазина
      */
     public GoodsPostedPublisher(DeliveryService store, KafkaTemplate<String, String> kafka) {
         this.store = store;
@@ -31,7 +34,8 @@ public class GoodsPostedPublisher {
     }
 
     /**
-     * Запускает отправку сохранённого события по расписанию. Сбой сохраняет ожидание и следующую попытку в БД.
+     * По расписанию запускает отправку одного события. Неожиданную ошибку пишет в журнал; запись в очереди
+     * позволяет повторить отправку после освобождения или истечения срока владения.
      */
     @Scheduled(fixedDelayString="${warehouse.sender-poll-ms:500}")
     public void senderTick() {
@@ -40,8 +44,10 @@ public class GoodsPostedPublisher {
     }
 
     /**
-     * Отправляет одно сохранённое событие и ждёт подтверждение брокера не более пяти секунд. Ошибка последующей
-     * записи в БД допускает повтор того же содержимого.
+     * Берёт одно ожидающее событие и ждёт подтверждения Kafka не более пяти секунд. При сбое отправки
+     * назначает повтор, при прерывании также восстанавливает признак прерывания потока. После подтверждения
+     * отмечает событие в БД как отправленное. Если эта запись не удалась, событие может быть отправлено
+     * повторно с прежним содержимым.
      */
     public void sendOne() {
         Optional<OutboxWork> pending = store.claimOutbox();

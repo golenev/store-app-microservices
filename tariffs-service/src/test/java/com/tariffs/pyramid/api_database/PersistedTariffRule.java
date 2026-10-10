@@ -4,15 +4,17 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Полный снимок строки тарифного правила без преобразования денежных значений в строки.
- * @param id идентификатор строки
- * @param version версия условий
- * @param productType тип товаров
- * @param cityId город действия условий
- * @param currency валюта цены
- * @param lowerBound включённая нижняя граница
- * @param upperBound исключённая верхняя граница либо отсутствие предела
- * @param markupRate дробная наценка с точностью SQL
+ * Снимок всех колонок правила, прочитанный напрямую из тестовой PostgreSQL. Ценовые границы и наценка
+ * остаются точными десятичными числами для независимого сравнения с ответом API.
+ *
+ * @param id UUID тарифного правила
+ * @param version версия тарифного правила
+ * @param productType тип товара: {@code FOOD} или {@code NON_FOOD}
+ * @param cityId идентификатор города, для которого выбирается тариф
+ * @param currency код валюты; в текущем контракте разрешён {@code RUB}
+ * @param lowerBound нижняя граница закупочной цены, включительно
+ * @param upperBound верхняя граница закупочной цены, не включается; {@code null} снимает предел
+ * @param markupRate наценка как доля закупочной цены; {@code 0.20} означает 20 процентов
  */
 record PersistedTariffRule(UUID id, long version, String productType, String cityId, String currency,
                            BigDecimal lowerBound, BigDecimal upperBound, BigDecimal markupRate) { }
