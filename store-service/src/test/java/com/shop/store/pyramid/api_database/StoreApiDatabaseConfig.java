@@ -1,5 +1,14 @@
 package com.shop.store.pyramid.api_database;
-import com.shop.store.shop.*;
+
+import com.shop.store.codec.ShopCodec;
+import com.shop.store.controller.ShopController;
+import com.shop.store.exception.ShopErrorHandler;
+import com.shop.store.repository.InventoryRepository;
+import com.shop.store.repository.CartRepository;
+import com.shop.store.repository.SubmissionRepository;
+import com.shop.store.service.CartService;
+import com.shop.store.service.SubmissionService;
+import com.shop.store.service.SubmissionTransactionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flywaydb.core.Flyway;
@@ -13,26 +22,54 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import javax.sql.DataSource;
 import java.time.*;
 
-/** Реальные контроллеры, обработчики ошибок и SQL выбранного сервиса; Kafka, фоновые работники и соседние сервисы не запускаются. */
+/**
+ * Собирает контроллеры, обработку ошибок и доступ к БД для API-тестов одного сервиса. Kafka, фоновые
+ * задачи и соседние сервисы не запускает.
+ */
 @Configuration
 @EnableWebMvc
 @EnableTransactionManagement
-@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, InventoryAccess.class, CartService.class, SubmissionService.class, SubmissionStore.class})
+@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, InventoryRepository.class, CartRepository.class, SubmissionRepository.class, CartService.class, SubmissionService.class, SubmissionTransactionService.class})
 class StoreApiDatabaseConfig {
-    /** Подключает отдельную PostgreSQL Testcontainers и применяет все production-миграции без доступа к Compose-базам. */
+    /**
+     * Подключает отдельный PostgreSQL в контейнере Testcontainers и применяет миграции сервиса. Базы Docker
+     * Compose и пользовательские данные не используются.
+     *
+     * @return подключение к подготовленной тестовой БД с применёнными миграциями
+     */
     @Bean DataSource dataSource() {
         var postgres = StoreApiDatabaseTest.POSTGRES;
         var source = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
         return source;
     }
-    /** Предоставляет SQL-подготовку и независимое чтение зафиксированных строк. */
+    /**
+     * Создаёт средство выполнения SQL для подготовки данных и независимого чтения записей после запроса API.
+     *
+     * @param source подключение к отдельной тестовой PostgreSQL
+     * @return выполнение SQL через переданное подключение к БД
+     */
     @Bean JdbcTemplate jdbc(DataSource source) { return new JdbcTemplate(source); }
-    /** Создаёт настоящие транзакции production-сервисов; тест не скрывает результат общим rollback. */
+    /**
+     * Подключает управление транзакциями сервиса к тестовой БД. Тесты читают уже сохранённый результат; общей
+     * транзакции с отменой всех записей после теста нет.
+     *
+     * @param source подключение к отдельной тестовой PostgreSQL
+     * @return управление транзакциями через переданное подключение к БД
+     */
     @Bean PlatformTransactionManager transactions(DataSource source) { return new DataSourceTransactionManager(source); }
-    /** Поддерживает типизированные JSON и даты в подготовке и чтении ответа. */
+    /**
+     * Создаёт преобразование Java-моделей и дат в JSON и обратно для запросов и ответов теста.
+     *
+     * @return настроенное преобразование Java-моделей и JSON
+     */
     @Bean ObjectMapper mapper() { return new ObjectMapper().findAndRegisterModules(); }
-    /** Фиксирует время изменений и ошибок для точного сравнения сохранённых дат. */
+    /**
+     * Возвращает часы с фиксированным временем {@code 2026-10-09T12:00:00Z}. Даты изменений и ошибок можно
+     * сравнивать с заранее известным значением.
+     *
+     * @return системные или фиксированные часы, заданные этой конфигурацией
+     */
     @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-10-09T12:00:00Z"), ZoneOffset.UTC); }
 
 }

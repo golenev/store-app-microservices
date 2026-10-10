@@ -1,28 +1,33 @@
 package com.shop.warehouse.pyramid.logic;
 
+import com.shop.warehouse.codec.DeliveryCodec;
+import com.shop.warehouse.exception.DeliveryException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shop.warehouse.delivery.*;
 import org.junit.jupiter.api.*;
 import org.springframework.util.ReflectionUtils;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import static org.assertj.core.api.Assertions.*;
 
-/** Чистая валидация идентификаторов WAREHOUSE без HTTP, Spring, БД и Kafka. */
+/**
+ * Проверяет допустимые символы и длину идентификатора поставки прямым вызовом кода. HTTP, Spring, БД и
+ * Kafka не запускаются.
+ */
 @Tag("logic")
 class WarehousePureLogicTest {
     private final DeliveryCodec codec = new DeliveryCodec(new ObjectMapper());
 
     /**
-     * WH-LOGIC-001. Идентификатор D-1 содержит разрешённые символы.
-     * Вызываем production-функцию через ReflectionUtils и проверяем возврат исходной строки без изменений.
+     * WH-LOGIC-001. Передаёт допустимый идентификатор {@code D-1} через {@code ReflectionUtils}. Ожидает
+     * исходную строку без изменений.
      */
     @Test @DisplayName("WH-LOGIC-001: допустимый идентификатор сохраняется")
     void acceptsIdentifier() { assertThat(identifier("D-1")).isEqualTo("D-1"); }
 
     /**
-     * WH-LOGIC-002. Пробел внутри D 1 нарушает формат идентификатора.
-     * Проверяем VALIDATION_ERROR: функция не должна исправлять ввод или принимать значение с пробелом.
+     * WH-LOGIC-002. Передаёт идентификатор {@code D 1} с пробелом. Проверяет {@code VALIDATION_ERROR}:
+     * неверный ввод не исправляется и не принимается.
      */
     @Test @DisplayName("WH-LOGIC-002: пробел в идентификаторе отклоняется")
     void rejectsWhitespace() {
@@ -31,8 +36,8 @@ class WarehousePureLogicTest {
     }
 
     /**
-     * WH-LOGIC-003. Предел длины идентификатора равен 64 символам.
-     * Проверяем обе стороны границы: 64 разрешены, 65 возвращают ошибку. Внешние зависимости отсутствуют.
+     * WH-LOGIC-003. Проверяет границу длины идентификатора: 64 допустимых символа принимаются, 65 вызывают
+     * ошибку. Внешние системы не используются.
      */
     @Test @DisplayName("WH-LOGIC-003: граница длины 64 символа")
     void checksLengthBoundary() {
@@ -41,10 +46,11 @@ class WarehousePureLogicTest {
     }
 
     /**
-     * Находит и вызывает существующую функцию проверки идентификатора; создание приложения не требуется.
-     * Метод публичный и доступен напрямую, ReflectionUtils здесь используется для учебного сравнения способов вызова.
-     * @param value исходная строка
-     * @return допустимый идентификатор; недопустимый ввод вызывает DeliveryException
+     * Вызывает проверку идентификатора через {@code ReflectionUtils} без запуска приложения. Метод публичный и
+     * может вызываться напрямую; здесь отражение используется для учебного сравнения способов вызова.
+     *
+     * @param value проверяемый идентификатор поставки
+     * @return допустимый идентификатор без изменений
      */
     private String identifier(String value) {
         Method method = Objects.requireNonNull(ReflectionUtils.findMethod(DeliveryCodec.class, "identifier", String.class));

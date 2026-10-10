@@ -1,7 +1,9 @@
 package com.tariffs.pyramid.module;
 
-import com.tariffs.api.*;
-import com.tariffs.api.TariffModels.*;
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.exception.TariffApiException;
+import com.tariffs.model.Rule;
+
 import com.tariffs.repository.TariffRuleRepository;
 import com.tariffs.service.TariffRuleService;
 import jakarta.validation.*;
@@ -14,7 +16,10 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** CRUD настоящего TariffRuleService с ответами репозитория, заданными Mockito. SQL и Spring не запускаются. */
+/**
+ * Проверяет создание, чтение, замену и удаление правил в коде {@code TariffRuleService}. Репозиторий
+ * заменён Mockito-объектом с заранее заданными ответами; SQL и Spring не запускаются.
+ */
 @Tag("module") @ExtendWith(MockitoExtension.class)
 class TariffCrudMockitoTest {
     @Mock private TariffRuleRepository repository;
@@ -22,19 +27,24 @@ class TariffCrudMockitoTest {
     private TariffRuleService service;
     private final UUID id = UUID.fromString("10000000-0000-4000-8000-000000000001");
 
-    /** Создаёт реальную Bean Validation и сервис с мок-репозиторием; каждый тест получает независимые ожидания Mockito. */
+    /**
+     * Создаёт проверку ограничений полей и сервис с подставным репозиторием. Каждый тест задаёт собственные
+     * ответы и ожидаемые обращения Mockito.
+     */
     @BeforeEach void setup() {
         validation = Validation.buildDefaultValidatorFactory();
         service = new TariffRuleService(repository, validation.getValidator());
     }
 
-    /** Закрывает фабрику валидации после сценария, не сохраняя её ресурсы между тестами. */
+    /**
+     * Закрывает фабрику проверки полей после теста, освобождая её ресурсы.
+     */
     @AfterEach void cleanup() { validation.close(); }
 
     /**
-     * TAR-CRUD-001-MOCK. Каталог позволяет создание. Создаём NON_FOOD/RUB, границы 0.00–500.00, ставку 0.20.
-     * Проверяем все поля и version=1, а также передачу исходных полей и созданного UUID в insert.
-     * Ответ find задан тестом; эта проверка не доказывает, что SQL сохранит запись.
+     * TAR-CRUD-001-MOCK. Репозиторий допускает создание. Передаёт тип {@code NON_FOOD}, валюту {@code RUB},
+     * границы 0.00–500.00 и наценку 0.20. Проверяет все поля, версию 1 и передачу исходных условий и нового
+     * UUID в запись. Ответ чтения задан тестом; сохранение SQL здесь не проверяется.
      */
     @Test @DisplayName("TAR-CRUD-001-MOCK: создание правила версии 1")
     void createsRule() {
@@ -47,8 +57,8 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-002-MOCK. Подготовлено правило версии 1 с исходными полями.
-     * Читаем его по UUID и проверяем полное равенство. Mockito подтверждает выбор UUID, но не чтение PostgreSQL.
+     * TAR-CRUD-002-MOCK. Репозиторий возвращает подготовленное правило версии 1. Читает его по UUID и
+     * проверяет все поля и обращение к нужному идентификатору.
      */
     @Test @DisplayName("TAR-CRUD-002-MOCK: чтение созданного правила")
     void readsRule() {
@@ -59,9 +69,9 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-003-MOCK. Правило версии 1 заменяем: FOOD, границы 5.00–без верхнего предела, ставка 0.30.
-     * UUID сохраняется, возвращается version=2 и все новые поля. Проверяем блокировку и полный replace.
-     * Приращение версии в SQL здесь не выполняется: версию 2 возвращает мок.
+     * TAR-CRUD-003-MOCK. Заменяет правило версии 1: тип {@code FOOD}, нижняя граница 5.00, верхнего предела
+     * нет, наценка 0.30. Проверяет прежний UUID, версию 2, новые поля, блокировку и передачу полной замены
+     * репозиторию. Версию 2 возвращает Mockito; увеличение версии в SQL здесь не выполняется.
      */
     @Test @DisplayName("TAR-CRUD-003-MOCK: полная замена и версия 2")
     void replacesRule() {
@@ -75,8 +85,9 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-004-MOCK. Существующее правило успешно удаляется; последующее чтение сообщает NOT_FOUND/404.
-     * Репозиторий задан как вернувший успешное удаление и отсутствие строки, SQL не выполняется.
+     * TAR-CRUD-004-MOCK. Репозиторий подтверждает удаление существующего правила, затем сообщает об отсутствии
+     * записи. Удаляет правило и проверяет {@code NOT_FOUND} и HTTP 404 при последующем чтении; физическое
+     * удаление в БД не выполняется.
      */
     @Test @DisplayName("TAR-CRUD-004-MOCK: удаление и отсутствие при чтении")
     void deletesRule() {
@@ -87,15 +98,15 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-005-MOCK. Неизвестный UUID отсутствует в репозитории.
-     * Чтение возвращает NOT_FOUND/404, а не пустое успешное правило.
+     * TAR-CRUD-005-MOCK. Репозиторий сообщает об отсутствии UUID. Чтение должно вызвать {@code NOT_FOUND} и
+     * HTTP 404.
      */
     @Test @DisplayName("TAR-CRUD-005-MOCK: чтение неизвестного UUID")
     void rejectsMissingRead() { assertError(() -> service.get(id), 404, "NOT_FOUND"); }
 
     /**
-     * TAR-CRUD-006-MOCK. UUID отсутствует; отправляем допустимую полную замену.
-     * Проверяем NOT_FOUND/404 и отсутствие replace: update не должен создавать новую запись.
+     * TAR-CRUD-006-MOCK. Для отсутствующего UUID передаёт допустимые новые условия. Проверяет {@code
+     * NOT_FOUND} и HTTP 404, а также отсутствие вызова записи замены: новая строка не должна создаваться.
      */
     @Test @DisplayName("TAR-CRUD-006-MOCK: замена неизвестного UUID")
     void rejectsMissingUpdate() {
@@ -104,15 +115,15 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-007-MOCK. UUID отсутствует; удаление возвращает false.
-     * Проверяем NOT_FOUND/404 вместо сообщения об успешном удалении.
+     * TAR-CRUD-007-MOCK. Репозиторий возвращает {@code false} при удалении неизвестного UUID. Проверяет {@code
+     * NOT_FOUND} и HTTP 404.
      */
     @Test @DisplayName("TAR-CRUD-007-MOCK: удаление неизвестного UUID")
     void rejectsMissingDelete() { assertError(() -> service.delete(id), 404, "NOT_FOUND"); }
 
     /**
-     * TAR-CRUD-008-MOCK. Создаём правило с одинаковыми границами 100.00 и 100.00.
-     * Проверяем VALIDATION_ERROR/400 и отсутствие любых обращений к репозиторию: пустой диапазон недопустим.
+     * TAR-CRUD-008-MOCK. Передаёт создание с одинаковыми границами 100.00. Проверяет {@code VALIDATION_ERROR}
+     * и HTTP 400; репозиторий вообще не должен вызываться.
      */
     @Test @DisplayName("TAR-CRUD-008-MOCK: неверное создание ничего не сохраняет")
     void rejectsInvalidCreate() {
@@ -121,8 +132,8 @@ class TariffCrudMockitoTest {
     }
 
     /**
-     * TAR-CRUD-009-MOCK. Существует правило версии 1. Пробуем заменить его правилом с равными границами.
-     * Проверяем VALIDATION_ERROR/400 и исходные поля/version при чтении; replace не вызывается.
+     * TAR-CRUD-009-MOCK. Пытается заменить правило версии 1 условиями с равными границами. Проверяет {@code
+     * VALIDATION_ERROR} и HTTP 400, отсутствие записи замены и прежние поля и версию при чтении.
      */
     @Test @DisplayName("TAR-CRUD-009-MOCK: неверная замена сохраняет исходное правило")
     void rejectsInvalidUpdate() {
@@ -133,23 +144,58 @@ class TariffCrudMockitoTest {
         verify(repository, never()).replace(any(), any());
     }
 
-    /** Возвращает независимые исходные поля учебного правила; деньги и ставка представлены строками. */
+    /**
+     * Возвращает исходные условия правила для теста. Цены и наценка заданы строками независимо от проверяемого
+     * расчёта.
+     *
+     * @return допустимые исходные условия правила
+     */
     private RuleRequest input() { return new RuleRequest("NON_FOOD", "PYRAMID", "RUB", "0.00", "500.00", "0.20"); }
-    /** Возвращает полный набор новых полей; null верхнего предела должен сохраниться, а FOOD отличаться от NON_FOOD. */
+    /**
+     * Возвращает новые условия: другой тип товара и отсутствие верхней границы. Эти значения позволяют
+     * обнаружить неполную замену полей.
+     *
+     * @return новые условия полной замены правила
+     */
     private RuleRequest replacement() { return new RuleRequest("FOOD", "PYRAMID", "RUB", "5.00", null, "0.30"); }
-    /** Возвращает пустой диапазон: lowerBound и upperBound равны 100.00. */
+    /**
+     * Возвращает неверные условия: нижняя и верхняя границы цены равны 100.00.
+     *
+     * @return неверные условия с равными границами цены
+     */
     private RuleRequest invalid() { return new RuleRequest("NON_FOOD", "PYRAMID", "RUB", "100.00", "100.00", "0.20"); }
-    /** Строит ответ мока из явно заданных полей и версии; это подготовка зависимости, а не реализация CRUD-хранилища. */
+    /**
+     * Создаёт заранее заданный ответ репозитория из условий, UUID и версии. Это ответ подставной зависимости,
+     * а не сохранение записи.
+     *
+     * @param uuid UUID тарифного правила
+     * @param version версия тарифного правила
+     * @param request полный набор условий тарифного правила
+     * @return правило с UUID, версией и полным набором условий
+     */
     private Rule rule(UUID uuid, long version, RuleRequest request) {
         return new Rule(uuid, version, request.productType(), request.cityId(), request.currency(),
                 request.lowerBound(), request.upperBound(), request.markupRate());
     }
-    /** Проверяет UUID, версию и каждое бизнес-поле независимо, чтобы частичная замена не осталась незамеченной. */
+    /**
+     * Сравнивает UUID, версию и каждое поле правила с заданными ожиданиями, чтобы обнаружить неполную замену.
+     *
+     * @param result фактически полученное правило для сравнения с ожиданием
+     * @param version версия тарифного правила
+     * @param expected ожидаемые условия правила
+     */
     private void assertRule(Rule result, long version, RuleRequest expected) {
         assertThat(result.tariffRuleId()).isNotNull();
         assertThat(result).isEqualTo(rule(result.tariffRuleId(), version, expected));
     }
-    /** Выполняет ошибочную операцию и сверяет одновременно HTTP-смысл статуса и машинный код ошибки сервиса. */
+    /**
+     * Вызывает операцию, которая должна завершиться ошибкой, и сравнивает HTTP-статус и код исключения с
+     * ожидаемыми.
+     *
+     * @param action операция, которая должна вызвать проверяемое исключение
+     * @param status HTTP-статус ответа
+     * @param code код, по которому клиент различает причину ошибки
+     */
     private void assertError(Runnable action, int status, String code) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(TariffApiException.class, error -> {
             assertThat(error.status()).isEqualTo(status);

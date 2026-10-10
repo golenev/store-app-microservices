@@ -10,14 +10,26 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.time.Clock;
 
-/** Strict wire parsing and deterministic UTC timestamps for the v1 API. */
+/**
+ * Задаёт часы и правила чтения JSON для HTTP API тарифов.
+ */
 @Configuration
 public class TariffApiConfig {
-    /** Returns the production UTC clock; tests may supply a fixed clock without changing the application. */
+    /**
+     * Возвращает системные часы UTC для времени ошибок и сброса кеша. В тестах вместо них можно подключить
+     * часы с фиксированным временем.
+     *
+     * @return системные или фиксированные часы, заданные этой конфигурацией
+     */
     @Bean
     public Clock tariffClock() { return Clock.systemUTC(); }
 
-    /** Rejects unknown/duplicate fields, missing creator fields and numeric/boolean-to-string coercion. */
+    /**
+     * Настраивает чтение JSON: неизвестные и повторные поля, отсутствующие поля моделей {@code record}, лишние
+     * данные после документа и преобразование чисел или логических значений в строки считаются ошибкой.
+     *
+     * @return правила строгого чтения входного JSON
+     */
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer strictTariffJson() {
         return builder -> builder.featuresToEnable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
