@@ -13,21 +13,4 @@ class WarehouseServiceDao : RequestExecutor(Environment.WAREHOUSE_URL) {
     fun sendDelivery(body: DeliveryReceived, expectedStatus: Int = 202): Response =
         postRequest(url = "/technical/deliveries", spec = baseRequest().body(body), expectedStatus = expectedStatus)
 
-    /** Читает состояние конкретной приёмки; ожидаемый статус задаёт сценарий. */
-    @Step("Читаем приёмку поставки {deliveryId} магазина {storeId}")
-    fun getDelivery(storeId: String, deliveryId: String, expectedStatus: Int = 200): Response =
-        getRequest(
-            url = "/stores/$storeId/deliveries/$deliveryId",
-            spec = baseRequest(),
-            expectedStatus = expectedStatus
-        )
-
-    /** Запрашивает диагностический повтор существующей приёмки; новую поставку не создаёт. */
-    @Step("Повторяем расчёт поставки {deliveryId}")
-    fun retryDelivery(storeId: String, deliveryId: String, expectedStatus: Int = 202): Response =
-        postRequest(
-            url = "/stores/$storeId/deliveries/$deliveryId/retry-pricing",
-            spec = baseRequest(),
-            expectedStatus = expectedStatus
-        )
 }

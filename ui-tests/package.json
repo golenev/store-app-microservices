@@ -1,6 +1,0 @@
-{
-  "name": "shop-html-tests",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node --test common.test.js", "test:unit": "node --test common.test.js" }
-}

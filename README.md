@@ -103,13 +103,17 @@ STORE `GET /ui/config` возвращает `warehouseBaseUrl` из `WAREHOUSE_P
 
 Браузерные E2E находятся в `e2e-tests/src/test/kotlin/org/golenev/tests/e2e_tests/HtmlE2ETest.kt`: Kotlin + Selenide 7.12.1 + JUnit 5 + Allure. Они запускаются вместе с backend E2E через Gradle на отдельном Compose-окружении, как описано ниже. Нужны JDK 21, установленный Chrome и Docker; отдельный пользовательский браузер не используется. Selenide создаёт собственные профили и драйверы.
 
-В `ui-tests` сохранены прежние JavaScript unit-тесты нормализации денег. Их исходники не изменены; Node.js 22+ нужен только для них:
+Проверки UI выполняются Kotlin/Selenide-сценариями `HtmlE2ETest` и `UiOrderKafkaE2ETest`. CI запускает их в задании `e2e` через `bash gradlew --no-daemon test` после сборки и запуска приложений. Прежний JavaScript unit-набор и его npm-конфигурация удалены; Node.js для этих проверок не нужен. Отдельные unit-проверки нормализации денег больше не входят в покрытие: Selenide проверяет браузерные сценарии, а не все прежние классы входных значений JS-функции.
 
-```shell
-cd ui-tests
-npm ci
-npm run test:unit
+Для отдельного запуска браузерных сценариев на работающем штатном Compose:
+
+```powershell
+.\e2e-tests\gradlew.bat -p e2e-tests test --tests org.golenev.tests.e2e_tests.HtmlE2ETest --tests org.golenev.tests.e2e_tests.UiOrderKafkaE2ETest
 ```
+
+10 октября 2026 по согласованному списку удалены неиспользуемые Kotlin REST-методы, DAO и связанные DTO, оставшиеся после замены серверных тестов. `InventoryTable`, используемый при чтении расходов, сохранён. Локально удалены 93 лога `runtime-*.log`, два одноразовых скрипта из корневого `target` и остаток `ui-tests/node_modules`. Текущие Selenide-сценарии и код приложений не изменены. Исторические результаты JS-проверок ниже описывают прежние версии.
+
+Проверка очистки на JDK 21: весь Kotlin-модуль и его тесты компилируются; отдельный запуск двух браузерных классов с `--offline` на штатном `shop-runtime` — **13/13** (11 HTML + 2 UI→Kafka), без ошибок и пропусков. Проверены JUnit XML и результаты Allure. Использованы имеющиеся образы приложений; production не изменён и не пересобирался. Java-набор и Kotlin API CRUD-набор повторно не запускались; результат удалённого CI проверяется отдельно.
 
 ## Миграции и fixtures
 

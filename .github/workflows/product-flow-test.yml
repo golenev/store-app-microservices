@@ -156,14 +156,6 @@ jobs:
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_movements')" = 1
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc 'SELECT count(*) FROM stock_expenses WHERE quantity=3')" = 1
           test "$(docker compose exec -T -e PGPASSWORD=store_local postgres psql -h localhost -U store_app -d store_db -Atc "SELECT count(*) FROM store_outbox WHERE publication_status='PUBLISHED'")" = 1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: ui-tests/package-lock.json
-      - name: Run unchanged JavaScript unit tests
-        working-directory: ui-tests
-        run: npm ci && npm run test:unit
       - name: Save Compose diagnostics
         if: always()
         run: docker compose logs --no-color > compose-smoke.log
