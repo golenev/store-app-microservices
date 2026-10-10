@@ -1,5 +1,12 @@
 package com.shop.warehouse.pyramid.api_database;
-import com.shop.warehouse.delivery.*;
+
+import com.shop.warehouse.codec.DeliveryCodec;
+import com.shop.warehouse.controller.DeliveryController;
+import com.shop.warehouse.exception.DeliveryErrorHandler;
+import com.shop.warehouse.service.DeliveryService;
+import com.shop.warehouse.service.SupplierDeliveryService;
+import com.shop.warehouse.messaging.DeliveryPublisher;
+import com.shop.warehouse.repository.DeliveryRepository;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,7 +25,7 @@ import java.time.*;
 @Configuration
 @EnableWebMvc
 @EnableTransactionManagement
-@Import({DeliveryController.class, DeliveryErrorHandler.class, DeliveryCodec.class})
+@Import({DeliveryController.class, DeliveryErrorHandler.class, DeliveryCodec.class, DeliveryRepository.class, SupplierDeliveryService.class, DeliveryPublisher.class})
 class WarehouseApiDatabaseConfig {
     /** Подключает отдельную PostgreSQL Testcontainers и применяет все production-миграции без доступа к Compose-базам. */
     @Bean DataSource dataSource() {
@@ -37,7 +44,7 @@ class WarehouseApiDatabaseConfig {
     @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-10-09T12:00:00Z"), ZoneOffset.UTC); }
 
     /** Создаёт настоящий транзакционный сервис поставок с управляемым временем и сроком аренды. */
-    @Bean DeliveryStore deliveries(JdbcTemplate jdbc, DeliveryCodec codec, Clock clock) { return new DeliveryStore(jdbc, codec, clock, 30000); }
+    @Bean DeliveryService deliveries(DeliveryRepository repository, DeliveryCodec codec, Clock clock) { return new DeliveryService(repository, codec, clock, 30000); }
     /** Предоставляет только неиспользуемую зависимость конструктора; публикация и проверки Kafka отсутствуют. */
     @Bean KafkaTemplate<String,String> kafka() { return org.mockito.Mockito.mock(KafkaTemplate.class); }
 

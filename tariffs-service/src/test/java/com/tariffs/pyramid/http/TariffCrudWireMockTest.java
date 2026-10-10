@@ -1,10 +1,12 @@
 package com.tariffs.pyramid.http;
 
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.dto.RulesResponse;
+import com.tariffs.exception.TariffApiException;
+import com.tariffs.model.Rule;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
-import com.tariffs.api.*;
-import com.tariffs.api.TariffModels.*;
-import com.tariffs.pyramid.http.TariffRulesHttpClient;
 import org.junit.jupiter.api.*;
 import java.util.*;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;

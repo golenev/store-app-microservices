@@ -1,6 +1,9 @@
 package com.tariffs.pyramid.api_database;
 
-import com.tariffs.api.TariffModels.*;
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.dto.RulesResponse;
+import com.tariffs.model.Rule;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;

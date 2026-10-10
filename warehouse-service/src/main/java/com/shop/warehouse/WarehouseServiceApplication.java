@@ -4,11 +4,16 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/** Starts durable Kafka reception, automatic pricing, outbox publication and delivery status HTTP. */
+/** Запускает сервис с миграциями и обработкой согласованных HTTP/Kafka-контрактов. */
 @SpringBootApplication
 @EnableScheduling
 public class WarehouseServiceApplication {
-    /** Starts HTTP, database migrations and health probes using the supplied Spring arguments. */
+    /**
+     * Запускает Spring Boot с параметрами args; компонентное сканирование охватывает слои под корневым пакетом
+     * приложения.
+     *
+     * @param args аргументы запуска Spring Boot
+     */
     public static void main(String[] args) {
         SpringApplication.run(WarehouseServiceApplication.class, args);
     }

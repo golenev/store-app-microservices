@@ -1,7 +1,9 @@
 package com.tariffs.pyramid.module;
 
-import com.tariffs.api.*;
-import com.tariffs.api.TariffModels.*;
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.exception.TariffApiException;
+import com.tariffs.model.Rule;
+
 import com.tariffs.repository.TariffRuleRepository;
 import com.tariffs.service.TariffRuleService;
 import jakarta.validation.*;

@@ -1,7 +1,13 @@
 package com.tariffs.service;
 
-import com.tariffs.api.TariffApiException;
-import com.tariffs.api.TariffModels.*;
+import com.tariffs.dto.ErrorDetail;
+import com.tariffs.dto.QuoteRequest;
+import com.tariffs.dto.QuoteResponse;
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.dto.RulesResponse;
+import com.tariffs.exception.TariffApiException;
+import com.tariffs.model.Rule;
+
 import com.tariffs.repository.TariffRuleRepository;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Service;
@@ -11,19 +17,26 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** Authoritative PostgreSQL rule operations; CRUD does not invalidate filled quote snapshots. */
+/** Управляет правилами PostgreSQL и бизнес-проверками; CRUD не сбрасывает заполненный кеш расчётов. */
 @Service
 public class TariffRuleService {
     private final TariffRuleRepository repository;
     private final Validator validator;
 
-    /** Receives SQL persistence and the same Bean Validation rules used by the HTTP controller. */
+    /**
+     * Получает зависимости слоя без выполнения внешних операций; параметры сохраняются для последующих вызовов.
+     *
+     * @param repository репозиторий, участвующий в транзакциях сервиса
+     * @param validator Bean Validation для публичных параметров контракта
+     */
     public TariffRuleService(TariffRuleRepository repository, Validator validator) {
         this.repository = repository;
         this.validator = validator;
     }
 
-    /** Reads rules directly from PostgreSQL; an oversized manually corrupted catalog returns a safe error. */
+    /**
+     * Возвращает правила PostgreSQL в транзакции чтения; превышение 1000 строк вызывает DEPENDENCY_UNAVAILABLE.
+     */
     @Transactional(readOnly = true)
     public RulesResponse list() {
         List<Rule> rules = repository.list();
@@ -31,11 +44,20 @@ public class TariffRuleService {
         return new RulesResponse(rules);
     }
 
-    /** Reads a UUID-scoped rule or returns NOT_FOUND; quote-cache entries are not consulted. */
+    /**
+     * Читает правило id в транзакции чтения без обращения к кешу; отсутствие вызывает NOT_FOUND.
+     *
+     * @param id UUID запрашиваемого объекта
+     */
     @Transactional(readOnly = true)
     public Rule get(UUID id) { return repository.find(id).orElseThrow(this::notFound); }
 
-    /** Creates version 1 under a database-wide creation lock; overlaps remain visible as quote ambiguity. */
+    /**
+     * Проверяет request и создаёт правило версии 1 под общей блокировкой каталога в одной транзакции;
+     * пересечения интервалов разрешены и выявляются при расчёте.
+     *
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     @Transactional
     public Rule create(RuleRequest request) {
         validateRule(request);
@@ -46,7 +68,13 @@ public class TariffRuleService {
         return get(id);
     }
 
-    /** Locks and fully replaces a rule, incrementing version atomically without clearing the cache. */
+    /**
+     * В одной транзакции блокирует id и заменяет его данными request с увеличением версии; заполненный кеш не
+     * сбрасывает.
+     *
+     * @param id UUID запрашиваемого объекта
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     @Transactional
     public Rule update(UUID id, RuleRequest request) {
         validateRule(request);
@@ -56,13 +84,23 @@ public class TariffRuleService {
         return get(id);
     }
 
-    /** Removes only the identified rule; previously cached quotes still refer to its immutable snapshot. */
+    /**
+     * Удаляет только правило id в транзакции; отсутствие вызывает NOT_FOUND, прежний кешированный результат
+     * сохраняется.
+     *
+     * @param id UUID запрашиваемого объекта
+     */
     @Transactional
     public void delete(UUID id) {
         if (!repository.delete(id)) throw notFound();
     }
 
-    /** Selects exactly one [lower, upper) rule; missing or overlapping rules never become zero markup. */
+    /**
+     * Выбирает ровно одно правило для request на интервале [lowerBound, upperBound). Отсутствие вызывает
+     * TARIFF_NOT_FOUND, пересечение — TARIFF_AMBIGUOUS; нулевую наценку вместо ошибки не возвращает.
+     *
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     @Transactional(readOnly = true)
     public QuoteResponse calculate(QuoteRequest request) {
         List<Rule> matches = repository.matching(request.productType(), request.cityId(), request.currency(), new BigDecimal(request.purchasePrice()));
@@ -72,21 +110,34 @@ public class TariffRuleService {
         return new QuoteResponse(rule.markupRate(), rule.tariffRuleId(), rule.version());
     }
 
-    /** Validates identifiers and exact price syntax before any Redis or SQL access. */
+    /**
+     * Проверяет request и положительную цену до Redis или SQL; нарушение вызывает VALIDATION_ERROR.
+     *
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     public void validateQuote(QuoteRequest request) {
         validate(request);
         if (new BigDecimal(request.purchasePrice()).signum() <= 0)
             throw new TariffApiException(400, "VALIDATION_ERROR", "purchasePrice must be positive");
     }
 
-    /** Validates all wire fields and the cross-field bound invariant before database writes. */
+    /**
+     * Проверяет поля request и lowerBound < upperBound при заданном верхнем пределе до записи в БД.
+     *
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     private void validateRule(RuleRequest request) {
         validate(request);
         if (request.upperBound() != null && new BigDecimal(request.lowerBound()).compareTo(new BigDecimal(request.upperBound())) >= 0)
             throw new TariffApiException(400, "VALIDATION_ERROR", "lowerBound must be less than upperBound");
     }
 
-    /** Produces deterministic safe field details for any DTO that violates the public validation contract. */
+    /**
+     * Проверяет request через Bean Validation и формирует упорядоченные безопасные ошибки полей; null и
+     * нарушения вызывают VALIDATION_ERROR.
+     *
+     * @param request HTTP-запрос или параметры контракта согласно типу
+     */
     private void validate(Object request) {
         if (request == null) throw new TariffApiException(400, "VALIDATION_ERROR", "Request is required");
         List<ErrorDetail> details = validator.validate(request).stream()
@@ -95,6 +146,8 @@ public class TariffRuleService {
         if (!details.isEmpty()) throw new TariffApiException(400, "VALIDATION_ERROR", "Invalid tariff request", details);
     }
 
-    /** Creates a safe missing-rule failure with no SQL or supplied identifier reflected in the message. */
+    /**
+     * Возвращает безопасную ошибку NOT_FOUND без SQL и входного идентификатора в пояснении.
+     */
     private TariffApiException notFound() { return new TariffApiException(404, "NOT_FOUND", "Tariff rule not found"); }
 }

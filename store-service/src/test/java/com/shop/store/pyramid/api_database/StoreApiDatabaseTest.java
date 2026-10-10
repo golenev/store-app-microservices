@@ -1,7 +1,14 @@
 package com.shop.store.pyramid.api_database;
 
+import com.shop.store.dto.Cart;
+import com.shop.store.dto.CartLine;
+import com.shop.store.dto.Catalog;
+import com.shop.store.dto.PutItem;
+import com.shop.store.dto.Stock;
+import com.shop.store.dto.Submission;
+import com.shop.store.dto.SubmitInput;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shop.store.shop.ShopModels.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;

@@ -16,6 +16,8 @@ jobs:
           cache: maven
       - name: Validate runtime and E2E Compose
         run: docker compose config --quiet
+      - name: Check backend layers
+        run: python3 scripts/check-backend-layers.py
       - name: Run reactor unit and integration tests
         run: mvn -B -ntp test
       - uses: actions/upload-artifact@v4

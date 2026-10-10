@@ -1,8 +1,11 @@
 package com.tariffs.pyramid.http;
 
+import com.tariffs.dto.RuleRequest;
+import com.tariffs.dto.RulesResponse;
+import com.tariffs.exception.TariffApiException;
+import com.tariffs.model.Rule;
+
 import com.fasterxml.jackson.databind.*;
-import com.tariffs.api.TariffApiException;
-import com.tariffs.api.TariffModels.*;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
 import java.util.UUID;

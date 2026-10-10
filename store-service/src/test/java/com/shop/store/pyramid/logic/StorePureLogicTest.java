@@ -1,8 +1,9 @@
 package com.shop.store.pyramid.logic;
 
+import com.shop.store.codec.ShopCodec;
+import com.shop.store.exception.ShopException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shop.store.shop.ShopCodec;
-import com.shop.store.shop.ShopException;
 import org.junit.jupiter.api.*;
 import org.springframework.util.ReflectionUtils;
 import java.lang.reflect.Method;

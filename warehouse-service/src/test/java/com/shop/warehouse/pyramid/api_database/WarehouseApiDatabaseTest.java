@@ -1,6 +1,8 @@
 package com.shop.warehouse.pyramid.api_database;
 
-import com.shop.warehouse.delivery.DeliveryModels.*;
+import com.shop.warehouse.dto.Line;
+import com.shop.warehouse.dto.View;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;

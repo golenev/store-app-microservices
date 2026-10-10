@@ -7,7 +7,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 public class TariffsServiceApplication {
-    /** Starts the tariff HTTP API, Flyway, Redis client and Moscow-midnight scheduler. */
+    /**
+     * Запускает Spring Boot с параметрами args; компонентное сканирование охватывает слои под корневым пакетом
+     * приложения.
+     *
+     * @param args аргументы запуска Spring Boot
+     */
     public static void main(String[] args) {
         SpringApplication.run(TariffsServiceApplication.class, args);
     }

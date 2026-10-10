@@ -1,5 +1,14 @@
 package com.shop.store.pyramid.api_database;
-import com.shop.store.shop.*;
+
+import com.shop.store.codec.ShopCodec;
+import com.shop.store.controller.ShopController;
+import com.shop.store.exception.ShopErrorHandler;
+import com.shop.store.repository.InventoryRepository;
+import com.shop.store.repository.CartRepository;
+import com.shop.store.repository.SubmissionRepository;
+import com.shop.store.service.CartService;
+import com.shop.store.service.SubmissionService;
+import com.shop.store.service.SubmissionTransactionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flywaydb.core.Flyway;
@@ -17,7 +26,7 @@ import java.time.*;
 @Configuration
 @EnableWebMvc
 @EnableTransactionManagement
-@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, InventoryAccess.class, CartService.class, SubmissionService.class, SubmissionStore.class})
+@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, InventoryRepository.class, CartRepository.class, SubmissionRepository.class, CartService.class, SubmissionService.class, SubmissionTransactionService.class})
 class StoreApiDatabaseConfig {
     /** Подключает отдельную PostgreSQL Testcontainers и применяет все production-миграции без доступа к Compose-базам. */
     @Bean DataSource dataSource() {

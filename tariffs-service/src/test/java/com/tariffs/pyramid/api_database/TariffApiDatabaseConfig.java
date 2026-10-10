@@ -1,5 +1,6 @@
 package com.tariffs.pyramid.api_database;
-import com.tariffs.api.*;
+
+import com.tariffs.exception.TariffErrorHandler;
 import com.tariffs.controller.TariffRuleController;
 import com.tariffs.repository.TariffRuleRepository;
 import com.tariffs.service.*;
