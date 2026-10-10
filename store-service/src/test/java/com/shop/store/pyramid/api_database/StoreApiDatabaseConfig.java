@@ -1,6 +1,7 @@
 package com.shop.store.pyramid.api_database;
 
 import com.shop.store.codec.ShopCodec;
+import com.shop.store.codec.ShopInputValidator;
 import com.shop.store.controller.ShopController;
 import com.shop.store.exception.ShopErrorHandler;
 import com.shop.store.repository.InventoryRepository;
@@ -19,6 +20,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import javax.sql.DataSource;
 import java.time.*;
 
@@ -29,8 +31,14 @@ import java.time.*;
 @Configuration
 @EnableWebMvc
 @EnableTransactionManagement
-@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, InventoryRepository.class, CartRepository.class, SubmissionRepository.class, CartService.class, SubmissionService.class, SubmissionTransactionService.class})
+@Import({ShopController.class, ShopErrorHandler.class, ShopCodec.class, ShopInputValidator.class, InventoryRepository.class, CartRepository.class, SubmissionRepository.class, CartService.class, SubmissionService.class, SubmissionTransactionService.class})
 class StoreApiDatabaseConfig {
+    /**
+     * Подключает настоящую проверку ограничений DTO в тестовом MVC-контексте.
+     * @return валидатор, ресурсы которого освобождает Spring при закрытии контекста
+     */
+    @Bean LocalValidatorFactoryBean validator() { return new LocalValidatorFactoryBean(); }
+
     /**
      * Подключает отдельный PostgreSQL в контейнере Testcontainers и применяет миграции сервиса. Базы Docker
      * Compose и пользовательские данные не используются.

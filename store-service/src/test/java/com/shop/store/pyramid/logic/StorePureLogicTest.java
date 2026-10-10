@@ -1,9 +1,10 @@
 package com.shop.store.pyramid.logic;
 
-import com.shop.store.codec.ShopCodec;
+import com.shop.store.codec.ShopInputValidator;
+import jakarta.validation.Validation;
+import jakarta.validation.ValidatorFactory;
 import com.shop.store.exception.ShopException;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.util.ReflectionUtils;
 import java.lang.reflect.Method;
@@ -16,7 +17,12 @@ import static org.assertj.core.api.Assertions.*;
  */
 @Tag("logic")
 class StorePureLogicTest {
-    private final ShopCodec codec = new ShopCodec(new ObjectMapper());
+    private final ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+    private final ShopInputValidator validator = new ShopInputValidator(factory.getValidator());
+
+    /** Освобождает ресурсы Bean Validation после каждого независимого сценария. */
+    @AfterEach
+    void closeValidator() { factory.close(); }
 
     /**
      * STORE-LOGIC-001. Передаёт проверке цены строку {@code 100.05}. Ожидает ту же строку со всеми цифрами и
@@ -54,8 +60,8 @@ class StorePureLogicTest {
      * @return проверенная положительная цена без округления
      */
     private String price(String value) {
-        Method method = Objects.requireNonNull(ReflectionUtils.findMethod(ShopCodec.class, "price", String.class));
+        Method method = Objects.requireNonNull(ReflectionUtils.findMethod(ShopInputValidator.class, "price", String.class));
         ReflectionUtils.makeAccessible(method);
-        return (String) ReflectionUtils.invokeMethod(method, codec, value);
+        return (String) ReflectionUtils.invokeMethod(method, validator, value);
     }
 }
