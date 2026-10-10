@@ -1,5 +1,11 @@
 package com.shop.store.messaging.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.Valid;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -14,4 +20,10 @@ import java.util.UUID;
  * @param storeId идентификатор магазина
  * @param payload проверенное содержимое оприходованной поставки с упорядоченными строками
  */
-public record GoodsEvent(UUID eventId, String eventType, int schemaVersion, Instant occurredAt, String storeId, PostedPayload payload) { }
+public record GoodsEvent(
+        @NotNull UUID eventId,
+        @NotNull @Pattern(regexp = "GoodsPosted") String eventType,
+        @Min(1) @Max(1) int schemaVersion,
+        @NotNull Instant occurredAt,
+        @NotNull @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}") String storeId,
+        @NotNull @Valid PostedPayload payload) { }
