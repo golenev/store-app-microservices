@@ -89,7 +89,7 @@ jobs:
       - name: Verify warehouse delivery and GoodsPosted outbox
         shell: bash
         run: |
-          curl --fail --silent -H 'Content-Type: application/json' --data-binary @contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries | jq -e '.publicationStatus == "PUBLISHED"'
+          curl --fail --silent -H 'Content-Type: application/json' --data-binary @contract-tests/contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries | jq -e '.publicationStatus == "PUBLISHED"'
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://localhost:6791/stores/S-1/deliveries/D-1 | jq -e '.state == "POSTED" and .items[0].salePrice == "120.00"'; then break; fi
             sleep 1
@@ -101,7 +101,7 @@ jobs:
             sleep 1
           done
           test "$status" = PUBLISHED
-          curl --fail --silent -H 'Content-Type: application/json' --data-binary @contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries | jq -e '.publicationStatus == "PUBLISHED"'
+          curl --fail --silent -H 'Content-Type: application/json' --data-binary @contract-tests/contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries | jq -e '.publicationStatus == "PUBLISHED"'
       - name: Verify STORE inventory and independent carts
         shell: bash
         run: |

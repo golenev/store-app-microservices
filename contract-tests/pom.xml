@@ -53,7 +53,7 @@
     <build>
         <testResources>
             <testResource>
-                <directory>${project.basedir}/../contracts</directory>
+                <directory>${project.basedir}/contracts</directory>
                 <targetPath>contracts</targetPath>
                 <filtering>false</filtering>
                 <includes>

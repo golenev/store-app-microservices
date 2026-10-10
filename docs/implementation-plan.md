@@ -68,7 +68,7 @@ Remote default branch сейчас: master. Рабочая ветка при п�
 
 Ветка: `codex/shop-contracts`. Зависимости: нет.
 
-Реализовано: `contracts/README.md`, единая JSON Schema v1, OpenAPI 3.1, 22 примера и `contract-tests` без production-классов. Проверка: `mvn -pl contract-tests test` — 62 теста без падений/ошибок/пропусков. Контрактные DTO находятся только в тестах; бизнес-сервисы ещё не реализуют новые endpoints.
+Реализовано: `contract-tests/contracts/README.md`, единая JSON Schema v1, OpenAPI 3.1, 22 примера и `contract-tests` без production-классов. Проверка: `mvn -pl contract-tests test` — 62 теста без падений/ошибок/пропусков. Контрактные DTO находятся только в тестах; бизнес-сервисы ещё не реализуют новые endpoints.
 
 Технические уточнения: документация контрактов определяет expectedCartVersion для PUT/DELETE, snapshot закрытой корзины, именованные ошибки, диагностику REJECTED через исходный rejectedPayload и обновление имени/описания inventory вместе с последней ценой. JSON Schema проверяет форму; cross-field/business invariants остаются service integration/E2E-проверками последующих задач.
 

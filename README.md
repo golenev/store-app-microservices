@@ -12,7 +12,7 @@
 
 ## Текущее состояние
 
-Задачи 1–8 включены в master через PR #37–44: [контракты v1](contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Сохранённые Kotlin + Selenide E2E проверяют браузерные сценарии и передачу заявки в Kafka. Новый API-набор сравнивает CRUD тарифов с нижними уровнями; актуальные ID и результаты приведены в реестре пирамиды.
+Задачи 1–8 включены в master через PR #37–44: [контракты v1](contract-tests/contracts/README.md), runtime, TARIFFS, WAREHOUSE, STORE inventory/корзины, атомарный submit/outbox и сохранённый HTML. Сохранённые Kotlin + Selenide E2E проверяют браузерные сценарии и передачу заявки в Kafka. Новый API-набор сравнивает CRUD тарифов с нижними уровнями; актуальные ID и результаты приведены в реестре пирамиды.
 
 - **STORE** (`store-service`, package `com.shop.store`) — единственный владелец inventory, приходов, независимых корзин и принятых заявок. Принимает GoodsPosted, атомарно списывает при submit и автоматически публикует OrderSubmitted; не вызывает TARIFFS. API без авторизации.
 - **TARIFFS** (`tariffs-service`) — versioned правила, fractional quote, Redis snapshots без TTL, ручной/плановый reset и fallback на PostgreSQL. Старые процентные endpoints удалены.
@@ -233,7 +233,7 @@ WAREHOUSE использует quote для HALF_UP расчёта; STORE при
 Пример для чистого учебного окружения; повтор того же документа безопасен:
 
 ```shell
-curl --fail -H "Content-Type: application/json" --data-binary @contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries
+curl --fail -H "Content-Type: application/json" --data-binary @contract-tests/contracts/examples/events/delivery-received.json http://localhost:6791/technical/deliveries
 curl --fail http://localhost:6791/stores/S-1/deliveries/D-1
 ```
 
@@ -269,7 +269,9 @@ Docker обязателен для `TariffCrudPostgresTest`: он создаёт
 mvn -pl contract-tests test
 ```
 
-В `contract-tests` JSON задан непосредственно в методах тестов Java text block: входные данные и проверка видны рядом. Проверки примеров — явные `@Test`, без генерации из manifest. Из файлов читаются только JSON Schema и OpenAPI; тесты не вызывают сервисы и не поднимают имитационный сервер. `contracts/examples` остаётся набором документальных примеров для ручных запросов и CI smoke, но не источником тестовых данных этого модуля.
+В `contract-tests` JSON задан непосредственно в методах тестов Java text block: входные данные и проверка видны рядом. Проверки примеров — явные `@Test`, без генерации из manifest. Из файлов читаются только JSON Schema и OpenAPI; тесты не вызывают сервисы и не поднимают имитационный сервер. `contract-tests/contracts/examples` остаётся набором документальных примеров для ручных запросов и CI smoke, но не источником тестовых данных этого модуля.
+
+С 10 октября 2026 схемы, OpenAPI, примеры и их README находятся внутри `contract-tests/contracts`; отдельного каталога `contracts` в корне нет. Maven копирует только схему и OpenAPI в прежний путь `/contracts` ресурсов тестов. Относительные ссылки OpenAPI и содержимое JSON сохранены. Проверка на JDK 21: `mvn -o -B -ntp -pl contract-tests test` — **62/62**, без ошибок и пропусков; пути примеров в Compose smoke обновлены. Сервисы и E2E для этого переноса повторно не запускались.
 
 CI запускает весь Maven reactor и проверяет конфигурацию обоих Compose-режимов. Compose smoke собирает три образа, выполняет DeliveryReceived → WAREHOUSE → TARIFFS → GoodsPosted → STORE, создаёт две независимые корзины без резерва, принимает submit на 3 из 10 единиц, ждёт PUBLISHED и повторяет исходный ключ без нового расхода. После пересоздания приложений сверяет остаток 7, закрытый snapshot, одну expense/outbox и fixtures; сохраняет логи. Браузерные проверки выполняются на этих же реальных сервисах. Отдельный job `e2e` после Maven запускает Kotlin-набор в собственном Compose project, собирая приложения из исходников.
 
