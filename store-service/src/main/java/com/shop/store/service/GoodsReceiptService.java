@@ -7,6 +7,7 @@ import com.shop.store.messaging.dto.PostedLine;
 import com.shop.store.messaging.dto.PostedPayload;
 import com.shop.store.model.Decoded;
 import com.shop.store.model.ExistingStock;
+import com.shop.store.model.ProcessedGoods;
 import com.shop.store.repository.GoodsReceiptRepository;
 import com.shop.store.repository.InventoryRepository;
 
@@ -61,11 +62,11 @@ public class GoodsReceiptService {
         repository.lockEvent(event.eventId().toString());
         List<String> stores=repository.lockStore(event.storeId());
         if(stores.isEmpty()) { diagnostic(topic,partition,offset,raw,"NOT_FOUND","Unknown store"); return; }
-        List<Map<String,Object>> seen=repository.processedEvents(event.eventId());
+        List<ProcessedGoods> seen=repository.processedEvents(event.eventId());
         if(!seen.isEmpty()) {
-            Map<String,Object> previous=seen.getFirst();
-            if(!event.storeId().equals(previous.get("store_id")) || !payload.deliveryId().equals(previous.get("delivery_id"))
-                    || !decoded.fingerprint().equals(previous.get("fingerprint")))
+            ProcessedGoods previous=seen.getFirst();
+            if(!event.storeId().equals(previous.storeId()) || !payload.deliveryId().equals(previous.deliveryId())
+                    || !decoded.fingerprint().equals(previous.fingerprint()))
                 diagnostic(topic,partition,offset,raw,"DELIVERY_CONTENT_CONFLICT","eventId has different business content");
             return;
         }

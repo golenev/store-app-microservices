@@ -2,26 +2,47 @@ package com.shop.store.repository;
 
 import com.shop.store.dto.Submission;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import com.shop.store.entity.*;
+import com.shop.store.repository.jpa.*;
+import com.shop.store.model.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
 
 /**
- * Сохраняет заявки, списания и очередь исходящих событий в PostgreSQL. Выполняет SQL внутри транзакции
+ * Сохраняет заявки, списания и очередь исходящих событий в PostgreSQL. Выполняет операции JPA внутри транзакции
  * вызывающего сервиса.
  */
 @Repository
 public class SubmissionRepository {
-    private final JdbcTemplate jdbc;
+    private final EntityManager entities;
+    private final CartJpaRepository carts;
+    private final CartItemJpaRepository items;
+    private final InventoryJpaRepository stocks;
+    private final SubmissionJpaRepository submissions;
+    private final OutboxJpaRepository outbox;
 
     /**
-     * Подключает выполнение SQL к текущей транзакции Spring.
-     *
-     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+     * Подключает контекст и Spring Data JPA; persist сохраняет вставку неизменяемой истории,
+     * flush выявляет нарушения UNIQUE внутри транзакции до возврата принятой операции.
+     * @param entities контекст текущей транзакции
+     * @param carts корзины
+     * @param items позиции
+     * @param stocks остатки и их блокировки
+     * @param submissions принятые заявки
+     * @param outbox исходящие события
      */
-    public SubmissionRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public SubmissionRepository(EntityManager entities, CartJpaRepository carts, CartItemJpaRepository items, InventoryJpaRepository stocks, SubmissionJpaRepository submissions, OutboxJpaRepository outbox) {
+        this.entities = entities;
+        this.carts = carts;
+        this.items = items;
+        this.stocks = stocks;
+        this.submissions = submissions;
+        this.outbox = outbox;
+    }
 
     /**
      * Блокирует корзину указанного магазина до завершения оформления. Пустой список означает, что корзина не
@@ -31,8 +52,8 @@ public class SubmissionRepository {
      * @param cart UUID корзины
      * @return состояние и версия заблокированной корзины; пустой список, если корзина отсутствует
      */
-    public List<Map<String,Object>> lockCart(String store, UUID cart) {
-        return jdbc.queryForList("SELECT state,version FROM carts WHERE store_id=? AND cart_id=? FOR UPDATE", store, cart);
+    public List<CartHeader> lockCart(String store, UUID cart) {
+        return carts.lockCart(store, cart).map(entity -> List.of(new CartHeader(entity.getState(), entity.getVersion()))).orElseGet(List::of);
     }
 
     /**
@@ -43,12 +64,9 @@ public class SubmissionRepository {
      * @param cart UUID корзины
      * @return позиции корзины с текущими ценами и заблокированными остатками; пустой список, если позиций нет
      */
-    public List<Map<String,Object>> lockStockLines(String store, UUID cart) {
-        return jdbc.queryForList("""
-                SELECT i.stock_item_id,i.product_id,i.short_name,i.unit_price,i.available_quantity,c.quantity
-                FROM cart_items c JOIN inventory i ON i.store_id=c.store_id AND i.stock_item_id=c.stock_item_id
-                WHERE c.store_id=? AND c.cart_id=? ORDER BY i.stock_item_id FOR UPDATE OF i
-                """, store, cart);
+    public List<CheckoutLine> lockStockLines(String store, UUID cart) {
+        stocks.lockCheckout(store, cart);
+        return items.lines(store, cart, PageRequest.of(0, 1001));
     }
 
     /**
@@ -67,10 +85,11 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertSubmission(UUID submission, String store, UUID cart, String key, String fingerprint, long version, UUID eventId, Timestamp acceptedAt, String snapshot) {
-        return jdbc.update("""
-                INSERT INTO submissions(submission_id,store_id,cart_id,idempotency_key,request_fingerprint,expected_cart_version,event_id,accepted_at,cart_snapshot)
-                VALUES(?,?,?,?,?,?,?,?,?)
-                """, submission, store, cart, key, fingerprint, version, eventId, acceptedAt, snapshot);
+        entities.persist(SubmissionEntity.builder().submissionId(submission).storeId(store).cartId(cart)
+                .idempotencyKey(key).requestFingerprint(fingerprint).expectedCartVersion(version)
+                .eventId(eventId).acceptedAt(acceptedAt.toInstant()).cartSnapshot(snapshot).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -83,7 +102,10 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int deductStock(int quantity, String store, UUID stock) {
-        return jdbc.update("UPDATE inventory SET available_quantity=available_quantity-? WHERE store_id=? AND stock_item_id=?", quantity, store, stock);
+        InventoryEntity entity = entities.find(InventoryEntity.class, stock);
+        if (entity == null || !entity.getStoreId().equals(store)) return 0;
+        entity.setAvailableQuantity(entity.getAvailableQuantity() - quantity);
+        return 1;
     }
 
     /**
@@ -98,7 +120,10 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertExpense(String store, UUID submission, UUID stock, int quantity, BigDecimal price, Timestamp acceptedAt) {
-        return jdbc.update("INSERT INTO stock_expenses(store_id,submission_id,stock_item_id,quantity,unit_price,accepted_at) VALUES(?,?,?,?,?,?)", store, submission, stock, quantity, price, acceptedAt);
+        entities.persist(StockExpenseEntity.builder().storeId(store).submissionId(submission).stockItemId(stock)
+                .quantity(quantity).unitPrice(price).acceptedAt(acceptedAt.toInstant()).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -113,7 +138,10 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertOutbox(UUID eventId, UUID submission, String store, String payload, Timestamp nextAttemptAt) {
-        return jdbc.update("INSERT INTO store_outbox(event_id,submission_id,store_id,payload,next_attempt_at) VALUES(?,?,?,?,?)", eventId, submission, store, payload, nextAttemptAt);
+        entities.persist(OutboxEntity.builder().eventId(eventId).submissionId(submission).storeId(store)
+                .payload(payload).nextAttemptAt(nextAttemptAt.toInstant()).publicationStatus("PENDING").attemptCount(0).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -124,7 +152,12 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int closeCart(String store, UUID cart) {
-        return jdbc.update("UPDATE carts SET state='SUBMITTED',version=version+1 WHERE store_id=? AND cart_id=?", store, cart);
+        var found = carts.findByStoreIdAndCartId(store, cart);
+        if (found.isEmpty()) return 0;
+        CartEntity entity = found.get();
+        entity.setState("SUBMITTED");
+        entity.setVersion(entity.getVersion() + 1);
+        return 1;
     }
 
     /**
@@ -135,8 +168,8 @@ public class SubmissionRepository {
      * @param key ключ распознавания повторного оформления внутри магазина
      * @return идентификатор заявки и контрольная сумма запроса или пустой список для свободного ключа
      */
-    public List<Map<String,Object>> findByKey(String store, String key) {
-        return jdbc.queryForList("SELECT submission_id,request_fingerprint FROM submissions WHERE store_id=? AND idempotency_key=?", store, key);
+    public List<SubmissionMatch> findByKey(String store, String key) {
+        return submissions.findMatch(store, key);
     }
 
     /**
@@ -148,13 +181,7 @@ public class SubmissionRepository {
      * @return состояние найденной заявки или пустой список, если записи нет
      */
     public List<Submission> views(String store, UUID id) {
-        return jdbc.query("""
-                SELECT s.store_id,s.submission_id,s.cart_id,s.event_id,s.accepted_at,o.publication_status,o.published_at
-                FROM submissions s JOIN store_outbox o ON o.submission_id=s.submission_id
-                WHERE s.store_id=? AND s.submission_id=?
-                """, (row,number) -> new Submission(row.getString("store_id"),row.getObject("submission_id",UUID.class),
-                row.getObject("cart_id",UUID.class),row.getObject("event_id",UUID.class),row.getString("publication_status"),
-                row.getTimestamp("accepted_at").toInstant(),row.getTimestamp("published_at")==null?null:row.getTimestamp("published_at").toInstant()), store, id);
+        return submissions.views(store, id);
     }
 
     /**
@@ -165,12 +192,10 @@ public class SubmissionRepository {
      * @param expiredAt момент, до которого включительно срок владения считается истёкшим
      * @return одно заблокированное событие с данными отправки или пустой список, если подходящего события нет
      */
-    public List<Map<String,Object>> lockDueOutbox(Timestamp dueAt, Timestamp expiredAt) {
-        return jdbc.queryForList("""
-                SELECT event_id,store_id,payload,attempt_count FROM store_outbox WHERE publication_status='PENDING'
-                AND next_attempt_at<=? AND (lease_until IS NULL OR lease_until<=?)
-                ORDER BY next_attempt_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED
-                """, dueAt, expiredAt);
+    public List<OutboxCandidate> lockDueOutbox(Timestamp dueAt, Timestamp expiredAt) {
+        return outbox.lockDue(dueAt.toInstant(), expiredAt.toInstant()).stream()
+                .map(entity -> new OutboxCandidate(entity.getEventId(), entity.getStoreId(), entity.getPayload(), entity.getAttemptCount()))
+                .toList();
     }
 
     /**
@@ -184,7 +209,12 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int claimOutbox(UUID token, Timestamp leaseUntil, int attempts, UUID eventId) {
-        return jdbc.update("UPDATE store_outbox SET lease_token=?,lease_until=?,attempt_count=? WHERE event_id=?", token, leaseUntil, attempts, eventId);
+        OutboxEntity entity = entities.find(OutboxEntity.class, eventId);
+        if (entity == null) return 0;
+        entity.setLeaseToken(token);
+        entity.setLeaseUntil(leaseUntil.toInstant());
+        entity.setAttemptCount(attempts);
+        return 1;
     }
 
     /**
@@ -197,10 +227,7 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int markPublished(Timestamp publishedAt, UUID eventId, UUID token) {
-        return jdbc.update("""
-                UPDATE store_outbox SET publication_status='PUBLISHED',published_at=?,lease_token=NULL,lease_until=NULL,last_error=NULL
-                WHERE event_id=? AND publication_status='PENDING' AND lease_token=?
-                """, publishedAt, eventId, token);
+        return outbox.published(publishedAt.toInstant(), eventId, token);
     }
 
     /**
@@ -213,9 +240,6 @@ public class SubmissionRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int scheduleSendRetry(Timestamp nextAttemptAt, UUID eventId, UUID token) {
-        return jdbc.update("""
-                UPDATE store_outbox SET next_attempt_at=?,last_error='Kafka acknowledgement unavailable',lease_token=NULL,lease_until=NULL
-                WHERE event_id=? AND publication_status='PENDING' AND lease_token=?
-                """, nextAttemptAt, eventId, token);
+        return outbox.retry(nextAttemptAt.toInstant(), eventId, token);
     }
 }
