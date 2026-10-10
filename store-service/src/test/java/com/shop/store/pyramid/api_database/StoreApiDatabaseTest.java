@@ -1,7 +1,7 @@
 package com.shop.store.pyramid.api_database;
 
-import com.shop.store.shop.ShopModels.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shop.store.shop.ShopModels.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,13 +12,19 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.*;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
-import java.time.*;
-import java.util.*;
-import static org.assertj.core.api.Assertions.*;
+import java.time.Clock;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Проверяет настоящие MVC-контроллеры и зафиксированные записи PostgreSQL своего сервиса.
@@ -245,7 +251,7 @@ class StoreApiDatabaseTest {
     /** Возвращает путь своей корзины; маршрут не выбирается скрытыми флагами. */
     private String cartPath() { return "/stores/" + storeId + "/carts/" + cartId; }
     /** Разбирает JSON в production-модель без проверки бизнес-полей; инварианты остаются в тесте. */
-    private <T> T read(MvcResult result, Class<T> type) throws Exception { return mapper.readValue(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8), type); }
+    private <T> T read(MvcResult result, Class<T> type) throws Exception { return mapper.readValue(result.getResponse().getContentAsString(StandardCharsets.UTF_8), type); }
     /** Читает текущую версию корзины отдельным SELECT после завершения изменения. */
     private long cartVersion() { return jdbc.queryForObject("SELECT version FROM carts WHERE cart_id=?", Long.class, cartId); }
     /** Возвращает число позиций своей корзины, включая ноль после отказа или удаления. */

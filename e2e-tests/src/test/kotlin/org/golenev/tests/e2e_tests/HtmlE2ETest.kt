@@ -340,7 +340,7 @@ class HtmlE2ETest {
         }
         val envelope = JsonUtils.objectMapper.readValue<DeliveryReceived>(originalBody)
         val marker = step("Подготавливаем данные поставки") {
-            envelope.copy(eventId = java.util.UUID.randomUUID().toString())
+            envelope.copy(eventId = UUID.randomUUID().toString())
         }
         step("Отправляем поставку на приёмку") {
             Shop.publish(marker)
