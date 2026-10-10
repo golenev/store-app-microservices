@@ -5,7 +5,7 @@ import com.shop.store.dto.Submission;
 import com.shop.store.dto.SubmitInput;
 import com.shop.store.exception.ShopException;
 
-import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import java.util.UUID;
 
@@ -42,8 +42,22 @@ public class SubmissionService {
             throw new ShopException(400,"VALIDATION_ERROR","Invalid expectedCartVersion");
         String fingerprint=codec.submissionFingerprint(scope,cart,input.expectedCartVersion());
         try { return store.accept(scope,cart,key,input.expectedCartVersion(),fingerprint); }
-        catch(DuplicateKeyException conflict) {
+        catch(DataIntegrityViolationException conflict) {
+            if (!uniqueConflict(conflict)) throw conflict;
             return store.replay(scope,key,fingerprint).orElseThrow(() -> conflict);
         }
+    }
+
+    /**
+     * Распознаёт только нарушение UNIQUE PostgreSQL в цепочке исключений Hibernate/Spring.
+     * NOT NULL, CHECK и внешние ключи не подменяет повтором запроса; их ошибка передаётся вызывающему коду.
+     * @param failure ошибка сохранения JPA
+     * @return true только для SQLSTATE 23505
+     */
+    private boolean uniqueConflict(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && "23505".equals(sql.getSQLState())) return true;
+        }
+        return false;
     }
 }

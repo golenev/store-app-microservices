@@ -2,7 +2,11 @@ package com.shop.store.repository;
 
 import com.shop.store.dto.CartLine;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import com.shop.store.entity.*;
+import com.shop.store.repository.jpa.*;
+import com.shop.store.model.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.*;
@@ -14,14 +18,24 @@ import java.util.*;
  */
 @Repository
 public class CartRepository {
-    private final JdbcTemplate jdbc;
+    private final EntityManager entities;
+    private final CartJpaRepository carts;
+    private final CartItemJpaRepository items;
+    private final SubmissionJpaRepository submissions;
 
     /**
-     * Подключает выполнение SQL к текущей транзакции Spring.
-     *
-     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+     * Подключает Spring Data JPA для корзин, позиций и сохранённых снимков.
+     * @param entities контекст для строгой вставки новой корзины без merge существующего UUID
+     * @param carts корзины и блокировки
+     * @param items позиции и JPQL-проекция текущих цен
+     * @param submissions сохранённые снимки оформления
      */
-    public CartRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public CartRepository(EntityManager entities, CartJpaRepository carts, CartItemJpaRepository items, SubmissionJpaRepository submissions) {
+        this.entities = entities;
+        this.carts = carts;
+        this.items = items;
+        this.submissions = submissions;
+    }
 
     /**
      * Сохраняет пустую корзину магазина. Повторный UUID отклоняется ограничением уникальности БД; запись
@@ -33,7 +47,10 @@ public class CartRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertCart(UUID cart, String store, Timestamp createdAt) {
-        return jdbc.update("INSERT INTO carts(cart_id,store_id,created_at) VALUES(?,?,?)", cart, store, createdAt);
+        entities.persist(CartEntity.builder().cartId(cart).storeId(store).createdAt(createdAt.toInstant())
+                .state("OPEN").version(0).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -44,7 +61,7 @@ public class CartRepository {
      * @return JSON-снимки оформления корзины; пустой список, если снимка нет
      */
     public List<String> snapshots(String store, UUID cart) {
-        return jdbc.queryForList("SELECT cart_snapshot FROM submissions WHERE store_id=? AND cart_id=?", String.class, store, cart);
+        return submissions.snapshots(store, cart);
     }
 
     /**
@@ -56,15 +73,10 @@ public class CartRepository {
      * @return позиции корзины с текущими ценами и суммами; для пустой корзины список пуст
      */
     public List<CartLine> lines(String store, UUID cart) {
-        return jdbc.query("""
-                SELECT i.stock_item_id,i.product_id,i.short_name,i.unit_price,c.quantity FROM cart_items c
-                JOIN inventory i ON i.store_id=c.store_id AND i.stock_item_id=c.stock_item_id
-                WHERE c.store_id=? AND c.cart_id=? ORDER BY i.stock_item_id LIMIT 1001
-                """, (row,number) -> {
-            BigDecimal price=row.getBigDecimal("unit_price"); int quantity=row.getInt("quantity");
-            return new CartLine(row.getObject("stock_item_id",UUID.class),row.getString("product_id"),row.getString("short_name"),
-                    quantity,price.toPlainString(),price.multiply(BigDecimal.valueOf(quantity)).toPlainString());
-        }, store, cart);
+        return items.lines(store, cart, PageRequest.of(0, 1001)).stream().map(line ->
+                new CartLine(line.stockItemId(), line.productId(), line.shortName(), line.quantity(),
+                        line.unitPrice().toPlainString(), line.unitPrice().multiply(BigDecimal.valueOf(line.quantity())).toPlainString()))
+                .toList();
     }
 
     /**
@@ -78,10 +90,11 @@ public class CartRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int putItem(String store, UUID cart, UUID stock, int quantity) {
-        return jdbc.update("""
-                INSERT INTO cart_items(store_id,cart_id,stock_item_id,quantity) VALUES(?,?,?,?)
-                ON CONFLICT(cart_id,stock_item_id) DO UPDATE SET quantity=EXCLUDED.quantity
-                """, store, cart, stock, quantity);
+        CartItemEntity entity = items.findById(new CartItemId(cart, stock))
+                .orElseGet(() -> CartItemEntity.builder().cartId(cart).stockItemId(stock).storeId(store).build());
+        entity.setQuantity(quantity);
+        items.save(entity);
+        return 1;
     }
 
     /**
@@ -93,7 +106,10 @@ public class CartRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int deleteItem(String store, UUID cart, UUID stock) {
-        return jdbc.update("DELETE FROM cart_items WHERE store_id=? AND cart_id=? AND stock_item_id=?", store, cart, stock);
+        var existing = items.findById(new CartItemId(cart, stock)).filter(item -> item.getStoreId().equals(store));
+        if (existing.isEmpty()) return 0;
+        items.delete(existing.get());
+        return 1;
     }
 
     /**
@@ -105,8 +121,9 @@ public class CartRepository {
      * @param lock нужно ли заблокировать строку до завершения текущей транзакции
      * @return состояние и версия корзины; пустой список, если корзина отсутствует
      */
-    public List<Map<String,Object>> headers(String store, UUID cart, boolean lock) {
-        return jdbc.queryForList("SELECT version,state FROM carts WHERE store_id=? AND cart_id=?"+(lock?" FOR UPDATE":""), store, cart);
+    public List<CartHeader> headers(String store, UUID cart, boolean lock) {
+        var found = lock ? carts.lockCart(store, cart) : carts.findByStoreIdAndCartId(store, cart);
+        return found.map(entity -> List.of(new CartHeader(entity.getState(), entity.getVersion()))).orElseGet(List::of);
     }
 
     /**
@@ -117,6 +134,10 @@ public class CartRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int advance(String store, UUID cart) {
-        return jdbc.update("UPDATE carts SET version=version+1 WHERE store_id=? AND cart_id=?", store, cart);
+        var found = carts.findByStoreIdAndCartId(store, cart);
+        if (found.isEmpty()) return 0;
+        CartEntity entity = found.get();
+        entity.setVersion(entity.getVersion() + 1);
+        return 1;
     }
 }

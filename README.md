@@ -5,6 +5,10 @@
 
 ## Слои backend
 
+STORE переведён на Spring Data JPA/Hibernate: сущности находятся в `entity`, интерфейсы Spring Data — в `repository/jpa`, прежние репозитории координируют отображение DTO, блокировки и запись истории. WAREHOUSE и TARIFFS сохраняют JDBC. Пошаговый пример сущностей, JOIN, dirty checking, `persist/flush` и транзакций — [STORE и Spring Data JPA](docs/store-jpa.md).
+
+Локальная проверка перевода: полный Maven `verify` — **201/201**; после добавления первого прихода нового продукта финальный STORE `verify` — **86/86** (61 logic, 14 сохранённых API-сценариев и 11 новых JPA-сценариев). Ошибок и пропусков нет. Структура backend — 114 production Java-файлов. Проверены откат после flush, UNIQUE между транзакциями, однократные приходы, порядок цен, конкурентное списание последней единицы и захват outbox. Kotlin E2E локально не запускались; удалённый CI проверяется отдельно.
+
 Все три сервиса разложены по пакетам `controller`, `service`, `repository`, `dto`, `model`, `config` и `exception`; STORE/WAREHOUSE дополнительно выделяют Kafka в `messaging`/`messaging.dto`, разбор протокола в `codec`, WAREHOUSE — HTTP-клиент в `client`. В корне пакета остаётся класс запуска. Каждая модель находится в отдельном файле. SQL вынесен из сервисов в репозитории; сервисы сохраняют бизнес-проверки и прежние транзакционные границы. Redis TARIFFS находится в `repository`.
 
 Распределение классов, направление вызовов и ограничения: [архитектура backend](docs/backend-architecture.md). Проверка структуры: `python scripts/check-backend-layers.py`; сборка и сервисные проверки: `mvn clean verify` на Java 21 с Docker. Проверка структуры включена в CI перед Maven. Внешние HTTP/Kafka-контракты и миграции сохранены.
@@ -140,7 +144,7 @@ npm run test:unit
 
 ## Миграции и fixtures
 
-Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. Все три сервиса работают через JDBC без ORM. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
+Схемы создаёт Flyway из `src/main/resources/db/migration` каждого сервиса. STORE использует Spring Data JPA/Hibernate с `ddl-auto=validate` и `open-in-view=false`; WAREHOUSE и TARIFFS используют JDBC без ORM. Миграции STORE и ограничения PostgreSQL сохранены. SQL init Spring отключён. Автоматический baseline и Flyway clean отключены: подключение к старой непустой схеме без history завершится ошибкой, а не скрытым пересозданием таблиц.
 
 - STORE V1 сохраняет прежние `product`, `cart`, `orders`, которые больше не обслуживаются API. V2 создаёт `store_scopes` (S-1/S-2), `stock_receipts`, `inventory`, `processed_events`, `stock_movements`, `incoming_goods_diagnostics`, `carts`, `cart_items`. V3 добавляет `submissions`, `stock_expenses`, `store_outbox`; исторические записи не переносятся в новую модель.
 - TARIFFS V1/V2 сохраняют прежние `tariffs` и семь исторических процентных fixtures без legacy API. V3 создаёт `tariff_rules` с UUID, version, bounds и дробной наценкой; V4 добавляет 14 правил для MOSCOW/SPB. Старые миграции не изменены.

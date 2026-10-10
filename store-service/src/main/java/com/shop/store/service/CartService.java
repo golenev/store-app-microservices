@@ -8,6 +8,7 @@ import com.shop.store.dto.PutItem;
 import com.shop.store.dto.Stock;
 import com.shop.store.exception.ShopException;
 import com.shop.store.repository.CartRepository;
+import com.shop.store.model.CartHeader;
 import com.shop.store.repository.InventoryRepository;
 
 import org.springframework.stereotype.Service;
@@ -70,8 +71,8 @@ public class CartService {
      */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Cart get(String store,UUID cart) {
-        Map<String,Object> header=header(store,cart,false);
-        if(!header.get("state").equals("OPEN")) {
+        CartHeader header=header(store,cart,false);
+        if(!header.state().equals("OPEN")) {
             List<String> snapshots=repository.snapshots(store, cart);
             if(snapshots.isEmpty()) throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart snapshot unavailable");
             return codec.cartSnapshot(snapshots.getFirst());
@@ -80,7 +81,7 @@ public class CartService {
         BigDecimal total=lines.stream().map(line -> new BigDecimal(line.lineTotal())).reduce(new BigDecimal("0.00"),BigDecimal::add);
         if(lines.size()>1000 || !total.toPlainString().matches("(0|[1-9][0-9]{0,35})\\.[0-9]{2}"))
             throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Cart amount or size exceeds the v1 response limit");
-        return new Cart(store,cart,((Number)header.get("version")).longValue(),"OPEN",lines,total.toPlainString(),"RUB",null);
+        return new Cart(store,cart,header.version(),"OPEN",lines,total.toPlainString(),"RUB",null);
     }
     /**
      * Заменяет итоговое количество выбранного товара и возвращает обновлённую корзину. До записи блокирует
@@ -132,8 +133,8 @@ public class CartService {
      * @param lock нужно ли заблокировать строку до завершения текущей транзакции
      * @return состояние и версия найденной корзины
      */
-    private Map<String,Object> header(String store,UUID cart,boolean lock) {
-        List<Map<String,Object>> rows=repository.headers(store, cart, lock);
+    private CartHeader header(String store,UUID cart,boolean lock) {
+        List<CartHeader> rows=repository.headers(store, cart, lock);
         if(rows.isEmpty()) throw new ShopException(404,"NOT_FOUND","Cart not found"); return rows.getFirst();
     }
     /**
@@ -144,10 +145,10 @@ public class CartService {
      * @param header состояние и версия прочитанной корзины
      * @param expected ожидаемая версия корзины
      */
-    private void editable(Map<String,Object> header,long expected) {
+    private void editable(CartHeader header,long expected) {
         if(expected<0 || expected>ShopCodec.MAX_VERSION) throw new ShopException(400,"VALIDATION_ERROR","Invalid expectedCartVersion");
-        if(!header.get("state").equals("OPEN")) throw new ShopException(409,"CART_ALREADY_SUBMITTED","Cart is already submitted");
-        long version=((Number)header.get("version")).longValue();
+        if(!header.state().equals("OPEN")) throw new ShopException(409,"CART_ALREADY_SUBMITTED","Cart is already submitted");
+        long version=header.version();
         if(version!=expected) throw new ShopException(409,"CART_VERSION_CONFLICT","Cart version has changed");
         if(version==ShopCodec.MAX_VERSION) throw new ShopException(400,"VALIDATION_ERROR","Cart version is exhausted");
     }

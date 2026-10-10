@@ -6,9 +6,12 @@ import com.shop.store.exception.ShopException;
 import com.shop.store.messaging.dto.PostedLine;
 import com.shop.store.model.ExistingStock;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import com.shop.store.entity.*;
+import com.shop.store.repository.jpa.*;
+import com.shop.store.model.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
-import java.sql.*;
 import java.util.*;
 
 /**
@@ -17,13 +20,17 @@ import java.util.*;
  */
 @Repository
 public class InventoryRepository {
-    private final JdbcTemplate jdbc;
+    private final InventoryJpaRepository stocks;
+    private final StoreScopeJpaRepository stores;
     /**
-     * Подключает выполнение SQL к текущей транзакции Spring.
-     *
-     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+     * Подключает Spring Data JPA; блокировки участвуют в транзакции вызывающего сервиса.
+     * @param stocks чтение и блокировка остатков
+     * @param stores чтение магазинов
      */
-    public InventoryRepository(JdbcTemplate jdbc) { this.jdbc=jdbc; }
+    public InventoryRepository(InventoryJpaRepository stocks, StoreScopeJpaRepository stores) {
+        this.stocks = stocks;
+        this.stores = stores;
+    }
     /**
      * Проверяет, что магазин существует. Для неизвестного магазина выдаёт {@code NOT_FOUND}; новые магазины не
      * создаёт.
@@ -31,8 +38,7 @@ public class InventoryRepository {
      * @param store идентификатор магазина
      */
     public void requireStore(String store) {
-        if(jdbc.queryForObject("SELECT count(*) FROM store_scopes WHERE store_id=?",Integer.class,store)==0)
-            throw new ShopException(404,"NOT_FOUND","Store not found");
+        if (!stores.existsById(store)) throw new ShopException(404, "NOT_FOUND", "Store not found");
     }
     /**
      * Возвращает каталог магазина с ценами и доступным количеством, включая нулевые остатки. Неизвестный
@@ -44,9 +50,10 @@ public class InventoryRepository {
      */
     public Catalog catalog(String store) {
         requireStore(store);
-        List<Stock> stocks=jdbc.query("SELECT * FROM inventory WHERE store_id=? ORDER BY product_id LIMIT 1001",this::stock,store);
-        if(stocks.size()>1000) throw new ShopException(503,"DEPENDENCY_UNAVAILABLE","Inventory exceeds the v1 catalog limit");
-        return new Catalog(store,stocks);
+        List<Stock> rows = stocks.findByStoreIdOrderByProductId(store, PageRequest.of(0, 1001)).stream()
+                .map(this::stock).toList();
+        if (rows.size() > 1000) throw new ShopException(503, "DEPENDENCY_UNAVAILABLE", "Inventory exceeds the v1 catalog limit");
+        return new Catalog(store, rows);
     }
     /**
      * Блокирует уже существующие остатки товаров входящей поставки в порядке UUID. Возвращает их по
@@ -58,11 +65,11 @@ public class InventoryRepository {
      * @return существующие остатки по идентификатору продукта; новые продукты в карту не входят
      */
     public Map<String,ExistingStock> lockIncoming(String store,List<PostedLine> lines) {
-        String placeholders=String.join(",",Collections.nCopies(lines.size(),"?"));
-        List<Object> params=new ArrayList<>(); params.add(store); lines.forEach(line -> params.add(line.productId()));
-        List<ExistingStock> rows=jdbc.query("SELECT * FROM inventory WHERE store_id=? AND product_id IN ("+placeholders+") ORDER BY stock_item_id FOR UPDATE",
-                (row,number) -> new ExistingStock(stock(row,number),row.getLong("last_delivery_sequence")),params.toArray());
-        Map<String,ExistingStock> result=new HashMap<>(); rows.forEach(row -> result.put(row.stock().productId(),row)); return result;
+        Map<String, ExistingStock> result = new HashMap<>();
+        for (InventoryEntity entity : stocks.lockIncoming(store, lines.stream().map(PostedLine::productId).toList())) {
+            result.put(entity.getProductId(), new ExistingStock(stock(entity), entity.getLastDeliverySequence()));
+        }
+        return result;
     }
     /**
      * Находит и блокирует позицию остатка указанного магазина. Отсутствие вызывает {@code NOT_FOUND};
@@ -73,20 +80,17 @@ public class InventoryRepository {
      * @return найденная позиция остатка магазина
      */
     public Stock lockStock(String store,UUID stock) {
-        List<Stock> rows=jdbc.query("SELECT * FROM inventory WHERE store_id=? AND stock_item_id=? FOR UPDATE",this::stock,store,stock);
-        if(rows.isEmpty()) throw new ShopException(404,"NOT_FOUND","Stock item not found"); return rows.getFirst();
+        return stocks.lockStock(store, stock).map(this::stock)
+                .orElseThrow(() -> new ShopException(404, "NOT_FOUND", "Stock item not found"));
     }
     /**
-     * Преобразует строку SQL-результата в позицию каталога с UUID и точной строковой ценой. Ошибку чтения
-     * колонки передаёт как {@code SQLException}.
-     *
-     * @param row текущая строка результата SQL-запроса
-     * @param number номер строки SQL-результата; на преобразование не влияет
-     * @return найденная позиция остатка магазина
+     * Отделяет публичный DTO от управляемой сущности; цену передаёт точной строкой.
+     * @param entity найденный остаток
+     * @return позиция каталога без зависимости от жизненного цикла JPA
      */
-    private Stock stock(ResultSet row,int number) throws SQLException {
-        return new Stock(row.getObject("stock_item_id",UUID.class),row.getString("product_id"),row.getString("product_type"),
-                row.getString("short_name"),row.getString("description"),row.getBigDecimal("unit_price").toPlainString(),
-                row.getString("currency"),row.getInt("available_quantity"));
+    private Stock stock(InventoryEntity entity) {
+        return new Stock(entity.getStockItemId(), entity.getProductId(), entity.getProductType(),
+                entity.getShortName(), entity.getDescription(), entity.getUnitPrice().toPlainString(),
+                entity.getCurrency(), entity.getAvailableQuantity());
     }
 }
