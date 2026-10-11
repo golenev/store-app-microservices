@@ -14,12 +14,13 @@ SERVICES = {
 ALLOWED = {
     "controller": {"service", "codec", "dto", "model", "exception"},
     "service": {"service", "repository", "client", "messaging", "messaging.dto", "codec", "dto", "model", "exception", "validation"},
-    "repository": {"repository", "codec", "dto", "model", "exception", "validation", "messaging.dto"},
+    "repository": {"entity", "repository", "codec", "dto", "model", "exception", "validation", "messaging.dto"},
     "messaging": {"service", "dto", "model", "exception", "messaging"},
     "config": {"config"},
     "client": {"client", "codec", "dto", "model", "exception"},
     "codec": {"codec", "dto", "model", "exception", "validation", "messaging.dto"},
     "dto": {"dto", "model", "validation"},
+    "entity": {"entity"},
     "model": {"model", "dto", "messaging.dto"},
     "exception": {"exception", "dto"},
     "validation": {"validation"},
@@ -61,7 +62,7 @@ def check_source(path, root):
                 errors.append(f"{layer} не должен зависеть от {target}: {imported}")
         elif any(imported.startswith(other + ".") for other in SERVICES.values() if other != root):
             errors.append(f"зависимость от production-класса соседнего сервиса: {imported}")
-        if imported.startswith(("org.springframework.jdbc.", "org.springframework.data.redis.")) and layer != "repository":
+        if imported.startswith(("org.springframework.jdbc.", "org.springframework.data.redis.", "org.springframework.data.jpa.", "jakarta.persistence.EntityManager")) and layer != "repository":
             errors.append(f"доступ к хранилищу вне repository: {imported}")
         if imported.startswith("org.springframework.kafka.") and layer not in {"messaging", "config"}:
             errors.append(f"Kafka вне messaging/config: {imported}")

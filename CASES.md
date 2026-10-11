@@ -1,5 +1,27 @@
 # Ключевые сквозные сценарии
 
+## STORE на JPA: регрессия хранения
+
+14 существующих методов `StoreApiDatabaseTest` сохраняют сценарии и бизнес-ожидания; подготовка и чтение состояния переведены с JDBC на Spring Data JPA/EntityManager. Каждая подготовка и проверка фиксирует отдельную транзакцию, чтобы не проверять результат по кешу первого уровня.
+
+Добавлены 11 прямых сценариев с настоящим PostgreSQL и production Flyway; Kafka не запускается:
+
+| ID | Метод | Инвариант |
+| --- | --- | --- |
+| STORE-JPA-001 | appliesDeliveriesOnceWithoutRevertingPrice | Поздний старый приход добавляет количество без отката цены; повторы по eventId/deliveryId не добавляют второй приход |
+| STORE-JPA-002 | deduplicatesDiagnosticCoordinates | ON CONFLICT сохраняет одну диагностику для координат Kafka |
+| STORE-JPA-003 | insufficientStockLeavesNoAcceptanceWrites | Отказ не сохраняет submission, расход и outbox |
+| STORE-JPA-004 | flushFailureRollsBackEveryAcceptanceWrite | Ошибка UNIQUE после flush/clear откатывает уже записанные данные, остаток и закрытие корзины |
+| STORE-JPA-005 | concurrentCheckoutHasOneWinnerForLastUnit | Из двух корзин только одна списывает последнюю единицу |
+| STORE-JPA-006 | concurrentSameKeyReturnsOneSubmission | Два одинаковых запроса возвращают одну заявку и один расход |
+| STORE-JPA-007 | outboxSkipsRowLockedByAnotherTransaction | SKIP LOCKED пропускает чужую блокировку без ожидания |
+| STORE-JPA-008 | expiredLeaseRejectsStaleAcknowledgement | Старый токен не подтверждает событие после нового захвата; повтор не списывает товар |
+| STORE-JPA-009 | failedSendSchedulesRetryWithoutNewExpense | Отказ отправки освобождает токен и назначает backoff без нового расхода |
+| STORE-JPA-010 | uniqueKeyRaceRollsBackAndReadsWinnerInNewTransaction | Настоящий 23505 откатывает проигравший запрос; REQUIRES_NEW распознаёт занятую другим запросом операцию |
+| STORE-JPA-011 | createsInventoryForNewProduct | Первый приход вставляет остаток и движение после поставки с сохранением внешних ключей |
+
+Полный Maven `verify` — **201/201**, после последнего дополнения финальный STORE — **86/86**, без ошибок и пропусков. Это Java/PostgreSQL-проверки, а не Kotlin E2E. Локальный браузерный прогон не выполнялся; CI проверяется отдельно. Подробности JPA — [store-jpa.md](docs/store-jpa.md).
+
 ## Строгий входной контракт STORE (10 октября 2026)
 
 `store-service/src/test/java/com/shop/store/pyramid/logic/ShopCodecTest.java` проверяет разбор без БД, HTTP-сервера и Kafka. Это дополнительные проверки границы протокола, а не новые E2E:

@@ -8,6 +8,10 @@ import com.shop.store.exception.ShopException;
 import com.shop.store.messaging.dto.OrderEvent;
 import com.shop.store.messaging.dto.OrderPayload;
 import com.shop.store.model.OutboxWork;
+import com.shop.store.model.CartHeader;
+import com.shop.store.model.CheckoutLine;
+import com.shop.store.model.SubmissionMatch;
+import com.shop.store.model.OutboxCandidate;
 import com.shop.store.repository.SubmissionRepository;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -61,26 +65,26 @@ public class SubmissionTransactionService {
     public Submission accept(String store,UUID cart,String key,long version,String fingerprint) {
         Optional<Submission> prior=existing(store,key,fingerprint);
         if(prior.isPresent()) return prior.get();
-        List<Map<String,Object>> headers=repository.lockCart(store, cart);
+        List<CartHeader> headers=repository.lockCart(store, cart);
         if(headers.isEmpty()) throw new ShopException(404,"NOT_FOUND","Cart not found");
         prior=existing(store,key,fingerprint);
         if(prior.isPresent()) return prior.get();
-        Map<String,Object> header=headers.getFirst();
-        if(!header.get("state").equals("OPEN")) throw new ShopException(409,"CART_ALREADY_SUBMITTED","Cart is already submitted");
-        if(((Number)header.get("version")).longValue()!=version) throw new ShopException(409,"CART_VERSION_CONFLICT","Cart version has changed");
+        CartHeader header=headers.getFirst();
+        if(!header.state().equals("OPEN")) throw new ShopException(409,"CART_ALREADY_SUBMITTED","Cart is already submitted");
+        if(header.version()!=version) throw new ShopException(409,"CART_VERSION_CONFLICT","Cart version has changed");
         if(version==ShopCodec.MAX_VERSION) throw new ShopException(400,"VALIDATION_ERROR","Cart version is exhausted");
-        List<Map<String,Object>> rows=repository.lockStockLines(store, cart);
+        List<CheckoutLine> rows=repository.lockStockLines(store, cart);
         // Запрос другой корзины мог зафиксироваться, пока эта операция ожидала блокировки остатков.
         prior=existing(store,key,fingerprint);
         if(prior.isPresent()) return prior.get();
         if(rows.isEmpty() || rows.size()>1000) throw new ShopException(400,"VALIDATION_ERROR","Cart must contain 1 to 1000 items");
         List<CartLine> lines=new ArrayList<>(); BigDecimal total=new BigDecimal("0.00");
-        for(Map<String,Object> row:rows) {
-            int quantity=((Number)row.get("quantity")).intValue();
-            if(quantity>((Number)row.get("available_quantity")).intValue())
+        for(CheckoutLine row:rows) {
+            int quantity=row.quantity();
+            if(quantity>row.availableQuantity())
                 throw new ShopException(409,"INSUFFICIENT_STOCK","Requested quantity exceeds current stock");
-            BigDecimal price=(BigDecimal)row.get("unit_price"), amount=price.multiply(BigDecimal.valueOf(quantity));
-            lines.add(new CartLine((UUID)row.get("stock_item_id"),(String)row.get("product_id"),(String)row.get("short_name"),
+            BigDecimal price=row.unitPrice(), amount=price.multiply(BigDecimal.valueOf(quantity));
+            lines.add(new CartLine(row.stockItemId(),row.productId(),row.shortName(),
                     quantity,price.toPlainString(),amount.toPlainString()));
             total=total.add(amount);
         }
@@ -123,11 +127,11 @@ public class SubmissionTransactionService {
      * @return прежняя заявка или пустой результат, если ключ не использован
      */
     private Optional<Submission> existing(String store,String key,String fingerprint) {
-        List<Map<String,Object>> found=repository.findByKey(store, key);
+        List<SubmissionMatch> found=repository.findByKey(store, key);
         if(found.isEmpty()) return Optional.empty();
-        if(!fingerprint.equals(found.getFirst().get("request_fingerprint")))
+        if(!fingerprint.equals(found.getFirst().requestFingerprint()))
             throw new ShopException(409,"IDEMPOTENCY_KEY_REUSED","Idempotency-Key belongs to a different request");
-        return Optional.of(view(store,(UUID)found.getFirst().get("submission_id")));
+        return Optional.of(view(store,found.getFirst().submissionId()));
     }
 
     /**
@@ -155,12 +159,12 @@ public class SubmissionTransactionService {
     @Transactional
     public Optional<OutboxWork> claimOutbox() {
         Timestamp now=Timestamp.from(clock.instant());
-        List<Map<String,Object>> rows=repository.lockDueOutbox(now, now);
-        if(rows.isEmpty()) return Optional.empty(); Map<String,Object> row=rows.getFirst();
-        UUID event=(UUID)row.get("event_id"),token=UUID.randomUUID();
-        int attempts=(int)Math.min(Integer.MAX_VALUE,((Number)row.get("attempt_count")).longValue()+1);
+        List<OutboxCandidate> rows=repository.lockDueOutbox(now, now);
+        if(rows.isEmpty()) return Optional.empty(); OutboxCandidate row=rows.getFirst();
+        UUID event=row.eventId(),token=UUID.randomUUID();
+        int attempts=(int)Math.min(Integer.MAX_VALUE,(long)row.attemptCount()+1);
         repository.claimOutbox(token, Timestamp.from(clock.instant().plusMillis(leaseMs)), attempts, event);
-        return Optional.of(new OutboxWork(event,(String)row.get("store_id"),(String)row.get("payload"),token,attempts));
+        return Optional.of(new OutboxWork(event,row.storeId(),row.payload(),token,attempts));
     }
 
     /**

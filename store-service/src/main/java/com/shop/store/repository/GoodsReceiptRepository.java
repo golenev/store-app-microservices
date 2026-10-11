@@ -1,25 +1,43 @@
 package com.shop.store.repository;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import com.shop.store.entity.*;
+import com.shop.store.repository.jpa.*;
+import com.shop.store.model.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
 
 /**
- * Сохраняет приходы, движения и отметки об обработанных событиях в PostgreSQL. Все записи и блокировки
+ * Сохраняет приходы, движения и отметки об обработанных событиях в PostgreSQL. Все операции JPA и блокировки
  * входят в транзакцию сервиса приёмки.
  */
 @Repository
 public class GoodsReceiptRepository {
-    private final JdbcTemplate jdbc;
+    private final EntityManager entities;
+    private final StoreScopeJpaRepository stores;
+    private final ReceiptJpaRepository receipts;
+    private final ProcessedEventJpaRepository events;
+    private final InventoryJpaRepository stocks;
 
     /**
-     * Подключает выполнение SQL к текущей транзакции Spring.
-     *
-     * @param jdbc выполнение SQL с участием в текущей транзакции Spring
+     * Подключает JPA и стандартные репозитории. Новые неизменяемые записи вставляет через persist,
+     * чтобы заданный идентификатор не превращал повторную вставку в merge и изменение истории.
+     * @param entities контекст текущей транзакции
+     * @param stores магазины
+     * @param receipts принятые поставки
+     * @param events обработанные события
+     * @param stocks остатки
      */
-    public GoodsReceiptRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public GoodsReceiptRepository(EntityManager entities, StoreScopeJpaRepository stores, ReceiptJpaRepository receipts, ProcessedEventJpaRepository events, InventoryJpaRepository stocks) {
+        this.entities = entities;
+        this.stores = stores;
+        this.receipts = receipts;
+        this.events = events;
+        this.stocks = stocks;
+    }
 
     /**
      * Блокирует обработку данного идентификатора события до конца транзакции. Одновременный повтор ждёт её
@@ -29,7 +47,9 @@ public class GoodsReceiptRepository {
      * @return значение 1 после получения блокировки события
      */
     public Integer lockEvent(String eventId) {
-        return jdbc.queryForObject("SELECT pg_advisory_xact_lock(731005,hashtext(?))", (row,number) -> 1, eventId);
+        entities.createNativeQuery("SELECT 1 FROM pg_advisory_xact_lock(731005,hashtext(:event))")
+                .setParameter("event", eventId).getSingleResult();
+        return 1;
     }
 
     /**
@@ -40,7 +60,7 @@ public class GoodsReceiptRepository {
      * @return идентификатор найденного магазина или пустой список для неизвестного магазина
      */
     public List<String> lockStore(String store) {
-        return jdbc.queryForList("SELECT store_id FROM store_scopes WHERE store_id=? FOR UPDATE", String.class, store);
+        return stores.lockStore(store).map(entity -> List.of(entity.getStoreId())).orElseGet(List::of);
     }
 
     /**
@@ -50,8 +70,9 @@ public class GoodsReceiptRepository {
      * @param eventId идентификатор события для распознавания повторного сообщения
      * @return сохранённые сведения об обработанном событии или пустой список
      */
-    public List<Map<String,Object>> processedEvents(UUID eventId) {
-        return jdbc.queryForList("SELECT * FROM processed_events WHERE event_id=?", eventId);
+    public List<ProcessedGoods> processedEvents(UUID eventId) {
+        return events.findById(eventId).map(entity -> List.of(new ProcessedGoods(entity.getStoreId(),
+                entity.getDeliveryId(), entity.getFingerprint()))).orElseGet(List::of);
     }
 
     /**
@@ -63,7 +84,7 @@ public class GoodsReceiptRepository {
      * @return контрольная сумма принятой поставки или пустой список, если её нет
      */
     public List<String> receiptFingerprints(String store, String delivery) {
-        return jdbc.queryForList("SELECT fingerprint FROM stock_receipts WHERE store_id=? AND delivery_id=?", String.class, store, delivery);
+        return receipts.findById(new ReceiptId(store, delivery)).map(entity -> List.of(entity.getFingerprint())).orElseGet(List::of);
     }
 
     /**
@@ -75,7 +96,7 @@ public class GoodsReceiptRepository {
      * @return число поставок магазина с указанным порядковым номером
      */
     public Integer sequenceCount(String store, long sequence) {
-        return jdbc.queryForObject("SELECT count(*) FROM stock_receipts WHERE store_id=? AND delivery_sequence=?", Integer.class, store, sequence);
+        return Math.toIntExact(receipts.countByStoreIdAndDeliverySequence(store, sequence));
     }
 
     /**
@@ -85,7 +106,7 @@ public class GoodsReceiptRepository {
      * @return число разных товаров в остатках магазина
      */
     public Long inventoryCount(String store) {
-        return jdbc.queryForObject("SELECT count(*) FROM inventory WHERE store_id=?", Long.class, store);
+        return stocks.countByStoreId(store);
     }
 
     /**
@@ -103,10 +124,11 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertReceipt(String store, String delivery, long sequence, String fingerprint, Timestamp receivedAt, Timestamp postedAt, Timestamp appliedAt, String payload) {
-        return jdbc.update("""
-                INSERT INTO stock_receipts(store_id,delivery_id,delivery_sequence,fingerprint,received_at,posted_at,applied_at,payload)
-                VALUES(?,?,?,?,?,?,?,?)
-                """, store, delivery, sequence, fingerprint, receivedAt, postedAt, appliedAt, payload);
+        entities.persist(ReceiptEntity.builder().storeId(store).deliveryId(delivery).deliverySequence(sequence)
+                .fingerprint(fingerprint).receivedAt(receivedAt.toInstant()).postedAt(postedAt.toInstant())
+                .appliedAt(appliedAt.toInstant()).payload(payload).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -126,10 +148,11 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertStock(UUID stock, String store, String product, String productType, String shortName, String description, BigDecimal price, String currency, int quantity, long sequence) {
-        return jdbc.update("""
-                    INSERT INTO inventory(stock_item_id,store_id,product_id,product_type,short_name,description,unit_price,currency,available_quantity,last_delivery_sequence)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)
-                    """, stock, store, product, productType, shortName, description, price, currency, quantity, sequence);
+        entities.persist(InventoryEntity.builder().stockItemId(stock).storeId(store).productId(product)
+                .productType(productType).shortName(shortName).description(description).unitPrice(price)
+                .currency(currency).availableQuantity(quantity).lastDeliverySequence(sequence).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -146,10 +169,14 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int addStockAndReprice(int quantity, BigDecimal price, String shortName, String description, long sequence, UUID stock, String store) {
-        return jdbc.update("""
-                    UPDATE inventory SET available_quantity=available_quantity+?,unit_price=?,short_name=?,description=?,last_delivery_sequence=?
-                    WHERE stock_item_id=? AND store_id=?
-                    """, quantity, price, shortName, description, sequence, stock, store);
+        InventoryEntity entity = entities.find(InventoryEntity.class, stock);
+        if (entity == null || !entity.getStoreId().equals(store)) return 0;
+        entity.setAvailableQuantity(entity.getAvailableQuantity() + quantity);
+        entity.setUnitPrice(price);
+        entity.setShortName(shortName);
+        entity.setDescription(description);
+        entity.setLastDeliverySequence(sequence);
+        return 1;
     }
 
     /**
@@ -162,7 +189,10 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int addStock(int quantity, UUID stock, String store) {
-        return jdbc.update("UPDATE inventory SET available_quantity=available_quantity+? WHERE stock_item_id=? AND store_id=?", quantity, stock, store);
+        InventoryEntity entity = entities.find(InventoryEntity.class, stock);
+        if (entity == null || !entity.getStoreId().equals(store)) return 0;
+        entity.setAvailableQuantity(entity.getAvailableQuantity() + quantity);
+        return 1;
     }
 
     /**
@@ -179,7 +209,10 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertMovement(String store, String delivery, String lineId, UUID stock, int quantity, BigDecimal price, Timestamp appliedAt) {
-        return jdbc.update("INSERT INTO stock_movements(store_id,delivery_id,line_id,stock_item_id,quantity,unit_price,applied_at) VALUES(?,?,?,?,?,?,?)", store, delivery, lineId, stock, quantity, price, appliedAt);
+        entities.persist(StockMovementEntity.builder().storeId(store).deliveryId(delivery).lineId(lineId)
+                .stockItemId(stock).quantity(quantity).unitPrice(price).appliedAt(appliedAt.toInstant()).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -192,7 +225,10 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int rememberEvent(UUID eventId, String store, String delivery, String fingerprint) {
-        return jdbc.update("INSERT INTO processed_events(event_id,store_id,delivery_id,fingerprint) VALUES(?,?,?,?)", eventId, store, delivery, fingerprint);
+        entities.persist(ProcessedEventEntity.builder().eventId(eventId).storeId(store).deliveryId(delivery)
+                .fingerprint(fingerprint).build());
+        entities.flush();
+        return 1;
     }
 
     /**
@@ -209,9 +245,14 @@ public class GoodsReceiptRepository {
      * @return число изменённых строк; 0, если запись не найдена или условие изменения не выполнено
      */
     public int insertDiagnostic(String topic, int partition, long offset, Timestamp recordedAt, String code, String message, String raw) {
-        return jdbc.update("""
+        // ON CONFLICT сохраняет атомарную дедупликацию координат, которой нет у save/merge.
+        entities.flush();
+        return entities.createNativeQuery("""
                 INSERT INTO incoming_goods_diagnostics(topic,partition_id,kafka_offset,recorded_at,code,message,raw_message)
-                VALUES(?,?,?,?,?,?,?) ON CONFLICT(topic,partition_id,kafka_offset) DO NOTHING
-                """, topic, partition, offset, recordedAt, code, message, raw);
+                VALUES(:topic,:partition,:offset,:recordedAt,:code,:message,:raw)
+                ON CONFLICT(topic,partition_id,kafka_offset) DO NOTHING
+                """).setParameter("topic", topic).setParameter("partition", partition).setParameter("offset", offset)
+                .setParameter("recordedAt", recordedAt.toInstant()).setParameter("code", code)
+                .setParameter("message", message).setParameter("raw", raw).executeUpdate();
     }
 }
